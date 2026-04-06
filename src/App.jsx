@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from "recharts";
 import { db } from "./firebase";
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where } from "firebase/firestore";
+import AnalisisSuelo from "./SueloAnalisis";
 
 const CROPS = {
   jitomate:  { name:"Jitomate",  emoji:"🍅", color:"#c0392b", ph:{min:5.5,max:6.5}, ce:{min:2.5,max:4.0} },
@@ -747,8 +748,9 @@ const NAV=[
   {id:"instrucciones",label:"Instrucciones",icon:"📋"},
   {id:"inventario",label:"Inventario",icon:"📦"},
   {id:"trabajadores",label:"Equipo",icon:"◎"},
+  {id:"suelo", label:"Análisis de Suelo", icon:"🌍"},
 ];
-const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo"};
+const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",};
 
 export default function App(){
   const [page,setPage]=useState("resumen");
@@ -773,7 +775,7 @@ export default function App(){
   if(!isAdmin) return <Worker/>;
   if(loading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f4f5f7"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,color:"#27ae60",fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#aaa",marginTop:4}}>Cargando...</div></div></div>;
 
-  const SECTION={resumen:<Resumen readings={readings} onDelete={handleDelete}/>,alertas:<Alertas readings={readings} onDelete={handleDelete}/>,ia:<DiagnosticoIA/>,reportes:<Reportes readings={readings} onDelete={handleDelete}/>,formulador:<Formulador/>,incidencias:<IncidenciasAdmin/>,tareas:<TareasAdmin/>,instrucciones:<InstruccionesAdmin/>,inventario:<Inventario/>,trabajadores:<Trabajadores readings={readings}/>};
+  const SECTION={suelo:<AnalisisSuelo />,resumen:<Resumen readings={readings} onDelete={handleDelete}/>,alertas:<Alertas readings={readings} onDelete={handleDelete}/>,ia:<DiagnosticoIA/>,reportes:<Reportes readings={readings} onDelete={handleDelete}/>,formulador:<Formulador/>,incidencias:<IncidenciasAdmin/>,tareas:<TareasAdmin/>,instrucciones:<InstruccionesAdmin/>,inventario:<Inventario/>,trabajadores:<Trabajadores readings={readings}/>};
 
   return(
     <div style={{display:"flex",minHeight:"100vh",background:"#f4f5f7",fontFamily:"'Georgia',serif"}}>
