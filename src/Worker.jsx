@@ -395,9 +395,6 @@ const TABS=[
   {id:"instrucciones",label:"Instrucciones",icon:"📋"},
 ];
 
-const SEV_COLOR = { alta:"#e74c3c", media:"#f39c12", baja:"#27ae60" };
-const SEV_BG    = { alta:"#fdedec", media:"#fef9e7", baja:"#eafaf1" };
-
 export default function Worker() {
   const [worker,setWorker]=useState(()=>localStorage.getItem("gl_worker")||"");
   const [tab,setTab]=useState("registro");
