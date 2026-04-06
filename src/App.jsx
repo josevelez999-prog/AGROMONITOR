@@ -269,7 +269,38 @@ function DiagnosticoIA(){
     const crop=CROPS[form.crop];
     const CROP_NUT_STR={jitomate:"N alto, K alto fructificación, Ca firmeza",fresa:"N bajo maduración, K alto, Ca y B calidad",arandano:"pH ácido crítico 4.5-5.5, N amoniacal",zarzamora:"N moderado, K alto maduración, Fe quelado"};
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":"TU_API_KEY_AQUI","anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:imgBase64}},{type:"text",text:`Eres agrónomo experto. Analiza imagen de ${crop.name}. pH=${form.ph||"?"}, CE=${form.ce||"?"} mS/cm. Notas: ${form.notes||"ninguna"}. Referencia: ${CROP_NUT_STR[form.crop]}. Responde SOLO JSON sin markdown: {"diagnostico":"string","severidad":"baja|media|alta","causas":["c1","c2"],"acciones":["a1","a2","a3"],"ajuste_ph":"subir|bajar|mantener","ajuste_ce":"subir|bajar|mantener","urgencia":"mensaje 1 línea"}`}]}]})});
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":"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","anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:imgBase64}},{type:"text",text:text:`Eres un ingeniero agrónomo mexicano especialista en producción protegida e hidroponía con 20 años de experiencia en cultivos de jitomate, fresa, arándano y zarzamora bajo invernadero y sistemas mixtos.
+
+Tienes conocimiento profundo en:
+- Nutrición vegetal y formulación de soluciones nutritivas (método meq/L)
+- Fisiología vegetal y etapas fenológicas
+- Fitopatología: enfermedades fúngicas, bacterianas y virales
+- Entomología agrícola: plagas comunes en cultivos protegidos de México
+- Manejo integrado de plagas y enfermedades (MIP)
+- Interpretación de parámetros de riego (pH, CE, temperatura)
+- Condiciones climáticas del centro-occidente de México
+
+Datos del registro actual:
+- Cultivo: ${crop.name}
+- pH medido: ${form.ph || "no registrado"}
+- CE medida: ${form.ce || "no registrada"} mS/cm
+- Zona: ${form.zone || "no especificada"}
+- Observaciones del trabajador: ${form.notes || "ninguna"}
+- Referencia nutricional: ${CROP_NUT_STR[form.crop]}
+
+Analiza la imagen adjunta considerando todos estos datos. Da un diagnóstico preciso y práctico, orientado a un productor mexicano con recursos limitados.
+
+Responde SOLO en este formato JSON sin markdown ni texto adicional:
+{
+  "diagnostico": "nombre técnico del problema en español",
+  "severidad": "baja|media|alta",
+  "causas": ["causa 1 específica", "causa 2 específica"],
+  "acciones": ["acción inmediata 1", "acción a mediano plazo 2", "acción preventiva 3"],
+  "productos_sugeridos": ["producto comercial disponible en México 1", "alternativa 2"],
+  "ajuste_ph": "subir|bajar|mantener",
+  "ajuste_ce": "subir|bajar|mantener",
+  "urgencia": "mensaje directo de una línea para el encargado"
+}`}]}]})});
       const data=await res.json();
       const text=data.content?.find(b=>b.type==="text")?.text||"";
       const result=JSON.parse(text.replace(/```json|```/g,"").trim());
