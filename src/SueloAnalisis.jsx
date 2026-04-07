@@ -255,98 +255,40 @@ export default function AnalisisSuelo() {
     }
     setAnalyzing(true);
     try {
-      const paramStr = PARAMETROS_SUELO
-        .filter(p => parametros[p.key])
-        .map(p => `${p.label}: ${parametros[p.key]} ${p.unit}`)
-        .join(", ");
+      // Use first file if available
+      const firstFile = fileBase64s[0] || null;
 
-      const content = [];
-
-      // Agregar imágenes si hay
-      for (const f of fileBase64s) {
-        const mediaType = f.type.includes("pdf") ? "application/pdf" : f.type;
-        if (f.type.includes("image")) {
-          content.push({ type:"image", source:{ type:"base64", media_type:mediaType, data:f.data } });
-        }
-      }
-
-      content.push({
-        type: "text",
-        text: `Eres un edafólogo y agrónomo mexicano especialista en fertilidad de suelos con 20 años de experiencia en la región centro-occidente de México (Michoacán, Jalisco, Guanajuato). 
-
-Contexto del análisis:
-- Cultivo a establecer: ${CROPS_SUELO[form.crop]?.name}
-- Zona/parcela: ${form.zona || "no especificada"}
-- Laboratorio: ${form.laboratorio || "no especificado"}
-- Profundidad muestreada: ${form.profundidad} cm
-- Fecha: ${form.fecha}
-
-Parámetros ingresados manualmente: ${paramStr || "ninguno — analiza el documento adjunto"}
-
-${fileBase64s.length > 0 ? "Analiza el documento/imagen de análisis de suelo adjunto." : "Basa tu análisis en los parámetros proporcionados."}
-
-Proporciona un diagnóstico completo y recomendaciones de fertilización para este cultivo en suelo.
-
-Responde SOLO en formato JSON sin markdown:
-{
-  "diagnostico_general": "resumen del estado de fertilidad del suelo en 2-3 oraciones",
-  "problemas_principales": ["problema 1", "problema 2"],
-  "parametros_detectados": {
-    "pH": "valor o null",
-    "MO": "valor o null",
-    "N": "valor o null",
-    "P": "valor o null",
-    "K": "valor o null",
-    "Ca": "valor o null",
-    "Mg": "valor o null",
-    "textura": "descripción o null"
-  },
-  "deficiencias": ["nutriente deficiente 1", "nutriente deficiente 2"],
-  "excesos": ["nutriente en exceso si aplica"],
-  "recomendaciones_manejo": ["práctica de manejo 1", "práctica de manejo 2", "práctica de manejo 3"],
-  "formulacion_suelo": {
-    "N_kg_ha": 0,
-    "P_kg_ha": 0,
-    "K_kg_ha": 0,
-    "notas": "notas sobre la fertilización recomendada"
-  },
-  "fertilizantes_recomendados": [
-    {"nombre": "nombre del fertilizante", "dosis": "kg o L por ha", "momento": "presiembra|siembra|fertirriego|foliar"},
-    {"nombre": "nombre 2", "dosis": "cantidad", "momento": "momento de aplicación"}
-  ],
-  "enmiendas": ["enmienda 1 si el pH lo requiere", "encalado si es necesario"],
-  "siguiente_muestreo": "recomendación de cuándo tomar el próximo análisis",
-  "semaforo": "verde|amarillo|rojo"
-}`
-      });
-
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/analyzeSuelo", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key":import.meta.env.VITE_ANTHROPIC_KEY,
-          "anthropic-version": "2023-06-01"
-        },
-        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:2000, messages:[{ role:"user", content }] })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imgBase64: firstFile ? firstFile.data : null,
+          imgType: firstFile ? firstFile.type : null,
+          cropName: CROPS_SUELO[form.crop]?.name || form.crop,
+          zona: form.zona,
+          laboratorio: form.laboratorio,
+          profundidad: form.profundidad,
+          fecha: form.fecha,
+          parametros,
+        })
       });
 
-      const data = await res.json();
-      const text = data.content?.find(b => b.type === "text")?.text || "";
-      const result = JSON.parse(text.replace(/```json|```/g,"").trim());
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
 
-      // Si detectó parámetros, pre-rellenar
+      // Pre-fill detected parameters
       if (result.parametros_detectados) {
         setParametros(prev => ({
           ...prev,
           ...Object.fromEntries(
             Object.entries(result.parametros_detectados)
-              .filter(([,v]) => v && v !== "null")
-              .map(([k,v]) => [k, v])
+              .filter(([, v]) => v && v !== "null")
+              .map(([k, v]) => [k, v])
           )
         }));
       }
 
-      // Guardar en Firestore
+      // Upload files to Firebase Storage
       setSaving(true);
       let fileURLs = [];
       if (files.length > 0) {
@@ -360,7 +302,7 @@ Responde SOLO en formato JSON sin markdown:
 
       await addDoc(collection(db, "analisis_suelo"), {
         ...form,
-        parametros: { ...parametros, ...( result.parametros_detectados || {}) },
+        parametros: { ...parametros, ...(result.parametros_detectados || {}) },
         resultado: result,
         fileURLs,
         createdAt: new Date().toISOString(),
@@ -373,7 +315,7 @@ Responde SOLO en formato JSON sin markdown:
 
     } catch(e) {
       console.error(e);
-      alert("Error al analizar. Verifica tu API key y conexión.");
+      alert("Error al analizar: " + e.message);
     }
     setAnalyzing(false);
     setSaving(false);
