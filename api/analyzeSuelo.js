@@ -1,3 +1,7 @@
+export const config = {
+  api: { bodyParser: { sizeLimit: "10mb" } }
+};
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -20,53 +24,52 @@ export default async function handler(req, res) {
       + "- Profundidad muestreada: " + (profundidad || "0-30") + " cm\n"
       + "- Fecha: " + (fecha || "") + "\n"
       + "- Parámetros ingresados manualmente: " + paramStr + "\n\n"
-      + (imgBase64 ? "Analiza el documento/imagen de análisis de suelo adjunto y extrae todos los valores que encuentres." : "Basa tu análisis únicamente en los parámetros proporcionados manualmente.") + "\n\n"
-      + "Proporciona un diagnóstico completo y recomendaciones de fertilización para este cultivo en suelo.\n\n"
-      + "Responde SOLO en formato JSON sin markdown ni texto adicional:\n"
-      + '{"diagnostico_general":"resumen del estado de fertilidad del suelo en 2-3 oraciones",'
+      + (imgBase64 ? "Analiza el documento adjunto y extrae todos los valores del análisis de suelo." : "Basa tu análisis en los parámetros proporcionados manualmente.") + "\n\n"
+      + "Proporciona un diagnóstico completo y recomendaciones de fertilización para este cultivo.\n\n"
+      + "Responde SOLO en JSON sin markdown:\n"
+      + '{"diagnostico_general":"resumen fertilidad en 2-3 oraciones",'
       + '"problemas_principales":["problema 1","problema 2"],'
       + '"parametros_detectados":{"pH":null,"MO":null,"N":null,"P":null,"K":null,"Ca":null,"Mg":null,"textura":null},'
-      + '"deficiencias":["nutriente deficiente 1"],'
-      + '"excesos":["nutriente en exceso si aplica"],'
-      + '"recomendaciones_manejo":["practica de manejo 1","practica 2","practica 3"],'
-      + '"formulacion_suelo":{"N_kg_ha":0,"P_kg_ha":0,"K_kg_ha":0,"notas":"notas sobre la fertilizacion"},'
-      + '"fertilizantes_recomendados":[{"nombre":"nombre fertilizante","dosis":"kg o L por ha","momento":"presiembra|siembra|fertirriego|foliar"}],'
-      + '"enmiendas":["enmienda necesaria si pH lo requiere"],'
-      + '"siguiente_muestreo":"recomendacion de cuando tomar el proximo analisis",'
+      + '"deficiencias":["nutriente 1"],'
+      + '"excesos":["exceso si aplica"],'
+      + '"recomendaciones_manejo":["practica 1","practica 2","practica 3"],'
+      + '"formulacion_suelo":{"N_kg_ha":0,"P_kg_ha":0,"K_kg_ha":0,"notas":"notas fertilizacion"},'
+      + '"fertilizantes_recomendados":[{"nombre":"fertilizante","dosis":"kg/ha","momento":"presiembra|siembra|fertirriego"}],'
+      + '"enmiendas":["enmienda si pH lo requiere"],'
+      + '"siguiente_muestreo":"cuando tomar proximo analisis",'
       + '"semaforo":"verde|amarillo|rojo"}';
 
-    // Build content array depending on file type
     const content = [];
+    const headers = {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.VITE_ANTHROPIC_KEY,
+      "anthropic-version": "2023-06-01",
+    };
 
     if (imgBase64) {
       const isPDF = imgType && (imgType.includes("pdf") || imgType === "application/pdf");
       const isImage = imgType && imgType.includes("image");
 
-      if (isPDF) {
-        // Anthropic supports PDF as document type
+      // Check size — base64 of 4MB file = ~5.3MB string
+      const sizeOK = imgBase64.length < 5_000_000;
+
+      if (isPDF && sizeOK) {
+        // PDF needs beta header
+        headers["anthropic-beta"] = "pdfs-2024-09-25";
         content.push({
           type: "document",
-          source: {
-            type: "base64",
-            media_type: "application/pdf",
-            data: imgBase64
-          }
+          source: { type: "base64", media_type: "application/pdf", data: imgBase64 }
         });
-      } else if (isImage) {
-        // Detect correct image media type
+      } else if (isImage && sizeOK) {
         let mediaType = "image/jpeg";
         if (imgType.includes("png")) mediaType = "image/png";
         else if (imgType.includes("webp")) mediaType = "image/webp";
-        else if (imgType.includes("gif")) mediaType = "image/gif";
-
         content.push({
           type: "image",
-          source: {
-            type: "base64",
-            media_type: mediaType,
-            data: imgBase64
-          }
+          source: { type: "base64", media_type: mediaType, data: imgBase64 }
         });
+      } else if (!sizeOK) {
+        console.log("File too large, analyzing with parameters only");
       }
     }
 
@@ -74,11 +77,7 @@ export default async function handler(req, res) {
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.VITE_ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-      },
+      headers,
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 2000,
@@ -88,13 +87,14 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    if (data.error) {
-      console.error("Anthropic error:", data.error);
-      return res.status(400).json({ error: data.error.message || "Error en la API de Anthropic" });
+    if (!response.ok || data.error) {
+      const msg = data.error?.message || JSON.stringify(data);
+      console.error("Anthropic error:", msg);
+      return res.status(400).json({ error: "Error Anthropic: " + msg });
     }
 
     const text = data.content?.find(b => b.type === "text")?.text || "";
-    if (!text) return res.status(500).json({ error: "La IA no devolvió respuesta" });
+    if (!text) return res.status(500).json({ error: "La IA no devolvió respuesta. Intenta de nuevo." });
 
     const result = JSON.parse(text.replace(/```json|```/g, "").trim());
     res.status(200).json(result);

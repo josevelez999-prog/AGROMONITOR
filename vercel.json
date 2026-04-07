@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/analyzeSuelo.js": {
+      "maxDuration": 30
+    },
+    "api/analyze.js": {
+      "maxDuration": 30
+    },
+    "api/analyzeNutricion.js": {
+      "maxDuration": 30
+    }
+  }
+}
