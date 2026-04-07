@@ -324,7 +324,7 @@ Responde SOLO en formato JSON sin markdown:
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": "TU_API_KEY_AQUI",
+          "x-api-key":import.meta.env.VITE_ANTHROPIC_KEY,
           "anthropic-version": "2023-06-01"
         },
         body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:2000, messages:[{ role:"user", content }] })
