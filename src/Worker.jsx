@@ -387,12 +387,18 @@ function InstruccionesDia() {
 
 // ─── MAIN WORKER ───────────────────────────────────────────────────────────────
 
-// ─── REGISTRO DE COSECHA (trabajador) ────────────────────────────────────────
+// ─── VENTAS Y COSECHA (trabajador) ──────────────────────────────────────────
 function RegistroCosecha({ worker }) {
   const [lotes, setLotes] = useState([]);
-  const [form, setForm] = useState({ loteId:"", kgCosechados:"", calidad:"primera", notas:"" });
+  const [subtab, setSubtab] = useState("cosecha");
+  const [formCosecha, setFormCosecha] = useState({ loteId:"", kgCosechados:"", calidad:"primera", notas:"" });
+  const [formVenta, setFormVenta] = useState({
+    loteId:"", comprador:"", canal:"Mercado local",
+    calidad:"primera", kgVendidos:"", precioKg:"", factura:"", notas:"",
+    fecha: new Date().toISOString().slice(0,10)
+  });
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState("");
 
   const CALIDADES_W = [
     { id:"primera",  label:"Primera",  color:"#27ae60", icon:"⭐" },
@@ -400,7 +406,7 @@ function RegistroCosecha({ worker }) {
     { id:"tercera",  label:"Tercera",  color:"#e67e22", icon:"▲"  },
     { id:"descarte", label:"Descarte", color:"#e74c3c", icon:"✕"  },
   ];
-
+  const CANALES_W = ["Mercado local","Central de abastos","Supermercado","Restaurante","Exportación","Venta directa","Agroindustria","Otro"];
   const CROPS_W = {
     jitomate:{name:"Jitomate",emoji:"🍅",color:"#c0392b"},
     fresa:{name:"Fresa",emoji:"🍓",color:"#e74c3c"},
@@ -414,130 +420,202 @@ function RegistroCosecha({ worker }) {
     return()=>unsub();
   },[]);
 
-  const loteSeleccionado = lotes.find(l=>l.id===form.loteId);
-
-  const submit = async () => {
-    if (!form.loteId || !form.kgCosechados) { alert("Selecciona lote y registra los kg"); return; }
-    setSaving(true);
-    try {
-      const now = new Date();
-      await addDoc(collection(db,"cosechas_trabajador"),{
-        ...form,
-        kgCosechados: parseFloat(form.kgCosechados),
-        worker,
-        date: now.toISOString().slice(0,10),
-        time: now.toTimeString().slice(0,5),
-        createdAt: now.toISOString(),
-        loteName: loteSeleccionado?.nombre || "",
-        crop: loteSeleccionado?.crop || "",
-        tratamiento: loteSeleccionado?.tratamiento || "",
-      });
-      setSaved(true);
-      setForm({ loteId:"", kgCosechados:"", calidad:"primera", notas:"" });
-      setTimeout(()=>setSaved(false),4000);
-    } catch { alert("Error al guardar"); }
-    setSaving(false);
+  const inpW = {
+    width:"100%", padding:"13px 14px", border:"1.5px solid #dde", borderRadius:10,
+    fontSize:16, boxSizing:"border-box", background:"#ffffff",
+    color:"#111111", WebkitTextFillColor:"#111111", outline:"none",
   };
 
-  const inpW = { width:"100%", padding:"12px 14px", border:"1px solid #ddd", borderRadius:10, fontSize:16, boxSizing:"border-box", background:"#fff", color:"#222", WebkitTextFillColor:"#222" };
+  const lbl = { fontSize:11, color:"#666", marginBottom:6, display:"block", textTransform:"uppercase", letterSpacing:0.4, fontFamily:"'Courier New',monospace" };
 
-  return (
-    <div style={{paddingBottom:16}}>
-      {saved&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:16,color:"#27ae60",fontWeight:600,textAlign:"center"}}>✓ Cosecha registrada</div>}
-
-      <div style={{marginBottom:14}}>
-        <label style={{fontSize:11,color:"#888",marginBottom:6,display:"block",textTransform:"uppercase",letterSpacing:0.3,fontFamily:"'Courier New',monospace"}}>Lote de producción *</label>
-        {!lotes.length ? (
-          <div style={{background:"#f9f9f9",borderRadius:10,padding:14,textAlign:"center",color:"#aaa",fontSize:13}}>El encargado aún no ha creado lotes de producción</div>
-        ) : (
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {lotes.map(lote=>{
-              const c = CROPS_W[lote.crop];
-              const sel = form.loteId===lote.id;
-              return (
-                <button key={lote.id} onClick={()=>setForm(p=>({...p,loteId:lote.id}))}
-                  style={{padding:"12px 14px",border:`2px solid ${sel?"#27ae60":"#e0e0e0"}`,borderRadius:12,background:sel?"#eafaf1":"#fff",cursor:"pointer",textAlign:"left",transition:"all 0.15s"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <span style={{fontSize:22}}>{c?.emoji||"🌱"}</span>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:600,fontSize:14,color:sel?"#27ae60":"#333"}}>{lote.nombre}</div>
-                      <div style={{fontSize:11,color:"#888"}}>{c?.name} · {lote.zona} · {lote.kgCosechados} kg cosechados</div>
-                    </div>
-                    {sel&&<span style={{color:"#27ae60",fontSize:18}}>✓</span>}
+  const LoteSelector = ({ value, onChange }) => (
+    <div style={{marginBottom:16}}>
+      <label style={lbl}>Lote de producción *</label>
+      {!lotes.length ? (
+        <div style={{background:"#f9f9f9",borderRadius:10,padding:14,textAlign:"center",color:"#aaa",fontSize:13,border:"1px solid #eee"}}>
+          El encargado aún no ha creado lotes
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {lotes.map(lote=>{
+            const c = CROPS_W[lote.crop];
+            const sel = value===lote.id;
+            return (
+              <button key={lote.id} onClick={()=>onChange(lote.id)}
+                style={{padding:"12px 14px",border:`2px solid ${sel?"#27ae60":"#dde"}`,borderRadius:12,background:sel?"#eafaf1":"#fff",cursor:"pointer",textAlign:"left"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:22}}>{c?.emoji||"🌱"}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:600,fontSize:14,color:sel?"#27ae60":"#222"}}>{lote.nombre}</div>
+                    <div style={{fontSize:11,color:"#888"}}>{c?.name} · {lote.zona}</div>
                   </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {form.loteId && (
-        <>
-          <div style={{marginBottom:14}}>
-            <label style={{fontSize:11,color:"#888",marginBottom:6,display:"block",textTransform:"uppercase",letterSpacing:0.3,fontFamily:"'Courier New',monospace"}}>Kg cosechados hoy *</label>
-            <input type="number" step="0.1" min="0" value={form.kgCosechados} onChange={e=>setForm(p=>({...p,kgCosechados:e.target.value}))} placeholder="Ej: 45.5" style={{...inpW,fontSize:22,fontWeight:700,textAlign:"center",fontFamily:"'Courier New',monospace"}}/>
-          </div>
-
-          <div style={{marginBottom:14}}>
-            <label style={{fontSize:11,color:"#888",marginBottom:8,display:"block",textTransform:"uppercase",letterSpacing:0.3,fontFamily:"'Courier New',monospace"}}>Calidad del producto</label>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              {CALIDADES_W.map(c=>(
-                <button key={c.id} onClick={()=>setForm(p=>({...p,calidad:c.id}))}
-                  style={{padding:"12px",border:`2px solid ${form.calidad===c.id?c.color:"#e0e0e0"}`,borderRadius:12,background:form.calidad===c.id?c.color+"15":"#fff",cursor:"pointer",textAlign:"center"}}>
-                  <div style={{fontSize:22,marginBottom:4}}>{c.icon}</div>
-                  <div style={{fontWeight:600,fontSize:13,color:form.calidad===c.id?c.color:"#555"}}>{c.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{marginBottom:16}}>
-            <label style={{fontSize:11,color:"#888",marginBottom:6,display:"block",textTransform:"uppercase",letterSpacing:0.3,fontFamily:"'Courier New',monospace"}}>Observaciones</label>
-            <textarea value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Estado del producto, condiciones, etc." style={{...inpW,minHeight:70,resize:"vertical"}}/>
-          </div>
-
-          <button onClick={submit} disabled={saving} style={{width:"100%",padding:14,background:saving?"#a8d5b5":"#27ae60",color:"#fff",border:"none",borderRadius:12,cursor:saving?"not-allowed":"pointer",fontSize:16,fontWeight:700}}>
-            {saving?"Guardando...":"🧺 Registrar cosecha"}
-          </button>
-        </>
+                  {sel&&<span style={{color:"#27ae60",fontSize:20,fontWeight:700}}>✓</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );
-}
 
-const TABS=[
-  {id:"registro",label:"Registrar",icon:"📊"},
-  {id:"cosecha",label:"Cosecha",icon:"🧺"},
-  {id:"tareas",label:"Tareas",icon:"✅"},
-  {id:"asistente",label:"IA",icon:"🤖"},
-  {id:"incidencias",label:"Incidencia",icon:"⚠️"},
-  {id:"instrucciones",label:"Info",icon:"📋"},
-];
-
-export default function Worker() {
-  const [worker,setWorker]=useState(()=>localStorage.getItem("gl_worker")||"");
-  const [tab,setTab]=useState("registro");
-  if(!worker) return <Login onLogin={n=>{localStorage.setItem("gl_worker",n);setWorker(n);}}/>;
-  const CONTENT={registro:<Registro worker={worker}/>,historial:<MiHistorial worker={worker}/>,tareas:<Tareas worker={worker}/>,guia:<GuiaSintomas/>,cosecha:<RegistroCosecha worker={worker}/>,incidencias:<Incidencias worker={worker}/>,instrucciones:<InstruccionesDia/>};
-  return (
-    <div style={{minHeight:"100vh",background:"#f4f5f7",paddingBottom:76}}>
-      <div style={{background:"#fff",borderBottom:"0.5px solid #e0e0e0",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:22}}>🌿</span>
-          <div><div style={{fontWeight:700,color:"#27ae60",fontSize:16}}>GreenLog</div><div style={{fontSize:10,color:"#aaa",fontFamily:"'Courier New',monospace"}}>Hola, {worker}</div></div>
-        </div>
-        <button onClick={()=>{localStorage.removeItem("gl_worker");setWorker("");}} style={{background:"none",border:"none",color:"#ccc",cursor:"pointer",fontSize:12}}>Salir</button>
-      </div>
-      <div style={{padding:"16px 16px 0"}}>{CONTENT[tab]}</div>
-      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"0.5px solid #e0e0e0",display:"flex",zIndex:10}}>
-        {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"8px 2px",border:"none",background:"transparent",color:tab===t.id?"#27ae60":"#bbb",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:1,borderTop:tab===t.id?"2px solid #27ae60":"2px solid transparent"}}>
-            <span style={{fontSize:16}}>{t.icon}</span>
-            <span style={{fontSize:8,fontWeight:tab===t.id?700:400}}>{t.label}</span>
+  const CalidadSelector = ({ value, onChange }) => (
+    <div style={{marginBottom:16}}>
+      <label style={lbl}>Calidad del producto</label>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        {CALIDADES_W.map(c=>(
+          <button key={c.id} onClick={()=>onChange(c.id)}
+            style={{padding:"12px",border:`2px solid ${value===c.id?c.color:"#dde"}`,borderRadius:12,background:value===c.id?c.color+"18":"#fff",cursor:"pointer",textAlign:"center"}}>
+            <div style={{fontSize:22,marginBottom:3}}>{c.icon}</div>
+            <div style={{fontWeight:600,fontSize:13,color:value===c.id?c.color:"#444"}}>{c.label}</div>
           </button>
         ))}
       </div>
     </div>
   );
+
+  const submitCosecha = async () => {
+    if (!formCosecha.loteId || !formCosecha.kgCosechados) { alert("Selecciona lote y escribe los kg"); return; }
+    setSaving(true);
+    try {
+      const lote = lotes.find(l=>l.id===formCosecha.loteId);
+      const now = new Date();
+      await addDoc(collection(db,"cosechas_trabajador"),{
+        ...formCosecha, kgCosechados:parseFloat(formCosecha.kgCosechados),
+        worker, date:now.toISOString().slice(0,10), time:now.toTimeString().slice(0,5),
+        createdAt:now.toISOString(), loteName:lote?.nombre||"", crop:lote?.crop||"", tratamiento:lote?.tratamiento||"",
+      });
+      setSaved("cosecha");
+      setFormCosecha({ loteId:"", kgCosechados:"", calidad:"primera", notas:"" });
+      setTimeout(()=>setSaved(""),4000);
+    } catch(e) { alert("Error: "+e.message); }
+    setSaving(false);
+  };
+
+  const submitVenta = async () => {
+    if (!formVenta.comprador || !formVenta.kgVendidos || !formVenta.precioKg) { alert("Llena comprador, kg y precio"); return; }
+    setSaving(true);
+    try {
+      const lote = lotes.find(l=>l.id===formVenta.loteId);
+      const kg = parseFloat(formVenta.kgVendidos)||0;
+      const precio = parseFloat(formVenta.precioKg)||0;
+      const now = new Date();
+      await addDoc(collection(db,"ventas"),{
+        ...formVenta, kgVendidos:kg, precioKg:precio, totalVenta:kg*precio,
+        worker, cropName:CROPS_W[lote?.crop||""]?.name||"",
+        loteName:lote?.nombre||"", tratamiento:lote?.tratamiento||"",
+        crop:lote?.crop||"",
+        date:formVenta.fecha, createdAt:now.toISOString(),
+      });
+      setSaved("venta");
+      setFormVenta({ loteId:"", comprador:"", canal:"Mercado local", calidad:"primera", kgVendidos:"", precioKg:"", factura:"", notas:"", fecha:new Date().toISOString().slice(0,10) });
+      setTimeout(()=>setSaved(""),4000);
+    } catch(e) { alert("Error: "+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      {saved==="cosecha"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>✓ Cosecha registrada — el encargado ya puede verla</div>}
+      {saved==="venta"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>✓ Venta registrada — el encargado ya puede verla</div>}
+
+      {/* Sub tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:16,background:"#fff",border:"1px solid #dde",borderRadius:10,padding:4}}>
+        {[["cosecha","🧺 Cosecha"],["venta","💰 Venta"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setSubtab(k)} style={{flex:1,padding:"10px 8px",border:"none",borderRadius:8,background:subtab===k?"#27ae60":"transparent",color:subtab===k?"#fff":"#666",cursor:"pointer",fontSize:14,fontWeight:subtab===k?700:400}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* ── COSECHA ── */}
+      {subtab==="cosecha"&&(
+        <div>
+          <LoteSelector value={formCosecha.loteId} onChange={v=>setFormCosecha(p=>({...p,loteId:v}))}/>
+          {formCosecha.loteId&&(
+            <>
+              <div style={{marginBottom:16}}>
+                <label style={lbl}>Kg cosechados *</label>
+                <input type="number" step="0.1" min="0" value={formCosecha.kgCosechados}
+                  onChange={e=>setFormCosecha(p=>({...p,kgCosechados:e.target.value}))}
+                  placeholder="Ej: 45.5"
+                  style={{...inpW,fontSize:24,fontWeight:700,textAlign:"center",fontFamily:"'Courier New',monospace"}}/>
+              </div>
+              <CalidadSelector value={formCosecha.calidad} onChange={v=>setFormCosecha(p=>({...p,calidad:v}))}/>
+              <div style={{marginBottom:16}}>
+                <label style={lbl}>Observaciones</label>
+                <textarea value={formCosecha.notas} onChange={e=>setFormCosecha(p=>({...p,notas:e.target.value}))}
+                  placeholder="Estado del producto, condiciones..." style={{...inpW,minHeight:70,resize:"vertical"}}/>
+              </div>
+              <button onClick={submitCosecha} disabled={saving}
+                style={{width:"100%",padding:15,background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+                {saving?"Guardando...":"🧺 Registrar cosecha"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── VENTA ── */}
+      {subtab==="venta"&&(
+        <div>
+          <LoteSelector value={formVenta.loteId} onChange={v=>setFormVenta(p=>({...p,loteId:v}))}/>
+          <div style={{marginBottom:16}}>
+            <label style={lbl}>Comprador / Cliente *</label>
+            <input value={formVenta.comprador} onChange={e=>setFormVenta(p=>({...p,comprador:e.target.value}))}
+              placeholder="Nombre del comprador" style={inpW}/>
+          </div>
+          <div style={{marginBottom:16}}>
+            <label style={lbl}>Canal de venta</label>
+            <select value={formVenta.canal} onChange={e=>setFormVenta(p=>({...p,canal:e.target.value}))}
+              style={inpW}>
+              {CANALES_W.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <CalidadSelector value={formVenta.calidad} onChange={v=>setFormVenta(p=>({...p,calidad:v}))}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+            <div>
+              <label style={lbl}>Kg vendidos *</label>
+              <input type="number" step="0.1" min="0" value={formVenta.kgVendidos}
+                onChange={e=>setFormVenta(p=>({...p,kgVendidos:e.target.value}))}
+                placeholder="Kg" style={{...inpW,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
+            </div>
+            <div>
+              <label style={lbl}>Precio por kg ($) *</label>
+              <input type="number" step="0.5" min="0" value={formVenta.precioKg}
+                onChange={e=>setFormVenta(p=>({...p,precioKg:e.target.value}))}
+                placeholder="$/kg" style={{...inpW,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
+            </div>
+          </div>
+          {formVenta.kgVendidos>0&&formVenta.precioKg>0&&(
+            <div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:"10px 14px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:13,color:"#2e7d5a",fontWeight:500}}>Total esta venta:</span>
+              <span style={{fontFamily:"'Courier New',monospace",fontSize:20,fontWeight:700,color:"#27ae60"}}>${(parseFloat(formVenta.kgVendidos)*parseFloat(formVenta.precioKg)).toFixed(2)}</span>
+            </div>
+          )}
+          <div style={{marginBottom:16}}>
+            <label style={lbl}>Fecha de venta</label>
+            <input type="date" value={formVenta.fecha}
+              onChange={e=>setFormVenta(p=>({...p,fecha:e.target.value}))} style={inpW}/>
+          </div>
+          <div style={{marginBottom:16}}>
+            <label style={lbl}>Folio / Remisión</label>
+            <input value={formVenta.factura} onChange={e=>setFormVenta(p=>({...p,factura:e.target.value}))}
+              placeholder="Núm. de factura o remisión" style={inpW}/>
+          </div>
+          <div style={{marginBottom:16}}>
+            <label style={lbl}>Notas</label>
+            <textarea value={formVenta.notas} onChange={e=>setFormVenta(p=>({...p,notas:e.target.value}))}
+              placeholder="Condiciones, observaciones..." style={{...inpW,minHeight:60,resize:"vertical"}}/>
+          </div>
+          <button onClick={submitVenta} disabled={saving}
+            style={{width:"100%",padding:15,background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+            {saving?"Guardando...":"💰 Registrar venta"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
+
+

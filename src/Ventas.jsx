@@ -55,6 +55,24 @@ function GestionLotes() {
   });
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [editing, setEditing] = useState(null);
+
+  useEffect(() => {
+    if (editing) {
+      setForm({
+        loteId: editing.loteId||"",
+        crop: editing.crop||"jitomate",
+        comprador: editing.comprador||"",
+        canal: editing.canal||"Mercado local",
+        calidad: editing.calidad||"primera",
+        kgVendidos: editing.kgVendidos||0,
+        precioKg: editing.precioKg||0,
+        fecha: editing.fecha||new Date().toISOString().slice(0,10),
+        notas: editing.notas||"",
+        factura: editing.factura||"",
+      });
+    }
+  }, [editing]);
 
   useEffect(() => {
     const q = query(collection(db,"lotes"), orderBy("createdAt","desc"));
@@ -75,7 +93,7 @@ function GestionLotes() {
     setShowForm(false);
   };
 
-  const inp = { width:"100%", padding:"9px 12px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:13, boxSizing:"border-box", color:"#333" };
+  const inp = { width:"100%", padding:"10px 12px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:14, boxSizing:"border-box", color:"#222222", WebkitTextFillColor:"#222222", background:"#ffffff" };
 
   return (
     <div>
@@ -209,13 +227,18 @@ function RegistroVentas() {
     const precio = parseFloat(form.precioKg)||0;
     const total = n(kg * precio);
     const lote = lotes.find(l=>l.id===form.loteId);
-    await addDoc(collection(db,"ventas"), {
+    const data = {
       ...form, kgVendidos:kg, precioKg:precio, totalVenta:total,
       cropName: lote ? CROPS[lote.crop]?.name : CROPS[form.crop]?.name,
       loteName: lote?.nombre || "",
       tratamiento: lote?.tratamiento || "",
-      createdAt: new Date().toISOString()
-    });
+    };
+    if (editing) {
+      await updateDoc(doc(db,"ventas",editing.id), {...data, updatedAt:new Date().toISOString()});
+      setEditing(null);
+    } else {
+      await addDoc(collection(db,"ventas"), {...data, createdAt:new Date().toISOString()});
+    }
     setForm({ loteId:"", crop:"jitomate", comprador:"", canal:"Mercado local", calidad:"primera", kgVendidos:0, precioKg:0, fecha:new Date().toISOString().slice(0,10), notas:"", factura:"" });
     setShowForm(false);
   };
@@ -224,7 +247,7 @@ function RegistroVentas() {
   const totalKg = ventas.reduce((s,v)=>s+v.kgVendidos,0);
   const precioPromedio = totalKg>0 ? n(totalVendido/totalKg) : 0;
 
-  const inp = { width:"100%", padding:"9px 12px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:13, boxSizing:"border-box", color:"#333" };
+  const inp = { width:"100%", padding:"10px 12px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:14, boxSizing:"border-box", color:"#222222", WebkitTextFillColor:"#222222", background:"#ffffff" };
 
   return (
     <div>
@@ -238,14 +261,17 @@ function RegistroVentas() {
 
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
         <div style={{fontSize:12,color:"#888"}}>{ventas.length} ventas registradas</div>
-        <button onClick={()=>setShowForm(!showForm)} style={{padding:"9px 20px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>
-          {showForm?"Cancelar":"+ Registrar venta"}
+        <button onClick={()=>{setShowForm(!showForm);if(showForm)setEditing(null);}} style={{padding:"9px 20px",background:showForm?"#e74c3c":"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>
+          {showForm?"✕ Cancelar":"+ Registrar venta"}
         </button>
       </div>
 
       {showForm && (
         <div style={{background:"#fff",border:"1px solid #a9dfbf",borderRadius:12,padding:"18px",marginBottom:16}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:14,letterSpacing:0.3}}>NUEVA VENTA</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#444",letterSpacing:0.3}}>{editing?"✎ EDITAR VENTA":"+ NUEVA VENTA"}</div>
+            {editing&&<span style={{fontSize:11,color:"#f39c12",background:"#fef9e7",border:"1px solid #f39c1244",borderRadius:6,padding:"2px 8px"}}>Editando registro del {editing.fecha}</span>}
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
             <div style={{gridColumn:"1/-1"}}>
               <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>LOTE DE PRODUCCIÓN (opcional)</label>
@@ -355,7 +381,10 @@ function RegistroVentas() {
                       <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:"#27ae60"}}>${fmt(v.totalVenta)}</td>
                       <td style={{padding:"8px 10px",fontSize:11,color:"#aaa"}}>{v.factura||"—"}</td>
                       <td style={{padding:"8px 10px"}}>
-                        <button onClick={()=>{if(window.confirm("¿Eliminar esta venta?"))deleteDoc(doc(db,"ventas",v.id));}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>
+                        <div style={{display:"flex",gap:4}}>
+                          <button onClick={()=>{setEditing(v);setShowForm(true);window.scrollTo(0,0);}} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button>
+                          <button onClick={()=>{if(window.confirm("¿Eliminar esta venta?"))deleteDoc(doc(db,"ventas",v.id));}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -577,21 +606,109 @@ function ReportesVentas() {
           })}
         </div>
       )}
+
+      {/* Cosechas registradas por trabajadores */}
+      <CosechasAdmin/>
+    </div>
+  );
+}
+
+// ─── COSECHAS ADMIN ──────────────────────────────────────────────────────────
+function CosechasAdmin() {
+  const [cosechas, setCosechas] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const CROPS_C = {jitomate:{name:"Jitomate",emoji:"🍅"},fresa:{name:"Fresa",emoji:"🍓"},arandano:{name:"Arándano",emoji:"🫐"},zarzamora:{name:"Zarzamora",emoji:"🫐"}};
+  const CALIDADES_C = [{id:"primera",label:"Primera",color:"#27ae60"},{id:"segunda",label:"Segunda",color:"#f39c12"},{id:"tercera",label:"Tercera",color:"#e67e22"},{id:"descarte",label:"Descarte",color:"#e74c3c"}];
+  const inp = { width:"100%", padding:"8px 10px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:13, boxSizing:"border-box", color:"#222", WebkitTextFillColor:"#222", background:"#fff" };
+
+  useEffect(()=>{
+    const q = query(collection(db,"cosechas_trabajador"), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap=>setCosechas(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    return()=>unsub();
+  },[]);
+
+  const saveEdit = async () => {
+    await updateDoc(doc(db,"cosechas_trabajador",editing), {
+      kgCosechados: parseFloat(editForm.kgCosechados)||0,
+      calidad: editForm.calidad,
+      notas: editForm.notas||"",
+      updatedAt: new Date().toISOString(),
+    });
+    setEditing(null);
+  };
+
+  if (!cosechas.length) return null;
+
+  return (
+    <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px",marginTop:12}}>
+      <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12,letterSpacing:0.3}}>COSECHAS REGISTRADAS POR TRABAJADORES</div>
+      {cosechas.map(c=>{
+        const crop=CROPS_C[c.crop];
+        const cal=CALIDADES_C.find(x=>x.id===c.calidad);
+        const isEdit=editing===c.id;
+        return (
+          <div key={c.id} style={{borderBottom:"1px solid #f5f5f5",padding:"10px 0"}}>
+            {!isEdit?(
+              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <span style={{fontSize:18}}>{crop?.emoji||"🌱"}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,fontSize:13}}>{c.loteName||"Sin lote"} <span style={{color:"#888",fontWeight:400,fontSize:11}}>· {c.worker}</span></div>
+                  <div style={{fontSize:11,color:"#aaa"}}>{c.date} {c.time}</div>
+                </div>
+                <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:"#27ae60",fontSize:14}}>{c.kgCosechados} kg</span>
+                <span style={{background:cal?.color+"18",color:cal?.color,border:`1px solid ${cal?.color}44`,borderRadius:8,padding:"1px 8px",fontSize:11,fontWeight:600}}>{cal?.label}</span>
+                <div style={{display:"flex",gap:4}}>
+                  <button onClick={()=>{setEditing(c.id);setEditForm({kgCosechados:c.kgCosechados,calidad:c.calidad,notas:c.notas||""});}} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button>
+                  <button onClick={()=>{if(window.confirm("¿Eliminar este registro?"))deleteDoc(doc(db,"cosechas_trabajador",c.id));}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>
+                </div>
+              </div>
+            ):(
+              <div style={{background:"#f9fff9",border:"1px solid #a9dfbf",borderRadius:10,padding:"12px"}}>
+                <div style={{fontSize:11,color:"#27ae60",fontWeight:700,marginBottom:8}}>✎ Editando cosecha de {c.worker} — {c.date}</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                  <div>
+                    <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>KG COSECHADOS</label>
+                    <input type="number" step="0.1" min="0" value={editForm.kgCosechados} onChange={e=>setEditForm(p=>({...p,kgCosechados:e.target.value}))} style={inp}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>CALIDAD</label>
+                    <select value={editForm.calidad} onChange={e=>setEditForm(p=>({...p,calidad:e.target.value}))} style={inp}>
+                      {CALIDADES_C.map(q=><option key={q.id} value={q.id}>{q.label}</option>)}
+                    </select>
+                  </div>
+                  <div style={{gridColumn:"1/-1"}}>
+                    <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>NOTAS</label>
+                    <input value={editForm.notas} onChange={e=>setEditForm(p=>({...p,notas:e.target.value}))} style={inp}/>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={saveEdit} style={{padding:"7px 18px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:12}}>Guardar</button>
+                  <button onClick={()=>setEditing(null)} style={{padding:"7px 14px",border:"1px solid #e0e0e0",borderRadius:8,background:"transparent",color:"#888",cursor:"pointer",fontSize:12}}>Cancelar</button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 const SUBTABS = [
-  { id:"ventas",   label:"💰 Ventas",       },
-  { id:"lotes",    label:"📦 Lotes",        },
-  { id:"reportes", label:"📊 Reportes",     },
+  { id:"reportes", label:"📊 Reportes"  },
+  { id:"lotes",    label:"📦 Lotes"     },
+  { id:"ventas",   label:"📋 Historial" },
 ];
 
 export default function Ventas() {
-  const [tab, setTab] = useState("ventas");
+  const [tab, setTab] = useState("reportes");
   return (
     <div>
+      <div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#2e7d5a"}}>
+        📱 Los trabajadores registran ventas y cosechas desde su app · Tú ves los reportes aquí
+      </div>
       <div style={{display:"flex",gap:4,marginBottom:16,background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:4}}>
         {SUBTABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"9px 8px",border:"none",borderRadius:8,background:tab===t.id?"#1a2533":"transparent",color:tab===t.id?"#4ecb8d":"#888",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?700:400,transition:"all 0.15s"}}>
@@ -599,9 +716,9 @@ export default function Ventas() {
           </button>
         ))}
       </div>
-      {tab==="ventas"   && <RegistroVentas/>}
-      {tab==="lotes"    && <GestionLotes/>}
       {tab==="reportes" && <ReportesVentas/>}
+      {tab==="lotes"    && <GestionLotes/>}
+      {tab==="ventas"   && <RegistroVentas/>}
     </div>
   );
 }
