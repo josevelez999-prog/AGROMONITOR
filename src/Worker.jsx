@@ -49,7 +49,7 @@ function getStatus(v, r) {
   return (v < r.min + m || v > r.max - m) ? "warning" : "ok";
 }
 
-const inp = { width:"100%", padding:"10px 12px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:14, boxSizing:"border-box", background:"#fff" };
+const inp = { width:"100%", padding:"12px 14px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:16, boxSizing:"border-box", background:"#ffffff", color:"#222222", WebkitTextFillColor:"#222222", appearance:"none", WebkitAppearance:"none" };
 const lbl = { fontSize:11, color:"#888", marginBottom:4, display:"block", textTransform:"uppercase", letterSpacing:0.3, fontFamily:"'Courier New',monospace" };
 
 // ─── LOGIN ─────────────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ function Login({ onLogin }) {
         <div style={{fontWeight:700,fontSize:24,color:"#27ae60",marginBottom:4}}>GreenLog</div>
         <div style={{fontSize:13,color:"#aaa",marginBottom:28}}>Portal de trabajadores</div>
         <label style={{...lbl,textAlign:"left"}}>Tu nombre</label>
-        <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&name.trim()&&onLogin(name.trim())} placeholder="Ej: Carlos García" style={{...inp,marginBottom:16,fontSize:15}}/>
+        <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&name.trim()&&onLogin(name.trim())} placeholder="Ej: Carlos García" style={{...inp,marginBottom:16,fontSize:16,color:"#222",WebkitTextFillColor:"#222"}}/>
         <button onClick={()=>name.trim()&&onLogin(name.trim())} disabled={!name.trim()} style={{width:"100%",padding:13,background:name.trim()?"#27ae60":"#d5e8d4",color:"#fff",border:"none",borderRadius:10,cursor:name.trim()?"pointer":"not-allowed",fontSize:15,fontWeight:700}}>
           Entrar
         </button>
@@ -83,9 +83,26 @@ function Registro({ worker }) {
 
   const handleImage = e => {
     const file = e.target.files[0]; if (!file) return;
-    setImgFile(file);
     const reader = new FileReader();
-    reader.onload = ev => setImgPreview(ev.target.result);
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX = 1024;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL("image/jpeg", 0.75);
+        setImgPreview(compressed);
+        // Create compressed file blob
+        canvas.toBlob(blob => setImgFile(new File([blob], file.name, {type:"image/jpeg"})), "image/jpeg", 0.75);
+      };
+      img.src = ev.target.result;
+    };
     reader.readAsDataURL(file);
   };
 
@@ -140,7 +157,7 @@ function Registro({ worker }) {
         <div>
           <label style={lbl}>pH medido *</label>
           <input type="number" step="0.1" min="0" max="14" value={form.ph} onChange={e=>setForm(p=>({...p,ph:e.target.value}))} placeholder="6.2"
-            style={{...inp,borderColor:form.ph?(getStatus(parseFloat(form.ph),crop.ph)==="danger"?"#e74c3c":getStatus(parseFloat(form.ph),crop.ph)==="warning"?"#f39c12":"#27ae60"):"#e0e0e0"}}/>
+            style={{...inp,color:"#222",WebkitTextFillColor:"#222",borderColor:form.ph?(getStatus(parseFloat(form.ph),crop.ph)==="danger"?"#e74c3c":getStatus(parseFloat(form.ph),crop.ph)==="warning"?"#f39c12":"#27ae60"):"#e0e0e0"}}/>
           {form.ph&&<div style={{fontSize:10,marginTop:3,color:getStatus(parseFloat(form.ph),crop.ph)==="danger"?"#e74c3c":getStatus(parseFloat(form.ph),crop.ph)==="warning"?"#f39c12":"#27ae60"}}>
             {getStatus(parseFloat(form.ph),crop.ph)==="danger"?"⚠ Fuera de rango — avisa al encargado":getStatus(parseFloat(form.ph),crop.ph)==="warning"?"⚠ Cerca del límite":"✓ Normal"}
           </div>}
@@ -148,14 +165,14 @@ function Registro({ worker }) {
         <div>
           <label style={lbl}>CE mS/cm *</label>
           <input type="number" step="0.1" min="0" max="10" value={form.ce} onChange={e=>setForm(p=>({...p,ce:e.target.value}))} placeholder="2.8"
-            style={{...inp,borderColor:form.ce?(getStatus(parseFloat(form.ce),crop.ce)==="danger"?"#e74c3c":getStatus(parseFloat(form.ce),crop.ce)==="warning"?"#f39c12":"#27ae60"):"#e0e0e0"}}/>
+            style={{...inp,color:"#222",WebkitTextFillColor:"#222",borderColor:form.ce?(getStatus(parseFloat(form.ce),crop.ce)==="danger"?"#e74c3c":getStatus(parseFloat(form.ce),crop.ce)==="warning"?"#f39c12":"#27ae60"):"#e0e0e0"}}/>
           {form.ce&&<div style={{fontSize:10,marginTop:3,color:getStatus(parseFloat(form.ce),crop.ce)==="danger"?"#e74c3c":getStatus(parseFloat(form.ce),crop.ce)==="warning"?"#f39c12":"#27ae60"}}>
             {getStatus(parseFloat(form.ce),crop.ce)==="danger"?"⚠ Fuera de rango":getStatus(parseFloat(form.ce),crop.ce)==="warning"?"⚠ Cerca del límite":"✓ Normal"}
           </div>}
         </div>
         <div style={{gridColumn:"1/-1"}}>
           <label style={lbl}>Observaciones (opcional)</label>
-          <textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Hojas amarillas, planta decaída..." style={{...inp,minHeight:72,resize:"vertical"}}/>
+          <textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Hojas amarillas, planta decaída..." style={{...inp,minHeight:72,resize:"vertical",color:"#222",WebkitTextFillColor:"#222"}}/>
         </div>
       </div>
       <div style={{marginBottom:16}}>
@@ -331,12 +348,12 @@ function Incidencias({ worker }) {
       </div>
       <div style={{marginBottom:12}}>
         <label style={lbl}>Cultivo afectado</label>
-        <select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={inp}>
+        <select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={{...inp,color:"#222",WebkitTextFillColor:"#222"}}>
           {Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}
         </select>
       </div>
       <div style={{marginBottom:12}}><label style={lbl}>Zona *</label><input value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} placeholder="Zona A" style={inp}/></div>
-      <div style={{marginBottom:14}}><label style={lbl}>Descripción *</label><textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} placeholder="Describe lo que ves con detalle..." style={{...inp,minHeight:90,resize:"vertical"}}/></div>
+      <div style={{marginBottom:14}}><label style={lbl}>Descripción *</label><textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} placeholder="Describe lo que ves con detalle..." style={{...inp,minHeight:90,resize:"vertical",color:"#222",WebkitTextFillColor:"#222"}}/></div>
       <div style={{marginBottom:16}}>
         <label style={lbl}>Foto (muy recomendada)</label>
         <div onClick={()=>fileRef.current.click()} style={{border:"2px dashed #f39c1244",borderRadius:10,padding:imgPreview?"0":"1.5rem",textAlign:"center",cursor:"pointer",overflow:"hidden",background:"#fefdf9"}}>
@@ -410,11 +427,11 @@ export default function Worker() {
         <button onClick={()=>{localStorage.removeItem("gl_worker");setWorker("");}} style={{background:"none",border:"none",color:"#ccc",cursor:"pointer",fontSize:12}}>Salir</button>
       </div>
       <div style={{padding:"16px 16px 0"}}>{CONTENT[tab]}</div>
-      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"0.5px solid #e0e0e0",display:"flex",zIndex:10}}>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#ffffff",borderTop:"1px solid #e0e0e0",display:"flex",zIndex:10,paddingBottom:"env(safe-area-inset-bottom)"}}>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"8px 2px",border:"none",background:"transparent",color:tab===t.id?"#27ae60":"#bbb",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:1,borderTop:tab===t.id?"2px solid #27ae60":"2px solid transparent"}}>
             <span style={{fontSize:16}}>{t.icon}</span>
-            <span style={{fontSize:8,fontWeight:tab===t.id?700:400}}>{t.label}</span>
+            <span style={{fontSize:9,fontWeight:tab===t.id?700:400,color:tab===t.id?"#27ae60":"#999"}}>{t.label}</span>
           </button>
         ))}
       </div>
