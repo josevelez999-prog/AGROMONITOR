@@ -270,43 +270,25 @@ function DiagnosticoIA(){
     const crop=CROPS[form.crop];
     const CROP_NUT_STR={jitomate:"N alto, K alto fructificación, Ca firmeza",fresa:"N bajo maduración, K alto, Ca y B calidad",arandano:"pH ácido crítico 4.5-5.5, N amoniacal",zarzamora:"N moderado, K alto maduración, Fe quelado"};
     try{
-      const prompt = "Eres un ingeniero agrónomo mexicano especialista en producción protegida e hidroponía con 20 años de experiencia en cultivos de jitomate, fresa, arándano y zarzamora bajo invernadero y sistemas mixtos.\n\n"
-        + "Tienes conocimiento profundo en:\n"
-        + "- Nutrición vegetal y formulación de soluciones nutritivas (método meq/L)\n"
-        + "- Fisiología vegetal y etapas fenológicas\n"
-        + "- Fitopatología: enfermedades fúngicas, bacterianas y virales\n"
-        + "- Entomología agrícola: plagas comunes en cultivos protegidos de México\n"
-        + "- Manejo integrado de plagas y enfermedades (MIP)\n"
-        + "- Condiciones climáticas del centro-occidente de México\n\n"
-        + "Datos del registro actual:\n"
-        + "- Cultivo: " + crop.name + "\n"
-        + "- pH medido: " + (form.ph||"no registrado") + "\n"
-        + "- CE medida: " + (form.ce||"no registrada") + " mS/cm\n"
-        + "- Zona: " + (form.zone||"no especificada") + "\n"
-        + "- Observaciones: " + (form.notes||"ninguna") + "\n"
-        + "- Referencia nutricional: " + CROP_NUT_STR[form.crop] + "\n\n"
-        + "Analiza la imagen adjunta y da un diagnóstico preciso orientado a productor mexicano.\n\n"
-        + "Responde SOLO en JSON sin markdown:\n"
-        + "{\"diagnostico\":\"nombre del problema\",\"severidad\":\"baja|media|alta\","
-        + "\"causas\":[\"causa 1\",\"causa 2\"],\"acciones\":[\"accion 1\",\"accion 2\",\"accion 3\"],"
-        + "\"productos_sugeridos\":[\"producto 1\",\"alternativa 2\"],"
-        + "\"ajuste_ph\":\"subir|bajar|mantener\",\"ajuste_ce\":\"subir|bajar|mantener\"," 
-        + "\"urgencia\":\"mensaje directo de una línea para el encargado\"}";
-      const res=await fetch("https://api.anthropic.com/v1/messages",{
+      const res=await fetch("/api/analyze",{
         method:"POST",
-        headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_KEY,"anthropic-version":"2023-06-01"},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[
-          {type:"image",source:{type:"base64",media_type:"image/jpeg",data:imgBase64}},
-          {type:"text",text:prompt}
-        ]}]})
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          imgBase64,
+          cropName:crop.name,
+          ph:form.ph,
+          ce:form.ce,
+          zone:form.zone,
+          notes:form.notes,
+          cropNutRef:CROP_NUT_STR[form.crop]
+        })
       });
-      const data=await res.json();
-      const text=data.content?.find(b=>b.type==="text")?.text||"";
-      const result=JSON.parse(text.replace(/```json|```/g,"").trim());
+      const result=await res.json();
+      if(result.error) throw new Error(result.error);
       const id=Date.now();
       setDiagnoses(p=>[{id,...form,ph:parseFloat(form.ph)||0,ce:parseFloat(form.ce)||0,date:new Date().toISOString().slice(0,10),imgPreview,result},...p]);
       setSel(id);setView("historial");setForm({crop:"jitomate",zone:"",worker:"",ph:"",ce:"",notes:""});setImgPreview(null);setImgBase64(null);
-    }catch{alert("Error al analizar. Verifica la API key.");}
+    }catch(e){alert("Error al analizar: "+e.message);}
     setLoading(false);
   };
   return(
