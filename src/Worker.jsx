@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { db } from "./firebase";
-import { collection, addDoc, onSnapshot, query, where, orderBy, updateDoc, doc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, where, orderBy, updateDoc, doc, getDoc } from "firebase/firestore";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const CROPS = {
@@ -392,7 +392,12 @@ function RegistroCosecha({ worker }) {
   const [lotes, setLotes] = useState([]);
   const [subtab, setSubtab] = useState("cosecha");
   const [formCosecha, setFormCosecha] = useState({ loteId:"", kgCosechados:"", calidad:"primera", notas:"" });
-  const [formVenta, setFormVenta] = useState({
+  const [formValidacion, setFormValidacion] = useState({
+    loteId:"", etiquetaTratamiento:"", kgValidados:"",
+    precioVenta:"", observaciones:"", fecha:new Date().toISOString().slice(0,10)
+  });
+
+    const [formVenta, setFormVenta] = useState({
     loteId:"", comprador:"", canal:"Mercado local",
     calidad:"primera", kgVendidos:"", precioKg:"", factura:"", notas:"",
     fecha: new Date().toISOString().slice(0,10)
@@ -414,16 +419,26 @@ function RegistroCosecha({ worker }) {
     zarzamora:{name:"Zarzamora",emoji:"🫐",color:"#8e44ad"},
   };
 
+  const [preciosSugeridos, setPreciosSugeridos] = useState({});
+
   useEffect(()=>{
     const q = query(collection(db,"lotes"),orderBy("createdAt","desc"));
     const unsub = onSnapshot(q,snap=>setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return()=>unsub();
   },[]);
 
+  useEffect(()=>{
+    const unsub = onSnapshot(doc(db,"config","precios"), snap=>{
+      if(snap.exists()) setPreciosSugeridos(snap.data());
+    });
+    return()=>unsub();
+  },[]);
+
   const inpW = {
-    width:"100%", padding:"13px 14px", border:"1.5px solid #dde", borderRadius:10,
+    width:"100%", padding:"13px 14px", border:"1.5px solid #ccc", borderRadius:10,
     fontSize:16, boxSizing:"border-box", background:"#ffffff",
     color:"#111111", WebkitTextFillColor:"#111111", outline:"none",
+    colorScheme:"light", appearance:"none", WebkitAppearance:"none",
   };
 
   const lbl = { fontSize:11, color:"#666", marginBottom:6, display:"block", textTransform:"uppercase", letterSpacing:0.4, fontFamily:"'Courier New',monospace" };
@@ -459,7 +474,14 @@ function RegistroCosecha({ worker }) {
     </div>
   );
 
-  const CalidadSelector = ({ value, onChange }) => (
+  const autoFillPrecio = (calidad) => {
+    const lote = lotes.find(l=>l.id===formVenta.loteId);
+    if (lote && preciosSugeridos[lote.crop]?.[calidad] && subtab==="venta") {
+      setFormVenta(p=>({...p,calidad,precioKg:preciosSugeridos[lote.crop][calidad]}));
+    }
+  };
+
+  const CalidadSelector = ({ value, onChange, autoPrecio }) => (
     <div style={{marginBottom:16}}>
       <label style={lbl}>Calidad del producto</label>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -474,7 +496,40 @@ function RegistroCosecha({ worker }) {
     </div>
   );
 
-  const submitCosecha = async () => {
+  const submitValidacion = async () => {
+    if (!formValidacion.loteId || !formValidacion.kgValidados || !formValidacion.etiquetaTratamiento) {
+      alert("Selecciona lote, escribe la etiqueta del tratamiento y los kg");
+      return;
+    }
+    setSaving(true);
+    try {
+      const lote = lotes.find(l=>l.id===formValidacion.loteId);
+      const TRATAMIENTOS_W = {
+        convencional:"Convencional",organico:"Orgánico",bpa:"BPA",
+        sin_quimicos:"Sin químicos",premium:"Premium",exportacion:"Exportación"
+      };
+      const now = new Date();
+      await addDoc(collection(db,"validaciones_tratamiento"),{
+        ...formValidacion,
+        kgValidados: parseFloat(formValidacion.kgValidados)||0,
+        precioVenta: parseFloat(formValidacion.precioVenta)||0,
+        worker,
+        date: now.toISOString().slice(0,10),
+        time: now.toTimeString().slice(0,5),
+        createdAt: now.toISOString(),
+        loteName: lote?.nombre||"",
+        crop: lote?.crop||"",
+        tratamientoBase: TRATAMIENTOS_W[lote?.tratamiento]||lote?.tratamiento||"",
+        zona: lote?.zona||"",
+      });
+      setSaved("validacion");
+      setFormValidacion({ loteId:"", etiquetaTratamiento:"", kgValidados:"", precioVenta:"", observaciones:"", fecha:now.toISOString().slice(0,10) });
+      setTimeout(()=>setSaved(""),4000);
+    } catch(e) { alert("Error: "+e.message); }
+    setSaving(false);
+  };
+
+    const submitCosecha = async () => {
     if (!formCosecha.loteId || !formCosecha.kgCosechados) { alert("Selecciona lote y escribe los kg"); return; }
     setSaving(true);
     try {
@@ -518,11 +573,12 @@ function RegistroCosecha({ worker }) {
     <div>
       {saved==="cosecha"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>✓ Cosecha registrada — el encargado ya puede verla</div>}
       {saved==="venta"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>✓ Venta registrada — el encargado ya puede verla</div>}
+      {saved==="validacion"&&<div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:12,marginBottom:12,color:"#1a5276",fontWeight:600,textAlign:"center"}}>✓ Validación registrada — tratamiento confirmado</div>}
 
       {/* Sub tabs */}
       <div style={{display:"flex",gap:4,marginBottom:16,background:"#fff",border:"1px solid #dde",borderRadius:10,padding:4}}>
-        {[["cosecha","🧺 Cosecha"],["venta","💰 Venta"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setSubtab(k)} style={{flex:1,padding:"10px 8px",border:"none",borderRadius:8,background:subtab===k?"#27ae60":"transparent",color:subtab===k?"#fff":"#666",cursor:"pointer",fontSize:14,fontWeight:subtab===k?700:400}}>
+        {[["cosecha","🧺 Cosecha"],["venta","💰 Venta"],["validacion","🏷️ Validar"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setSubtab(k)} style={{flex:1,padding:"10px 6px",border:"none",borderRadius:8,background:subtab===k?"#27ae60":"transparent",color:subtab===k?"#fff":"#666",cursor:"pointer",fontSize:13,fontWeight:subtab===k?700:400}}>
             {l}
           </button>
         ))}
@@ -572,7 +628,7 @@ function RegistroCosecha({ worker }) {
               {CANALES_W.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <CalidadSelector value={formVenta.calidad} onChange={v=>setFormVenta(p=>({...p,calidad:v}))}/>
+          <CalidadSelector value={formVenta.calidad} onChange={v=>{setFormVenta(p=>({...p,calidad:v}));autoFillPrecio(v);}} autoPrecio/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
             <div>
               <label style={lbl}>Kg vendidos *</label>
@@ -581,7 +637,19 @@ function RegistroCosecha({ worker }) {
                 placeholder="Kg" style={{...inpW,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
             </div>
             <div>
-              <label style={lbl}>Precio por kg ($) *</label>
+              <label style={lbl}>
+                Precio por kg ($) *
+                {(() => {
+                  const lote = lotes.find(l=>l.id===formVenta.loteId);
+                  const sugerido = lote && preciosSugeridos[lote.crop]?.[formVenta.calidad];
+                  return sugerido ? (
+                    <span style={{color:"#27ae60",fontWeight:700,marginLeft:4,cursor:"pointer"}}
+                      onClick={()=>setFormVenta(p=>({...p,precioKg:sugerido}))}>
+                      · Sugerido: ${sugerido} ↵
+                    </span>
+                  ) : null;
+                })()}
+              </label>
               <input type="number" step="0.5" min="0" value={formVenta.precioKg}
                 onChange={e=>setFormVenta(p=>({...p,precioKg:e.target.value}))}
                 placeholder="$/kg" style={{...inpW,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
@@ -619,3 +687,88 @@ function RegistroCosecha({ worker }) {
 }
 
 
+
+      {/* ── VALIDACIÓN TRATAMIENTO ── */}
+      {subtab==="validacion"&&(
+        <div>
+          <div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1a5276"}}>
+            🏷️ Confirma el tratamiento aplicado al producto antes de que salga de la unidad
+          </div>
+
+          <LoteSelector value={formValidacion.loteId} onChange={v=>{
+            setFormValidacion(p=>({...p, loteId:v}));
+          }}/>
+
+          {formValidacion.loteId&&(()=>{
+            const lote = lotes.find(l=>l.id===formValidacion.loteId);
+            const CROPS_W2 = {jitomate:{name:"Jitomate",emoji:"🍅",color:"#c0392b"},fresa:{name:"Fresa",emoji:"🍓",color:"#e74c3c"},arandano:{name:"Arándano",emoji:"🫐",color:"#2980b9"},zarzamora:{name:"Zarzamora",emoji:"🫐",color:"#8e44ad"}};
+            const crop = CROPS_W2[lote?.crop];
+            return (
+              <>
+                {/* Vista previa de etiqueta */}
+                <div style={{background:"#fff",border:"2px solid #2980b9",borderRadius:12,padding:"16px",marginBottom:16,textAlign:"center",boxShadow:"0 2px 8px #2980b922"}}>
+                  <div style={{fontSize:10,color:"#aaa",letterSpacing:1,marginBottom:4,fontFamily:"'Courier New',monospace"}}>ETIQUETA DE PRODUCTO</div>
+                  <div style={{fontSize:28,marginBottom:4}}>{crop?.emoji||"🌱"}</div>
+                  <div style={{fontWeight:700,fontSize:18,color:crop?.color||"#333",marginBottom:2}}>{crop?.name||""}</div>
+                  <div style={{fontSize:14,color:"#555",marginBottom:4}}>{lote?.zona}</div>
+                  <div style={{display:"inline-block",background:"#2980b9",color:"#fff",borderRadius:20,padding:"4px 16px",fontWeight:700,fontSize:13,marginBottom:4}}>
+                    {formValidacion.etiquetaTratamiento||"—"}
+                  </div>
+                  <div style={{fontSize:11,color:"#aaa",marginTop:4}}>{formValidacion.fecha}</div>
+                </div>
+
+                <div style={{marginBottom:14}}>
+                  <label style={lbl}>Nombre del producto / tratamiento *</label>
+                  <input value={formValidacion.etiquetaTratamiento}
+                    onChange={e=>setFormValidacion(p=>({...p,etiquetaTratamiento:e.target.value}))}
+                    placeholder="Ej: Confidor 350 SC, Ridomil Gold, Sulfato de cobre..."
+                    style={inpW}/>
+                  <div style={{fontSize:11,color:"#999",marginTop:5}}>
+                    Escribe el nombre exacto del producto tal como aparece en la etiqueta
+                  </div>
+                </div>
+
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                  <div>
+                    <label style={lbl}>Kg validados *</label>
+                    <input type="number" step="0.1" min="0" value={formValidacion.kgValidados}
+                      onChange={e=>setFormValidacion(p=>({...p,kgValidados:e.target.value}))}
+                      placeholder="Kg" style={{...inpW,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
+                  </div>
+                  <div>
+                    <label style={lbl}>
+                      Precio de venta ($/kg)
+                      {(()=>{
+                        const sug = preciosSugeridos[lote?.crop]?.[formValidacion.calidad||"primera"];
+                        return sug ? <span style={{color:"#27ae60",fontSize:10,marginLeft:4,cursor:"pointer"}} onClick={()=>setFormValidacion(p=>({...p,precioVenta:sug}))}>Sugerido: ${sug} ↵</span> : null;
+                      })()}
+                    </label>
+                    <input type="number" step="0.5" min="0" value={formValidacion.precioVenta}
+                      onChange={e=>setFormValidacion(p=>({...p,precioVenta:e.target.value}))}
+                      placeholder="$/kg" style={{...inpW,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
+                  </div>
+                </div>
+
+                <div style={{marginBottom:14}}>
+                  <label style={lbl}>Fecha de salida del producto</label>
+                  <input type="date" value={formValidacion.fecha}
+                    onChange={e=>setFormValidacion(p=>({...p,fecha:e.target.value}))} style={inpW}/>
+                </div>
+
+                <div style={{marginBottom:16}}>
+                  <label style={lbl}>Observaciones de calidad</label>
+                  <textarea value={formValidacion.observaciones}
+                    onChange={e=>setFormValidacion(p=>({...p,observaciones:e.target.value}))}
+                    placeholder="Estado del producto, condiciones de almacenamiento, destino..."
+                    style={{...inpW,minHeight:70,resize:"vertical"}}/>
+                </div>
+
+                <button onClick={submitValidacion} disabled={saving}
+                  style={{width:"100%",padding:15,background:saving?"#aaa":"#2980b9",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+                  {saving?"Guardando...":"🏷️ Confirmar validación"}
+                </button>
+              </>
+            );
+          })()}
+        </div>
+      )}

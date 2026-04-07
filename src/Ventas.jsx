@@ -1,8 +1,117 @@
 import { useState, useMemo, useEffect } from "react";
 import { db } from "./firebase";
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, setDoc, getDoc } from "firebase/firestore";
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
+
+// ─── PRECIOS POR CALIDAD ──────────────────────────────────────────────────────
+export function usePreciosCalidad() {
+  const [precios, setPrecios] = useState({});
+  useEffect(()=>{
+    const unsub = onSnapshot(doc(db,"config","precios"), snap=>{
+      if(snap.exists()) setPrecios(snap.data());
+    });
+    return()=>unsub();
+  },[]);
+  return precios;
+}
+
+function PreciosCalidad() {
+  const [precios, setPrecios] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(()=>{
+    const unsub = onSnapshot(doc(db,"config","precios"), snap=>{
+      if(snap.exists()) setPrecios(snap.data());
+    });
+    return()=>unsub();
+  },[]);
+
+  const updatePrecio = (crop, calidad, value) => {
+    setPrecios(p => ({
+      ...p,
+      [crop]: { ...(p[crop]||{}), [calidad]: parseFloat(value)||0 }
+    }));
+  };
+
+  const savePrecios = async () => {
+    setSaving(true);
+    try {
+      await setDoc(doc(db,"config","precios"), precios);
+      setSaved(true);
+      setTimeout(()=>setSaved(false), 3000);
+    } catch(e) { alert("Error: "+e.message); }
+    setSaving(false);
+  };
+
+  const CALIDADES_P = [
+    {id:"primera",label:"Primera ⭐",color:"#27ae60"},
+    {id:"segunda",label:"Segunda ⚡",color:"#f39c12"},
+    {id:"tercera",label:"Tercera ▲",color:"#e67e22"},
+    {id:"descarte",label:"Descarte ✕",color:"#e74c3c"},
+  ];
+
+  return (
+    <div>
+      {saved&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:8,padding:"10px 14px",marginBottom:12,color:"#27ae60",fontWeight:600,fontSize:13}}>✓ Precios guardados — los trabajadores ya los pueden ver</div>}
+      <div style={{background:"#fff3cd",border:"1px solid #ffc10744",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#856404"}}>
+        💡 Los precios que configures aquí aparecen como sugerencia en la app de los trabajadores al registrar una venta
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead>
+            <tr style={{background:"#fafafa"}}>
+              <th style={{padding:"10px 12px",textAlign:"left",color:"#888",fontWeight:500,fontSize:11,borderBottom:"1px solid #f0f0f0"}}>Cultivo</th>
+              {CALIDADES_P.map(c=>(
+                <th key={c.id} style={{padding:"10px 12px",textAlign:"center",color:c.color,fontWeight:600,fontSize:11,borderBottom:"1px solid #f0f0f0",minWidth:100}}>{c.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(CROPS).map(([k,crop])=>(
+              <tr key={k} style={{borderBottom:"1px solid #f5f5f5"}}>
+                <td style={{padding:"10px 12px",fontWeight:600}}>
+                  <span style={{color:crop.color}}>{crop.emoji} {crop.name}</span>
+                </td>
+                {CALIDADES_P.map(c=>(
+                  <td key={c.id} style={{padding:"8px 10px",textAlign:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center"}}>
+                      <span style={{fontSize:12,color:"#aaa",fontWeight:500}}>$</span>
+                      <input
+                        type="number" step="0.5" min="0"
+                        value={precios[k]?.[c.id]||""}
+                        onChange={e=>updatePrecio(k, c.id, e.target.value)}
+                        placeholder="0.00"
+                        style={{...INP,width:80,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700,fontSize:14,padding:"6px 8px",border:`1.5px solid ${c.color}44`}}
+                      />
+                    </div>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{marginTop:14,display:"flex",justifyContent:"flex-end"}}>
+        <button onClick={savePrecios} disabled={saving}
+          style={{padding:"10px 28px",background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:saving?"not-allowed":"pointer",fontWeight:700,fontSize:13}}>
+          {saving?"Guardando...":"💾 Guardar precios"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Fuerza inputs en modo claro sin importar el tema del SO
+const INP = {
+  width:"100%", padding:"10px 12px", border:"1.5px solid #ccc",
+  borderRadius:8, fontSize:14, boxSizing:"border-box",
+  color:"#111", WebkitTextFillColor:"#111", background:"#fff",
+  colorScheme:"light", appearance:"none", WebkitAppearance:"none",
+  outline:"none",
+};
+
 const CROPS = {
   jitomate:  { name:"Jitomate",  emoji:"🍅", color:"#c0392b", unidad:"kg" },
   fresa:     { name:"Fresa",     emoji:"🍓", color:"#e74c3c", unidad:"kg" },
@@ -93,7 +202,7 @@ function GestionLotes() {
     setShowForm(false);
   };
 
-  const inp = { width:"100%", padding:"10px 12px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:14, boxSizing:"border-box", color:"#222222", WebkitTextFillColor:"#222222", background:"#ffffff" };
+  const inp = INP;
 
   return (
     <div>
@@ -247,7 +356,7 @@ function RegistroVentas() {
   const totalKg = ventas.reduce((s,v)=>s+v.kgVendidos,0);
   const precioPromedio = totalKg>0 ? n(totalVendido/totalKg) : 0;
 
-  const inp = { width:"100%", padding:"10px 12px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:14, boxSizing:"border-box", color:"#222222", WebkitTextFillColor:"#222222", background:"#ffffff" };
+  const inp = INP;
 
   return (
     <div>
@@ -620,7 +729,7 @@ function CosechasAdmin() {
   const [editForm, setEditForm] = useState({});
   const CROPS_C = {jitomate:{name:"Jitomate",emoji:"🍅"},fresa:{name:"Fresa",emoji:"🍓"},arandano:{name:"Arándano",emoji:"🫐"},zarzamora:{name:"Zarzamora",emoji:"🫐"}};
   const CALIDADES_C = [{id:"primera",label:"Primera",color:"#27ae60"},{id:"segunda",label:"Segunda",color:"#f39c12"},{id:"tercera",label:"Tercera",color:"#e67e22"},{id:"descarte",label:"Descarte",color:"#e74c3c"}];
-  const inp = { width:"100%", padding:"8px 10px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:13, boxSizing:"border-box", color:"#222", WebkitTextFillColor:"#222", background:"#fff" };
+  const inp = INP;
 
   useEffect(()=>{
     const q = query(collection(db,"cosechas_trabajador"), orderBy("createdAt","desc"));
@@ -695,11 +804,124 @@ function CosechasAdmin() {
   );
 }
 
+
+// ─── VALIDACIONES ADMIN ───────────────────────────────────────────────────────
+function ValidacionesAdmin() {
+  const [validaciones, setValidaciones] = useState([]);
+  const [filterCrop, setFilterCrop] = useState("all");
+
+  useEffect(()=>{
+    const q = query(collection(db,"validaciones_tratamiento"), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap=>setValidaciones(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    return()=>unsub();
+  },[]);
+
+  const filtered = filterCrop==="all" ? validaciones : validaciones.filter(v=>v.crop===filterCrop);
+  const totalKg = filtered.reduce((s,v)=>s+(v.kgValidados||0),0);
+  const totalValor = filtered.reduce((s,v)=>s+((v.kgValidados||0)*(v.precioVenta||0)),0);
+
+  return (
+    <div>
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 16px"}}>
+          <div style={{fontSize:20}}>🏷️</div>
+          <div style={{fontSize:24,fontWeight:700,color:"#2980b9",fontFamily:"'Courier New',monospace",marginTop:4}}>{filtered.length}</div>
+          <div style={{fontSize:11,color:"#888",marginTop:2}}>Validaciones</div>
+        </div>
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 16px"}}>
+          <div style={{fontSize:20}}>⚖️</div>
+          <div style={{fontSize:24,fontWeight:700,color:"#27ae60",fontFamily:"'Courier New',monospace",marginTop:4}}>{totalKg.toFixed(1)} kg</div>
+          <div style={{fontSize:11,color:"#888",marginTop:2}}>Kg validados</div>
+        </div>
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 16px"}}>
+          <div style={{fontSize:20}}>💰</div>
+          <div style={{fontSize:24,fontWeight:700,color:"#8e44ad",fontFamily:"'Courier New',monospace",marginTop:4}}>${totalValor.toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+          <div style={{fontSize:11,color:"#888",marginTop:2}}>Valor estimado</div>
+        </div>
+      </div>
+
+      {/* Filtro */}
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+        {[["all","Todos"],["jitomate","🍅 Jitomate"],["fresa","🍓 Fresa"],["arandano","🫐 Arándano"],["zarzamora","🫐 Zarzamora"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setFilterCrop(k)}
+            style={{padding:"6px 14px",border:`1px solid ${filterCrop===k?"#2980b9":"#e0e0e0"}`,borderRadius:20,background:filterCrop===k?"#eaf4fb":"#fff",color:filterCrop===k?"#2980b9":"#666",cursor:"pointer",fontSize:12,fontWeight:filterCrop===k?700:400}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {!filtered.length&&(
+        <div style={{background:"#fff",borderRadius:12,padding:"3rem",textAlign:"center",color:"#aaa",border:"0.5px solid #e0e0e0"}}>
+          <div style={{fontSize:40,marginBottom:8}}>🏷️</div>
+          <div style={{fontWeight:500,marginBottom:4}}>Sin validaciones aún</div>
+          <div style={{fontSize:12}}>Los trabajadores confirman tratamientos desde su app</div>
+        </div>
+      )}
+
+      {/* Tarjetas de validación */}
+      {filtered.map(v=>{
+        const crop = CROPS[v.crop];
+        return (
+          <div key={v.id} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderLeft:"4px solid #2980b9",borderRadius:12,padding:"14px 18px",marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
+              {/* Etiqueta visual */}
+              <div style={{background:"#eaf4fb",border:"2px solid #2980b9",borderRadius:10,padding:"10px 14px",textAlign:"center",minWidth:110,flexShrink:0}}>
+                <div style={{fontSize:22}}>{crop?.emoji||"🌱"}</div>
+                <div style={{fontWeight:700,fontSize:12,color:crop?.color||"#333",marginBottom:3}}>{crop?.name||v.crop}</div>
+                <div style={{background:"#2980b9",color:"#fff",borderRadius:12,padding:"2px 10px",fontWeight:700,fontSize:11}}>{v.etiquetaTratamiento||"—"}</div>
+              </div>
+
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                  <span style={{fontWeight:700,fontSize:14}}>{v.loteName||"Sin lote"}</span>
+                  {v.tratamientoBase&&<span style={{background:"#f0f0f0",color:"#666",borderRadius:8,padding:"1px 8px",fontSize:11}}>{v.tratamientoBase}</span>}
+                </div>
+
+                <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:4}}>
+                  <div style={{textAlign:"center",background:"#f9f9f9",borderRadius:8,padding:"6px 12px"}}>
+                    <div style={{fontFamily:"'Courier New',monospace",fontWeight:700,fontSize:16,color:"#27ae60"}}>{v.kgValidados} kg</div>
+                    <div style={{fontSize:9,color:"#aaa"}}>Kg validados</div>
+                  </div>
+                  {v.precioVenta>0&&(
+                    <div style={{textAlign:"center",background:"#f9f9f9",borderRadius:8,padding:"6px 12px"}}>
+                      <div style={{fontFamily:"'Courier New',monospace",fontWeight:700,fontSize:16,color:"#8e44ad"}}>${v.precioVenta}/kg</div>
+                      <div style={{fontSize:9,color:"#aaa"}}>Precio venta</div>
+                    </div>
+                  )}
+                  {v.kgValidados>0&&v.precioVenta>0&&(
+                    <div style={{textAlign:"center",background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:8,padding:"6px 12px"}}>
+                      <div style={{fontFamily:"'Courier New',monospace",fontWeight:700,fontSize:16,color:"#27ae60"}}>${(v.kgValidados*v.precioVenta).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                      <div style={{fontSize:9,color:"#aaa"}}>Total</div>
+                    </div>
+                  )}
+                </div>
+
+                {v.observaciones&&<div style={{fontSize:12,color:"#888",marginBottom:3}}>📝 {v.observaciones}</div>}
+                <div style={{fontSize:11,color:"#bbb"}}>
+                  <span>📍 {v.zona||"—"}</span>
+                  <span style={{marginLeft:10}}>👤 {v.worker}</span>
+                  <span style={{marginLeft:10}}>📅 {v.date} {v.time}</span>
+                </div>
+              </div>
+
+              <button onClick={()=>{if(window.confirm("¿Eliminar esta validación?"))deleteDoc(doc(db,"validaciones_tratamiento",v.id));}}
+                style={{background:"#fdedec",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,color:"#c0392b",flexShrink:0}}>✕</button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 const SUBTABS = [
   { id:"reportes", label:"📊 Reportes"  },
   { id:"lotes",    label:"📦 Lotes"     },
   { id:"ventas",   label:"📋 Historial" },
+  { id:"precios",  label:"🏷️ Precios"   },
+  { id:"validaciones", label:"✅ Validaciones" },
 ];
 
 export default function Ventas() {
@@ -719,6 +941,8 @@ export default function Ventas() {
       {tab==="reportes" && <ReportesVentas/>}
       {tab==="lotes"    && <GestionLotes/>}
       {tab==="ventas"   && <RegistroVentas/>}
+      {tab==="precios"  && <PreciosCalidad/>}
+      {tab==="validaciones" && <ValidacionesAdmin/>}
     </div>
   );
 }
