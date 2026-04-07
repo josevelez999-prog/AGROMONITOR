@@ -49,7 +49,7 @@ function getStatus(v, r) {
   return (v < r.min + m || v > r.max - m) ? "warning" : "ok";
 }
 
-const inp = { width:"100%", padding:"12px 14px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:16, boxSizing:"border-box", background:"#ffffff", color:"#222222", WebkitTextFillColor:"#222222", appearance:"none", WebkitAppearance:"none" };
+const inp = { width:"100%", padding:"12px 14px", border:"1px solid #e0e0e0", borderRadius:8, fontSize:16, boxSizing:"border-box", background:"#ffffff", color:"#222222", WebkitTextFillColor:"#222222" };
 const lbl = { fontSize:11, color:"#888", marginBottom:4, display:"block", textTransform:"uppercase", letterSpacing:0.3, fontFamily:"'Courier New',monospace" };
 
 // ─── LOGIN ─────────────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ function Login({ onLogin }) {
         <div style={{fontWeight:700,fontSize:24,color:"#27ae60",marginBottom:4}}>GreenLog</div>
         <div style={{fontSize:13,color:"#aaa",marginBottom:28}}>Portal de trabajadores</div>
         <label style={{...lbl,textAlign:"left"}}>Tu nombre</label>
-        <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&name.trim()&&onLogin(name.trim())} placeholder="Ej: Carlos García" style={{...inp,marginBottom:16,fontSize:16,color:"#222",WebkitTextFillColor:"#222"}}/>
+        <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&name.trim()&&onLogin(name.trim())} placeholder="Ej: Carlos García" style={{...inp,marginBottom:16,fontSize:15}}/>
         <button onClick={()=>name.trim()&&onLogin(name.trim())} disabled={!name.trim()} style={{width:"100%",padding:13,background:name.trim()?"#27ae60":"#d5e8d4",color:"#fff",border:"none",borderRadius:10,cursor:name.trim()?"pointer":"not-allowed",fontSize:15,fontWeight:700}}>
           Entrar
         </button>
@@ -83,26 +83,9 @@ function Registro({ worker }) {
 
   const handleImage = e => {
     const file = e.target.files[0]; if (!file) return;
+    setImgFile(file);
     const reader = new FileReader();
-    reader.onload = ev => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const MAX = 1024;
-        let w = img.width, h = img.height;
-        if (w > MAX || h > MAX) {
-          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-          else { w = Math.round(w * MAX / h); h = MAX; }
-        }
-        canvas.width = w; canvas.height = h;
-        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        const compressed = canvas.toDataURL("image/jpeg", 0.75);
-        setImgPreview(compressed);
-        // Create compressed file blob
-        canvas.toBlob(blob => setImgFile(new File([blob], file.name, {type:"image/jpeg"})), "image/jpeg", 0.75);
-      };
-      img.src = ev.target.result;
-    };
+    reader.onload = ev => setImgPreview(ev.target.result);
     reader.readAsDataURL(file);
   };
 
@@ -157,7 +140,7 @@ function Registro({ worker }) {
         <div>
           <label style={lbl}>pH medido *</label>
           <input type="number" step="0.1" min="0" max="14" value={form.ph} onChange={e=>setForm(p=>({...p,ph:e.target.value}))} placeholder="6.2"
-            style={{...inp,color:"#222",WebkitTextFillColor:"#222",borderColor:form.ph?(getStatus(parseFloat(form.ph),crop.ph)==="danger"?"#e74c3c":getStatus(parseFloat(form.ph),crop.ph)==="warning"?"#f39c12":"#27ae60"):"#e0e0e0"}}/>
+            style={{...inp,borderColor:form.ph?(getStatus(parseFloat(form.ph),crop.ph)==="danger"?"#e74c3c":getStatus(parseFloat(form.ph),crop.ph)==="warning"?"#f39c12":"#27ae60"):"#e0e0e0"}}/>
           {form.ph&&<div style={{fontSize:10,marginTop:3,color:getStatus(parseFloat(form.ph),crop.ph)==="danger"?"#e74c3c":getStatus(parseFloat(form.ph),crop.ph)==="warning"?"#f39c12":"#27ae60"}}>
             {getStatus(parseFloat(form.ph),crop.ph)==="danger"?"⚠ Fuera de rango — avisa al encargado":getStatus(parseFloat(form.ph),crop.ph)==="warning"?"⚠ Cerca del límite":"✓ Normal"}
           </div>}
@@ -165,14 +148,14 @@ function Registro({ worker }) {
         <div>
           <label style={lbl}>CE mS/cm *</label>
           <input type="number" step="0.1" min="0" max="10" value={form.ce} onChange={e=>setForm(p=>({...p,ce:e.target.value}))} placeholder="2.8"
-            style={{...inp,color:"#222",WebkitTextFillColor:"#222",borderColor:form.ce?(getStatus(parseFloat(form.ce),crop.ce)==="danger"?"#e74c3c":getStatus(parseFloat(form.ce),crop.ce)==="warning"?"#f39c12":"#27ae60"):"#e0e0e0"}}/>
+            style={{...inp,borderColor:form.ce?(getStatus(parseFloat(form.ce),crop.ce)==="danger"?"#e74c3c":getStatus(parseFloat(form.ce),crop.ce)==="warning"?"#f39c12":"#27ae60"):"#e0e0e0"}}/>
           {form.ce&&<div style={{fontSize:10,marginTop:3,color:getStatus(parseFloat(form.ce),crop.ce)==="danger"?"#e74c3c":getStatus(parseFloat(form.ce),crop.ce)==="warning"?"#f39c12":"#27ae60"}}>
             {getStatus(parseFloat(form.ce),crop.ce)==="danger"?"⚠ Fuera de rango":getStatus(parseFloat(form.ce),crop.ce)==="warning"?"⚠ Cerca del límite":"✓ Normal"}
           </div>}
         </div>
         <div style={{gridColumn:"1/-1"}}>
           <label style={lbl}>Observaciones (opcional)</label>
-          <textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Hojas amarillas, planta decaída..." style={{...inp,minHeight:72,resize:"vertical",color:"#222",WebkitTextFillColor:"#222"}}/>
+          <textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Hojas amarillas, planta decaída..." style={{...inp,minHeight:72,resize:"vertical"}}/>
         </div>
       </div>
       <div style={{marginBottom:16}}>
@@ -348,12 +331,12 @@ function Incidencias({ worker }) {
       </div>
       <div style={{marginBottom:12}}>
         <label style={lbl}>Cultivo afectado</label>
-        <select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={{...inp,color:"#222",WebkitTextFillColor:"#222"}}>
+        <select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={inp}>
           {Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}
         </select>
       </div>
       <div style={{marginBottom:12}}><label style={lbl}>Zona *</label><input value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} placeholder="Zona A" style={inp}/></div>
-      <div style={{marginBottom:14}}><label style={lbl}>Descripción *</label><textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} placeholder="Describe lo que ves con detalle..." style={{...inp,minHeight:90,resize:"vertical",color:"#222",WebkitTextFillColor:"#222"}}/></div>
+      <div style={{marginBottom:14}}><label style={lbl}>Descripción *</label><textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} placeholder="Describe lo que ves con detalle..." style={{...inp,minHeight:90,resize:"vertical"}}/></div>
       <div style={{marginBottom:16}}>
         <label style={lbl}>Foto (muy recomendada)</label>
         <div onClick={()=>fileRef.current.click()} style={{border:"2px dashed #f39c1244",borderRadius:10,padding:imgPreview?"0":"1.5rem",textAlign:"center",cursor:"pointer",overflow:"hidden",background:"#fefdf9"}}>
@@ -403,11 +386,212 @@ function InstruccionesDia() {
 }
 
 // ─── MAIN WORKER ───────────────────────────────────────────────────────────────
+
+// ─── ASISTENTE IA ──────────────────────────────────────────────────────────────
+const SUGERENCIAS = [
+  "¿Por qué se ponen amarillas las hojas del jitomate?",
+  "¿Qué hago si el pH está muy alto?",
+  "¿Cómo identifico la mosca blanca?",
+  "¿Cuándo debo subir la CE en fresa?",
+  "¿Qué significa que la raíz esté café?",
+  "¿Cómo se trata el oidio en arándano?",
+];
+
+function AsistenteIA() {
+  const [messages, setMessages] = useState([
+    { role:"assistant", content:"¡Hola! Soy tu asistente agrónomo 🌿\n\nPuedo ayudarte con:\n• Dudas sobre tus cultivos\n• Diagnóstico de enfermedades o plagas\n• Interpretar análisis de suelo\n\nEscríbeme o sube una foto de tu planta o análisis de suelo." }
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [imgPreview, setImgPreview] = useState(null);
+  const [imgBase64, setImgBase64] = useState(null);
+  const [imgType, setImgType] = useState(null);
+  const [mode, setMode] = useState("chat"); // chat | planta | suelo
+  const bottomRef = useRef(null);
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior:"smooth" });
+  }, [messages, loading]);
+
+  const handleFile = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    setImgType(file.type);
+    const reader = new FileReader();
+    reader.onload = ev => {
+      if (file.type.includes("image")) {
+        // Compress image
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX = 1024;
+          let w = img.width, h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = Math.round(h*MAX/w); w = MAX; }
+            else { w = Math.round(w*MAX/h); h = MAX; }
+          }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          const b64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+          setImgBase64(b64);
+          setImgPreview(canvas.toDataURL("image/jpeg", 0.8));
+          setImgType("image/jpeg");
+        };
+        img.src = ev.target.result;
+      } else {
+        setImgBase64(ev.target.result.split(",")[1]);
+        setImgPreview(null);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const send = async (text) => {
+    const userMsg = text || input.trim();
+    if (!userMsg && !imgBase64) return;
+    setInput("");
+    setLoading(true);
+
+    const newUserMsg = { role:"user", content: userMsg || (mode==="planta"?"Analiza esta imagen de la planta":"Analiza este análisis de suelo") };
+    const updatedMessages = [...messages, newUserMsg];
+    setMessages(updatedMessages);
+
+    try {
+      const res = await fetch("/api/asistente", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          messages: updatedMessages.slice(-8), // last 8 messages for context
+          imgBase64: imgBase64 || null,
+          imgType: imgType || null,
+          mode: imgBase64 ? mode : "chat",
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setMessages(p => [...p, { role:"assistant", content: data.text }]);
+      setImgBase64(null); setImgPreview(null); setImgType(null);
+    } catch(e) {
+      setMessages(p => [...p, { role:"assistant", content:"❌ Error: " + e.message + "\n\nVerifica tu conexión e intenta de nuevo." }]);
+    }
+    setLoading(false);
+  };
+
+  const limpiar = () => {
+    setMessages([{ role:"assistant", content:"¡Hola de nuevo! ¿En qué te puedo ayudar? 🌿" }]);
+    setImgBase64(null); setImgPreview(null); setInput("");
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 130px)",background:"#f4f5f7"}}>
+
+      {/* Mode selector */}
+      <div style={{display:"flex",gap:6,padding:"10px 16px 0",background:"#f4f5f7"}}>
+        {[["chat","💬 Preguntar"],["planta","🌿 Foto de planta"],["suelo","🌍 Análisis de suelo"]].map(([m,l])=>(
+          <button key={m} onClick={()=>setMode(m)} style={{flex:1,padding:"7px 4px",border:`1.5px solid ${mode===m?"#27ae60":"#e0e0e0"}`,borderRadius:20,background:mode===m?"#eafaf1":"#fff",color:mode===m?"#27ae60":"#888",cursor:"pointer",fontSize:11,fontWeight:mode===m?700:400}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* Chat messages */}
+      <div style={{flex:1,overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:10}}>
+        {messages.map((msg, i) => (
+          <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
+            <div style={{
+              maxWidth:"85%",
+              background:msg.role==="user"?"#27ae60":"#fff",
+              color:msg.role==="user"?"#fff":"#333",
+              borderRadius:msg.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",
+              padding:"10px 14px",
+              fontSize:13,
+              lineHeight:1.6,
+              border:msg.role==="user"?"none":"0.5px solid #e0e0e0",
+              whiteSpace:"pre-wrap",
+              boxShadow:"0 1px 4px #0001",
+            }}>
+              {msg.role==="assistant"&&<span style={{fontSize:15,marginRight:6}}>🌿</span>}
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {loading&&(
+          <div style={{display:"flex",justifyContent:"flex-start"}}>
+            <div style={{background:"#fff",borderRadius:"18px 18px 18px 4px",padding:"10px 16px",border:"0.5px solid #e0e0e0",color:"#27ae60",fontSize:13}}>
+              🌿 Analizando...
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Sugerencias rápidas (solo si pocos mensajes) */}
+      {messages.length <= 1 && (
+        <div style={{padding:"0 16px 8px",display:"flex",gap:6,flexWrap:"wrap"}}>
+          {SUGERENCIAS.slice(0,3).map((s,i)=>(
+            <button key={i} onClick={()=>send(s)} style={{background:"#fff",border:"1px solid #d5e8d4",borderRadius:16,padding:"6px 12px",fontSize:11,color:"#27ae60",cursor:"pointer",fontWeight:500}}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Image preview */}
+      {imgPreview && (
+        <div style={{padding:"0 16px 8px",position:"relative",display:"inline-block"}}>
+          <img src={imgPreview} alt="" style={{height:80,borderRadius:10,objectFit:"cover",border:"2px solid #27ae60"}}/>
+          <button onClick={()=>{setImgBase64(null);setImgPreview(null);setImgType(null);}} style={{position:"absolute",top:-6,right:10,width:22,height:22,borderRadius:"50%",background:"#e74c3c",color:"#fff",border:"none",cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        </div>
+      )}
+      {imgBase64&&!imgPreview&&(
+        <div style={{padding:"0 16px 8px"}}>
+          <div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:8,padding:"6px 12px",fontSize:12,color:"#27ae60",fontWeight:600,display:"inline-block"}}>📄 PDF listo para analizar</div>
+          <button onClick={()=>{setImgBase64(null);setImgType(null);}} style={{marginLeft:8,background:"none",border:"none",color:"#aaa",cursor:"pointer",fontSize:14}}>✕</button>
+        </div>
+      )}
+
+      {/* Input area */}
+      <div style={{padding:"8px 16px 16px",background:"#fff",borderTop:"0.5px solid #e0e0e0"}}>
+        <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+          {/* Attach button */}
+          <button onClick={()=>fileRef.current.click()} style={{width:42,height:42,borderRadius:12,background:"#f0faf5",border:"1px solid #a9dfbf",color:"#27ae60",cursor:"pointer",fontSize:18,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            📎
+          </button>
+          <input ref={fileRef} type="file" accept="image/*,application/pdf" capture={mode==="planta"?"environment":undefined} style={{display:"none"}} onChange={handleFile}/>
+
+          {/* Text input */}
+          <textarea
+            value={input}
+            onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
+            placeholder={mode==="planta"?"Adjunta foto de la planta y pregunta...":mode==="suelo"?"Adjunta análisis de suelo...":"Escribe tu pregunta..."}
+            rows={1}
+            style={{flex:1,padding:"10px 14px",border:"1px solid #e0e0e0",borderRadius:12,fontSize:14,resize:"none",outline:"none",background:"#fff",color:"#222",WebkitTextFillColor:"#222",lineHeight:1.4,maxHeight:100,overflowY:"auto"}}
+          />
+
+          {/* Send button */}
+          <button onClick={()=>send()} disabled={loading||(!input.trim()&&!imgBase64)}
+            style={{width:42,height:42,borderRadius:12,background:loading||(!input.trim()&&!imgBase64)?"#e0e0e0":"#27ae60",color:"#fff",border:"none",cursor:loading||(!input.trim()&&!imgBase64)?"not-allowed":"pointer",fontSize:18,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            {loading?"⏳":"➤"}
+          </button>
+        </div>
+
+        {/* Clear chat */}
+        {messages.length > 2 && (
+          <button onClick={limpiar} style={{marginTop:6,width:"100%",padding:"6px",background:"transparent",border:"none",color:"#bbb",cursor:"pointer",fontSize:11}}>
+            Limpiar conversación
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const TABS=[
   {id:"registro",label:"Registrar",icon:"📊"},
   {id:"historial",label:"Historial",icon:"📋"},
   {id:"tareas",label:"Tareas",icon:"✅"},
-  {id:"guia",label:"Guía",icon:"🔍"},
+  {id:"asistente",label:"IA",icon:"🤖"},
   {id:"incidencias",label:"Incidencia",icon:"⚠️"},
   {id:"instrucciones",label:"Instrucciones",icon:"📋"},
 ];
@@ -416,7 +600,7 @@ export default function Worker() {
   const [worker,setWorker]=useState(()=>localStorage.getItem("gl_worker")||"");
   const [tab,setTab]=useState("registro");
   if(!worker) return <Login onLogin={n=>{localStorage.setItem("gl_worker",n);setWorker(n);}}/>;
-  const CONTENT={registro:<Registro worker={worker}/>,historial:<MiHistorial worker={worker}/>,tareas:<Tareas worker={worker}/>,guia:<GuiaSintomas/>,incidencias:<Incidencias worker={worker}/>,instrucciones:<InstruccionesDia/>};
+  const CONTENT={registro:<Registro worker={worker}/>,historial:<MiHistorial worker={worker}/>,tareas:<Tareas worker={worker}/>,guia:<GuiaSintomas/>,asistente:<AsistenteIA/>,incidencias:<Incidencias worker={worker}/>,instrucciones:<InstruccionesDia/>};
   return (
     <div style={{minHeight:"100vh",background:"#f4f5f7",paddingBottom:76}}>
       <div style={{background:"#fff",borderBottom:"0.5px solid #e0e0e0",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
@@ -427,11 +611,11 @@ export default function Worker() {
         <button onClick={()=>{localStorage.removeItem("gl_worker");setWorker("");}} style={{background:"none",border:"none",color:"#ccc",cursor:"pointer",fontSize:12}}>Salir</button>
       </div>
       <div style={{padding:"16px 16px 0"}}>{CONTENT[tab]}</div>
-      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#ffffff",borderTop:"1px solid #e0e0e0",display:"flex",zIndex:10,paddingBottom:"env(safe-area-inset-bottom)"}}>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"0.5px solid #e0e0e0",display:"flex",zIndex:10}}>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"8px 2px",border:"none",background:"transparent",color:tab===t.id?"#27ae60":"#bbb",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:1,borderTop:tab===t.id?"2px solid #27ae60":"2px solid transparent"}}>
             <span style={{fontSize:16}}>{t.icon}</span>
-            <span style={{fontSize:9,fontWeight:tab===t.id?700:400,color:tab===t.id?"#27ae60":"#999"}}>{t.label}</span>
+            <span style={{fontSize:8,fontWeight:tab===t.id?700:400}}>{t.label}</span>
           </button>
         ))}
       </div>
