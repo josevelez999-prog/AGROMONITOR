@@ -387,220 +387,139 @@ function InstruccionesDia() {
 
 // ─── MAIN WORKER ───────────────────────────────────────────────────────────────
 
-// ─── ASISTENTE IA ──────────────────────────────────────────────────────────────
-const SUGERENCIAS = [
-  "¿Por qué se ponen amarillas las hojas del jitomate?",
-  "¿Qué hago si el pH está muy alto?",
-  "¿Cómo identifico la mosca blanca?",
-  "¿Cuándo debo subir la CE en fresa?",
-  "¿Qué significa que la raíz esté café?",
-  "¿Cómo se trata el oidio en arándano?",
-];
+// ─── REGISTRO DE COSECHA (trabajador) ────────────────────────────────────────
+function RegistroCosecha({ worker }) {
+  const [lotes, setLotes] = useState([]);
+  const [form, setForm] = useState({ loteId:"", kgCosechados:"", calidad:"primera", notas:"" });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-function AsistenteIA() {
-  const [messages, setMessages] = useState([
-    { role:"assistant", content:"¡Hola! Soy tu asistente agrónomo 🌿\n\nPuedo ayudarte con:\n• Dudas sobre tus cultivos\n• Diagnóstico de enfermedades o plagas\n• Interpretar análisis de suelo\n\nEscríbeme o sube una foto de tu planta o análisis de suelo." }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [imgPreview, setImgPreview] = useState(null);
-  const [imgBase64, setImgBase64] = useState(null);
-  const [imgType, setImgType] = useState(null);
-  const [mode, setMode] = useState("chat"); // chat | planta | suelo
-  const bottomRef = useRef(null);
-  const fileRef = useRef(null);
+  const CALIDADES_W = [
+    { id:"primera",  label:"Primera",  color:"#27ae60", icon:"⭐" },
+    { id:"segunda",  label:"Segunda",  color:"#f39c12", icon:"⚡" },
+    { id:"tercera",  label:"Tercera",  color:"#e67e22", icon:"▲"  },
+    { id:"descarte", label:"Descarte", color:"#e74c3c", icon:"✕"  },
+  ];
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior:"smooth" });
-  }, [messages, loading]);
-
-  const handleFile = (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    setImgType(file.type);
-    const reader = new FileReader();
-    reader.onload = ev => {
-      if (file.type.includes("image")) {
-        // Compress image
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement("canvas");
-          const MAX = 1024;
-          let w = img.width, h = img.height;
-          if (w > MAX || h > MAX) {
-            if (w > h) { h = Math.round(h*MAX/w); w = MAX; }
-            else { w = Math.round(w*MAX/h); h = MAX; }
-          }
-          canvas.width = w; canvas.height = h;
-          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-          const b64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
-          setImgBase64(b64);
-          setImgPreview(canvas.toDataURL("image/jpeg", 0.8));
-          setImgType("image/jpeg");
-        };
-        img.src = ev.target.result;
-      } else {
-        setImgBase64(ev.target.result.split(",")[1]);
-        setImgPreview(null);
-      }
-    };
-    reader.readAsDataURL(file);
+  const CROPS_W = {
+    jitomate:{name:"Jitomate",emoji:"🍅",color:"#c0392b"},
+    fresa:{name:"Fresa",emoji:"🍓",color:"#e74c3c"},
+    arandano:{name:"Arándano",emoji:"🫐",color:"#2980b9"},
+    zarzamora:{name:"Zarzamora",emoji:"🫐",color:"#8e44ad"},
   };
 
-  const send = async (text) => {
-    const userMsg = text || input.trim();
-    if (!userMsg && !imgBase64) return;
-    setInput("");
-    setLoading(true);
+  useEffect(()=>{
+    const q = query(collection(db,"lotes"),orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q,snap=>setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    return()=>unsub();
+  },[]);
 
-    const newUserMsg = { role:"user", content: userMsg || (mode==="planta"?"Analiza esta imagen de la planta":"Analiza este análisis de suelo") };
-    const updatedMessages = [...messages, newUserMsg];
-    setMessages(updatedMessages);
+  const loteSeleccionado = lotes.find(l=>l.id===form.loteId);
 
+  const submit = async () => {
+    if (!form.loteId || !form.kgCosechados) { alert("Selecciona lote y registra los kg"); return; }
+    setSaving(true);
     try {
-      const res = await fetch("/api/asistente", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
-          messages: updatedMessages.slice(-8), // last 8 messages for context
-          imgBase64: imgBase64 || null,
-          imgType: imgType || null,
-          mode: imgBase64 ? mode : "chat",
-        })
+      const now = new Date();
+      await addDoc(collection(db,"cosechas_trabajador"),{
+        ...form,
+        kgCosechados: parseFloat(form.kgCosechados),
+        worker,
+        date: now.toISOString().slice(0,10),
+        time: now.toTimeString().slice(0,5),
+        createdAt: now.toISOString(),
+        loteName: loteSeleccionado?.nombre || "",
+        crop: loteSeleccionado?.crop || "",
+        tratamiento: loteSeleccionado?.tratamiento || "",
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setMessages(p => [...p, { role:"assistant", content: data.text }]);
-      setImgBase64(null); setImgPreview(null); setImgType(null);
-    } catch(e) {
-      setMessages(p => [...p, { role:"assistant", content:"❌ Error: " + e.message + "\n\nVerifica tu conexión e intenta de nuevo." }]);
-    }
-    setLoading(false);
+      setSaved(true);
+      setForm({ loteId:"", kgCosechados:"", calidad:"primera", notas:"" });
+      setTimeout(()=>setSaved(false),4000);
+    } catch { alert("Error al guardar"); }
+    setSaving(false);
   };
 
-  const limpiar = () => {
-    setMessages([{ role:"assistant", content:"¡Hola de nuevo! ¿En qué te puedo ayudar? 🌿" }]);
-    setImgBase64(null); setImgPreview(null); setInput("");
-  };
+  const inpW = { width:"100%", padding:"12px 14px", border:"1px solid #ddd", borderRadius:10, fontSize:16, boxSizing:"border-box", background:"#fff", color:"#222", WebkitTextFillColor:"#222" };
 
   return (
-    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 130px)",background:"#f4f5f7"}}>
+    <div style={{paddingBottom:16}}>
+      {saved&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:16,color:"#27ae60",fontWeight:600,textAlign:"center"}}>✓ Cosecha registrada</div>}
 
-      {/* Mode selector */}
-      <div style={{display:"flex",gap:6,padding:"10px 16px 0",background:"#f4f5f7"}}>
-        {[["chat","💬 Preguntar"],["planta","🌿 Foto de planta"],["suelo","🌍 Análisis de suelo"]].map(([m,l])=>(
-          <button key={m} onClick={()=>setMode(m)} style={{flex:1,padding:"7px 4px",border:`1.5px solid ${mode===m?"#27ae60":"#e0e0e0"}`,borderRadius:20,background:mode===m?"#eafaf1":"#fff",color:mode===m?"#27ae60":"#888",cursor:"pointer",fontSize:11,fontWeight:mode===m?700:400}}>
-            {l}
-          </button>
-        ))}
-      </div>
-
-      {/* Chat messages */}
-      <div style={{flex:1,overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:10}}>
-        {messages.map((msg, i) => (
-          <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
-            <div style={{
-              maxWidth:"85%",
-              background:msg.role==="user"?"#27ae60":"#fff",
-              color:msg.role==="user"?"#fff":"#333",
-              borderRadius:msg.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",
-              padding:"10px 14px",
-              fontSize:13,
-              lineHeight:1.6,
-              border:msg.role==="user"?"none":"0.5px solid #e0e0e0",
-              whiteSpace:"pre-wrap",
-              boxShadow:"0 1px 4px #0001",
-            }}>
-              {msg.role==="assistant"&&<span style={{fontSize:15,marginRight:6}}>🌿</span>}
-              {msg.content}
-            </div>
-          </div>
-        ))}
-        {loading&&(
-          <div style={{display:"flex",justifyContent:"flex-start"}}>
-            <div style={{background:"#fff",borderRadius:"18px 18px 18px 4px",padding:"10px 16px",border:"0.5px solid #e0e0e0",color:"#27ae60",fontSize:13}}>
-              🌿 Analizando...
-            </div>
+      <div style={{marginBottom:14}}>
+        <label style={{fontSize:11,color:"#888",marginBottom:6,display:"block",textTransform:"uppercase",letterSpacing:0.3,fontFamily:"'Courier New',monospace"}}>Lote de producción *</label>
+        {!lotes.length ? (
+          <div style={{background:"#f9f9f9",borderRadius:10,padding:14,textAlign:"center",color:"#aaa",fontSize:13}}>El encargado aún no ha creado lotes de producción</div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {lotes.map(lote=>{
+              const c = CROPS_W[lote.crop];
+              const sel = form.loteId===lote.id;
+              return (
+                <button key={lote.id} onClick={()=>setForm(p=>({...p,loteId:lote.id}))}
+                  style={{padding:"12px 14px",border:`2px solid ${sel?"#27ae60":"#e0e0e0"}`,borderRadius:12,background:sel?"#eafaf1":"#fff",cursor:"pointer",textAlign:"left",transition:"all 0.15s"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:22}}>{c?.emoji||"🌱"}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:600,fontSize:14,color:sel?"#27ae60":"#333"}}>{lote.nombre}</div>
+                      <div style={{fontSize:11,color:"#888"}}>{c?.name} · {lote.zona} · {lote.kgCosechados} kg cosechados</div>
+                    </div>
+                    {sel&&<span style={{color:"#27ae60",fontSize:18}}>✓</span>}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
-        <div ref={bottomRef}/>
       </div>
 
-      {/* Sugerencias rápidas (solo si pocos mensajes) */}
-      {messages.length <= 1 && (
-        <div style={{padding:"0 16px 8px",display:"flex",gap:6,flexWrap:"wrap"}}>
-          {SUGERENCIAS.slice(0,3).map((s,i)=>(
-            <button key={i} onClick={()=>send(s)} style={{background:"#fff",border:"1px solid #d5e8d4",borderRadius:16,padding:"6px 12px",fontSize:11,color:"#27ae60",cursor:"pointer",fontWeight:500}}>
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
+      {form.loteId && (
+        <>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:11,color:"#888",marginBottom:6,display:"block",textTransform:"uppercase",letterSpacing:0.3,fontFamily:"'Courier New',monospace"}}>Kg cosechados hoy *</label>
+            <input type="number" step="0.1" min="0" value={form.kgCosechados} onChange={e=>setForm(p=>({...p,kgCosechados:e.target.value}))} placeholder="Ej: 45.5" style={{...inpW,fontSize:22,fontWeight:700,textAlign:"center",fontFamily:"'Courier New',monospace"}}/>
+          </div>
 
-      {/* Image preview */}
-      {imgPreview && (
-        <div style={{padding:"0 16px 8px",position:"relative",display:"inline-block"}}>
-          <img src={imgPreview} alt="" style={{height:80,borderRadius:10,objectFit:"cover",border:"2px solid #27ae60"}}/>
-          <button onClick={()=>{setImgBase64(null);setImgPreview(null);setImgType(null);}} style={{position:"absolute",top:-6,right:10,width:22,height:22,borderRadius:"50%",background:"#e74c3c",color:"#fff",border:"none",cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-        </div>
-      )}
-      {imgBase64&&!imgPreview&&(
-        <div style={{padding:"0 16px 8px"}}>
-          <div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:8,padding:"6px 12px",fontSize:12,color:"#27ae60",fontWeight:600,display:"inline-block"}}>📄 PDF listo para analizar</div>
-          <button onClick={()=>{setImgBase64(null);setImgType(null);}} style={{marginLeft:8,background:"none",border:"none",color:"#aaa",cursor:"pointer",fontSize:14}}>✕</button>
-        </div>
-      )}
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:11,color:"#888",marginBottom:8,display:"block",textTransform:"uppercase",letterSpacing:0.3,fontFamily:"'Courier New',monospace"}}>Calidad del producto</label>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {CALIDADES_W.map(c=>(
+                <button key={c.id} onClick={()=>setForm(p=>({...p,calidad:c.id}))}
+                  style={{padding:"12px",border:`2px solid ${form.calidad===c.id?c.color:"#e0e0e0"}`,borderRadius:12,background:form.calidad===c.id?c.color+"15":"#fff",cursor:"pointer",textAlign:"center"}}>
+                  <div style={{fontSize:22,marginBottom:4}}>{c.icon}</div>
+                  <div style={{fontWeight:600,fontSize:13,color:form.calidad===c.id?c.color:"#555"}}>{c.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
 
-      {/* Input area */}
-      <div style={{padding:"8px 16px 16px",background:"#fff",borderTop:"0.5px solid #e0e0e0"}}>
-        <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-          {/* Attach button */}
-          <button onClick={()=>fileRef.current.click()} style={{width:42,height:42,borderRadius:12,background:"#f0faf5",border:"1px solid #a9dfbf",color:"#27ae60",cursor:"pointer",fontSize:18,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            📎
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:11,color:"#888",marginBottom:6,display:"block",textTransform:"uppercase",letterSpacing:0.3,fontFamily:"'Courier New',monospace"}}>Observaciones</label>
+            <textarea value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Estado del producto, condiciones, etc." style={{...inpW,minHeight:70,resize:"vertical"}}/>
+          </div>
+
+          <button onClick={submit} disabled={saving} style={{width:"100%",padding:14,background:saving?"#a8d5b5":"#27ae60",color:"#fff",border:"none",borderRadius:12,cursor:saving?"not-allowed":"pointer",fontSize:16,fontWeight:700}}>
+            {saving?"Guardando...":"🧺 Registrar cosecha"}
           </button>
-          <input ref={fileRef} type="file" accept="image/*,application/pdf" capture={mode==="planta"?"environment":undefined} style={{display:"none"}} onChange={handleFile}/>
-
-          {/* Text input */}
-          <textarea
-            value={input}
-            onChange={e=>setInput(e.target.value)}
-            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
-            placeholder={mode==="planta"?"Adjunta foto de la planta y pregunta...":mode==="suelo"?"Adjunta análisis de suelo...":"Escribe tu pregunta..."}
-            rows={1}
-            style={{flex:1,padding:"10px 14px",border:"1px solid #e0e0e0",borderRadius:12,fontSize:14,resize:"none",outline:"none",background:"#fff",color:"#222",WebkitTextFillColor:"#222",lineHeight:1.4,maxHeight:100,overflowY:"auto"}}
-          />
-
-          {/* Send button */}
-          <button onClick={()=>send()} disabled={loading||(!input.trim()&&!imgBase64)}
-            style={{width:42,height:42,borderRadius:12,background:loading||(!input.trim()&&!imgBase64)?"#e0e0e0":"#27ae60",color:"#fff",border:"none",cursor:loading||(!input.trim()&&!imgBase64)?"not-allowed":"pointer",fontSize:18,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            {loading?"⏳":"➤"}
-          </button>
-        </div>
-
-        {/* Clear chat */}
-        {messages.length > 2 && (
-          <button onClick={limpiar} style={{marginTop:6,width:"100%",padding:"6px",background:"transparent",border:"none",color:"#bbb",cursor:"pointer",fontSize:11}}>
-            Limpiar conversación
-          </button>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
 
 const TABS=[
   {id:"registro",label:"Registrar",icon:"📊"},
-  {id:"historial",label:"Historial",icon:"📋"},
+  {id:"cosecha",label:"Cosecha",icon:"🧺"},
   {id:"tareas",label:"Tareas",icon:"✅"},
   {id:"asistente",label:"IA",icon:"🤖"},
   {id:"incidencias",label:"Incidencia",icon:"⚠️"},
-  {id:"instrucciones",label:"Instrucciones",icon:"📋"},
+  {id:"instrucciones",label:"Info",icon:"📋"},
 ];
 
 export default function Worker() {
   const [worker,setWorker]=useState(()=>localStorage.getItem("gl_worker")||"");
   const [tab,setTab]=useState("registro");
   if(!worker) return <Login onLogin={n=>{localStorage.setItem("gl_worker",n);setWorker(n);}}/>;
-  const CONTENT={registro:<Registro worker={worker}/>,historial:<MiHistorial worker={worker}/>,tareas:<Tareas worker={worker}/>,guia:<GuiaSintomas/>,asistente:<AsistenteIA/>,incidencias:<Incidencias worker={worker}/>,instrucciones:<InstruccionesDia/>};
+  const CONTENT={registro:<Registro worker={worker}/>,historial:<MiHistorial worker={worker}/>,tareas:<Tareas worker={worker}/>,guia:<GuiaSintomas/>,cosecha:<RegistroCosecha worker={worker}/>,incidencias:<Incidencias worker={worker}/>,instrucciones:<InstruccionesDia/>};
   return (
     <div style={{minHeight:"100vh",background:"#f4f5f7",paddingBottom:76}}>
       <div style={{background:"#fff",borderBottom:"0.5px solid #e0e0e0",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>

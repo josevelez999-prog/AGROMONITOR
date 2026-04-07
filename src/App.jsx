@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Worker from "./Worker";
+import Ventas from "./Ventas";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from "recharts";
 import { db } from "./firebase";
-import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where } from "firebase/firestore";
 import AnalisisSuelo from "./SueloAnalisis";
 
@@ -261,15 +261,9 @@ function DiagnosticoIA(){
   const [form,setForm]=useState({crop:"jitomate",zone:"",worker:"",ph:"",ce:"",notes:""});
   const [imgPreview,setImgPreview]=useState(null);
   const [imgBase64,setImgBase64]=useState(null);
-  const [imgFile,setImgFile]=useState(null);
   const [loading,setLoading]=useState(false);
   const [sel,setSel]=useState(null);
   const [view,setView]=useState("historial");
-  useEffect(()=>{
-    const q=query(collection(db,"diagnosticos"),orderBy("createdAt","desc"));
-    const unsub=onSnapshot(q,snap=>setDiagnoses(snap.docs.map(d=>({id:d.id,...d.data(),imgPreview:d.data().photoURL||"",result:d.data().resultado}))));
-    return()=>unsub();
-  },[]);
   const fileRef=React.useRef();
   const handleImage=e=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>{setImgPreview(ev.target.result);setImgBase64(ev.target.result.split(",")[1]);};r.readAsDataURL(file);};
   const analyze=async()=>{
@@ -277,26 +271,45 @@ function DiagnosticoIA(){
     const crop=CROPS[form.crop];
     const CROP_NUT_STR={jitomate:"N alto, K alto fructificación, Ca firmeza",fresa:"N bajo maduración, K alto, Ca y B calidad",arandano:"pH ácido crítico 4.5-5.5, N amoniacal",zarzamora:"N moderado, K alto maduración, Fe quelado"};
     try{
-      const res=await fetch("/api/analyze",{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({imgBase64,cropName:crop.name,ph:form.ph,ce:form.ce,zone:form.zone,notes:form.notes,cropNutRef:CROP_NUT_STR[form.crop]})
-      });
-      const result=await res.json();
-      if(result.error)throw new Error(result.error);
-      // Guardar en Firebase con foto
-      let photoURL="";
-      if(imgFile){
-        const storage=getStorage();
-        const r=sRef(storage,`diagnosticos/${Date.now()}_foto.jpg`);
-        await uploadBytes(r,imgFile);
-        photoURL=await getDownloadURL(r);
-      }
-      const now=new Date();
-      await addDoc(collection(db,"diagnosticos"),{...form,ph:parseFloat(form.ph)||0,ce:parseFloat(form.ce)||0,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),createdAt:now.toISOString(),photoURL,resultado:result});
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:imgBase64}},{type:"text",text:`Eres un ingeniero agrónomo mexicano especialista en producción protegida e hidroponía con 20 años de experiencia en cultivos de jitomate, fresa, arándano y zarzamora bajo invernadero y sistemas mixtos.
+
+Tienes conocimiento profundo en:
+- Nutrición vegetal y formulación de soluciones nutritivas (método meq/L)
+- Fisiología vegetal y etapas fenológicas
+- Fitopatología: enfermedades fúngicas, bacterianas y virales
+- Entomología agrícola: plagas comunes en cultivos protegidos de México
+- Manejo integrado de plagas y enfermedades (MIP)
+- Interpretación de parámetros de riego (pH, CE, temperatura)
+- Condiciones climáticas del centro-occidente de México
+
+Datos del registro actual:
+- Cultivo: ${crop.name}
+- pH medido: ${form.ph || "no registrado"}
+- CE medida: ${form.ce || "no registrada"} mS/cm
+- Zona: ${form.zone || "no especificada"}
+- Observaciones del trabajador: ${form.notes || "ninguna"}
+- Referencia nutricional: ${CROP_NUT_STR[form.crop]}
+
+Analiza la imagen adjunta considerando todos estos datos. Da un diagnóstico preciso y práctico, orientado a un productor mexicano con recursos limitados.
+
+Responde SOLO en este formato JSON sin markdown ni texto adicional:
+{
+  "diagnostico": "nombre técnico del problema en español",
+  "severidad": "baja|media|alta",
+  "causas": ["causa 1 específica", "causa 2 específica"],
+  "acciones": ["acción inmediata 1", "acción a mediano plazo 2", "acción preventiva 3"],
+  "productos_sugeridos": ["producto comercial disponible en México 1", "alternativa 2"],
+  "ajuste_ph": "subir|bajar|mantener",
+  "ajuste_ce": "subir|bajar|mantener",
+  "urgencia": "mensaje directo de una línea para el encargado"
+}`}]}]})});
+      const data=await res.json();
+      const text=data.content?.find(b=>b.type==="text")?.text||"";
+      const result=JSON.parse(text.replace(/```json|```/g,"").trim());
       const id=Date.now();
-      setDiagnoses(p=>[{id,...form,ph:parseFloat(form.ph)||0,ce:parseFloat(form.ce)||0,date:now.toISOString().slice(0,10),imgPreview:photoURL||imgPreview,result},...p]);
-      setSel(id);setView("historial");setForm({crop:"jitomate",zone:"",worker:"",ph:"",ce:"",notes:""});setImgPreview(null);setImgBase64(null);setImgFile(null);
-    }catch(e){alert("Error al analizar: "+e.message);}
+      setDiagnoses(p=>[{id,...form,ph:parseFloat(form.ph)||0,ce:parseFloat(form.ce)||0,date:new Date().toISOString().slice(0,10),imgPreview,result},...p]);
+      setSel(id);setView("historial");setForm({crop:"jitomate",zone:"",worker:"",ph:"",ce:"",notes:""});setImgPreview(null);setImgBase64(null);
+    }catch{alert("Error al analizar. Verifica la API key.");}
     setLoading(false);
   };
   return(
@@ -361,146 +374,6 @@ function DiagnosticoIA(){
   );
 }
 
-
-// ─── IA NUTRICIÓN ─────────────────────────────────────────────────────────────
-function IaNutricion({cropName,etapa,target,water,aportes,fertilizando,ferts,volume,costoTotal,costoPorLitro}){
-  const [loading,setLoading]=useState(false);
-  const [result,setResult]=useState(null);
-  const [history,setHistory]=useState([]);
-
-  const analyze=async()=>{
-    setLoading(true);setResult(null);
-    try{
-      const res=await fetch("/api/analyzeNutricion",{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({cropName,etapa,target,water,aportes,fertilizando,ferts:ferts.filter(f=>f.active&&f.meq>0),volume,costoTotal,costoPorLitro})
-      });
-      const data=await res.json();
-      if(data.error)throw new Error(data.error);
-      setResult(data);
-      setHistory(p=>[{date:new Date().toLocaleDateString("es-MX"),cropName,etapa,...data},...p.slice(0,4)]);
-    }catch(e){alert("Error: "+e.message);}
-    setLoading(false);
-  };
-
-  const VEREDICTO_COLOR={"APROBADA":"#27ae60","MEJORABLE":"#f39c12","REFORMULAR":"#e74c3c"};
-  const VEREDICTO_BG={"APROBADA":"#eafaf1","MEJORABLE":"#fef9e7","REFORMULAR":"#fdedec"};
-
-  return(
-    <div>
-      <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px",marginBottom:12}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
-          <div>
-            <div style={{fontSize:13,fontWeight:700,color:"#444",marginBottom:4}}>Análisis IA de tu solución nutritiva</div>
-            <div style={{fontSize:12,color:"#888"}}>Cultivo: <strong>{cropName}</strong> · Etapa: <strong>{etapa}</strong> · Vol: <strong>{volume.toLocaleString()} L</strong></div>
-          </div>
-          <button onClick={analyze} disabled={loading} style={{padding:"10px 24px",background:loading?"#aaa":"#1a2533",color:loading?"#fff":"#4ecb8d",border:"none",borderRadius:8,cursor:loading?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"'Courier New',monospace"}}>
-            {loading?"⏳ Analizando...":"🤖 ANALIZAR FÓRMULA"}
-          </button>
-        </div>
-      </div>
-
-      {result&&(
-        <div>
-          {/* Veredicto */}
-          <div style={{background:VEREDICTO_BG[result.veredicto]||"#f9f9f9",border:`2px solid ${VEREDICTO_COLOR[result.veredicto]||"#aaa"}`,borderRadius:12,padding:"16px 20px",marginBottom:12,display:"flex",alignItems:"center",gap:14}}>
-            <div style={{fontSize:36}}>{result.veredicto==="APROBADA"?"✅":result.veredicto==="MEJORABLE"?"⚠️":"❌"}</div>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:16,color:VEREDICTO_COLOR[result.veredicto]||"#333",marginBottom:3}}>{result.veredicto}</div>
-              <div style={{fontSize:13,color:"#555"}}>{result.evaluacion_general}</div>
-            </div>
-            {result.puntuacion&&(
-              <div style={{textAlign:"center",background:"#fff",borderRadius:10,padding:"8px 16px",border:`1px solid ${VEREDICTO_COLOR[result.veredicto]}44`}}>
-                <div style={{fontSize:28,fontWeight:700,color:VEREDICTO_COLOR[result.veredicto],fontFamily:"'Courier New',monospace"}}>{result.puntuacion}</div>
-                <div style={{fontSize:10,color:"#aaa"}}>/ 100</div>
-              </div>
-            )}
-          </div>
-
-          {/* Métricas */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:12}}>
-            {[
-              {l:"Balance iónico",v:result.balance_ionico,c:{bueno:"#27ae60",aceptable:"#f39c12",deficiente:"#e74c3c"}[result.balance_ionico]||"#aaa"},
-              {l:"Adecuación etapa",v:result.adecuacion_etapa,c:{excelente:"#27ae60",buena:"#27ae60",regular:"#f39c12",inadecuada:"#e74c3c"}[result.adecuacion_etapa]||"#aaa"},
-              {l:"Eficiencia económica",v:result.eficiencia_economica,c:{buena:"#27ae60",regular:"#f39c12",cara:"#e74c3c"}[result.eficiencia_economica]||"#aaa"},
-            ].map(m=>(
-              <div key={m.l} style={{background:"#fff",border:`1px solid ${m.c}33`,borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
-                <div style={{fontSize:13,fontWeight:700,color:m.c,textTransform:"capitalize"}}>{m.v||"—"}</div>
-                <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{m.l}</div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-            {/* Problemas */}
-            {result.problemas?.length>0&&(
-              <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#e74c3c",marginBottom:8,letterSpacing:0.3}}>PROBLEMAS DETECTADOS</div>
-                {result.problemas.map((p,i)=><div key={i} style={{display:"flex",gap:6,marginBottom:5}}><span style={{color:"#e74c3c",flexShrink:0}}>◆</span><span style={{fontSize:12,color:"#555"}}>{p}</span></div>)}
-                {result.deficiencias_riesgo?.length>0&&(
-                  <div style={{marginTop:8}}>
-                    <div style={{fontSize:10,color:"#aaa",marginBottom:4}}>Riesgo de deficiencia:</div>
-                    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{result.deficiencias_riesgo.map((d,i)=><span key={i} style={{background:"#fdedec",color:"#c0392b",border:"1px solid #f5c6c6",borderRadius:8,padding:"2px 8px",fontSize:11,fontWeight:600}}>{d}</span>)}</div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Recomendaciones etapa */}
-            {result.recomendaciones_etapa?.length>0&&(
-              <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#27ae60",marginBottom:8,letterSpacing:0.3}}>PARA ESTA ETAPA</div>
-                {result.recomendaciones_etapa.map((r,i)=><div key={i} style={{display:"flex",gap:6,marginBottom:5}}><span style={{color:"#27ae60",fontWeight:700,flexShrink:0}}>{i+1}.</span><span style={{fontSize:12,color:"#333",background:"#f0faf5",borderRadius:6,padding:"4px 8px",flex:1}}>{r}</span></div>)}
-              </div>
-            )}
-          </div>
-
-          {/* Ajustes recomendados */}
-          {result.ajustes_recomendados?.length>0&&(
-            <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14,marginBottom:12}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#2c3e50",marginBottom:10,letterSpacing:0.3}}>AJUSTES SUGERIDOS A LA FÓRMULA</div>
-              <div style={{overflowX:"auto"}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                  <thead><tr style={{background:"#fafafa"}}>{["Ion","Acción","Cantidad","Razón"].map(h=><th key={h} style={{padding:"6px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11,borderBottom:"1px solid #f0f0f0"}}>{h}</th>)}</tr></thead>
-                  <tbody>{result.ajustes_recomendados.map((a,i)=>(
-                    <tr key={i} style={{borderBottom:"1px solid #fafafa"}}>
-                      <td style={{padding:"8px 10px",fontWeight:700,fontFamily:"'Courier New',monospace"}}>{a.ion}</td>
-                      <td style={{padding:"8px 10px"}}><span style={{background:a.accion==="aumentar"?"#eafaf1":"#fdedec",color:a.accion==="aumentar"?"#27ae60":"#e74c3c",border:"1px solid",borderColor:a.accion==="aumentar"?"#a9dfbf":"#f5c6c6",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:600}}>{a.accion==="aumentar"?"↑ Aumentar":"↓ Reducir"}</span></td>
-                      <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",color:"#2c3e50",fontWeight:600}}>{a.cantidad}</td>
-                      <td style={{padding:"8px 10px",color:"#888",fontSize:11}}>{a.razon}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Tip economía */}
-          {result.tip_economia&&(
-            <div style={{background:"#fef9e7",border:"1px solid #f39c1244",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#7d6608"}}>
-              💡 <strong>Tip de economía:</strong> {result.tip_economia}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Historial de análisis */}
-      {history.length>0&&!result&&(
-        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#444",marginBottom:10}}>ANÁLISIS ANTERIORES</div>
-          {history.map((h,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #f5f5f5",flexWrap:"wrap"}}>
-              <div style={{flex:1}}><span style={{fontWeight:600,fontSize:12}}>{h.cropName} · {h.etapa}</span><span style={{fontSize:11,color:"#aaa",marginLeft:6}}>{h.date}</span></div>
-              <span style={{background:VEREDICTO_BG[h.veredicto]||"#f9f9f9",color:VEREDICTO_COLOR[h.veredicto]||"#aaa",border:`1px solid ${VEREDICTO_COLOR[h.veredicto]||"#e0e0e0"}44`,borderRadius:10,padding:"2px 10px",fontSize:11,fontWeight:600}}>{h.veredicto}</span>
-              {h.puntuacion&&<span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:"#2c3e50",fontSize:13}}>{h.puntuacion}/100</span>}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── FORMULADOR ───────────────────────────────────────────────────────────────
 function Formulador(){
   const [crop,setCrop]=useState("jitomate");
@@ -534,7 +407,7 @@ function Formulador(){
         </div>
       </div>
       <div style={{display:"flex",gap:4,marginBottom:12,background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:4}}>
-        {[["tabla","📋 Iones"],["dosis","⚖️ Dosis"],["costos","💰 Costos"],["balance","📊 Balance"],["ia_nutricion","🤖 IA"],["guardadas",`📁 (${saved.length})`]].map(([k,l])=>(<button key={k} onClick={()=>setSub(k)} style={{flex:1,padding:"7px 6px",border:"none",borderRadius:8,background:sub===k?"#f0f4ff":"transparent",color:sub===k?"#2c3e50":"#888",cursor:"pointer",fontSize:11,fontWeight:sub===k?600:400}}>{l}</button>))}
+        {[["tabla","📋 Iones"],["dosis","⚖️ Dosis"],["costos","💰 Costos"],["balance","📊 Balance"],["guardadas",`📁 (${saved.length})`]].map(([k,l])=>(<button key={k} onClick={()=>setSub(k)} style={{flex:1,padding:"7px 6px",border:"none",borderRadius:8,background:sub===k?"#f0f4ff":"transparent",color:sub===k?"#2c3e50":"#888",cursor:"pointer",fontSize:11,fontWeight:sub===k?600:400}}>{l}</button>))}
       </div>
 
       {sub==="tabla"&&(
@@ -633,21 +506,6 @@ function Formulador(){
             </div>
           ))}
         </div>
-      )}
-
-      {sub==="ia_nutricion"&&(
-        <IaNutricion
-          cropName={CROPS[crop]?.name||crop}
-          etapa={etapa}
-          target={target}
-          water={water}
-          aportes={aportes}
-          fertilizando={fert}
-          ferts={ferts}
-          volume={volume}
-          costoTotal={costoTotal}
-          costoPorLitro={costoPorLitro}
-        />
       )}
 
       {sub==="guardadas"&&(
@@ -922,8 +780,9 @@ const NAV=[
   {id:"inventario",label:"Inventario",icon:"📦"},
   {id:"trabajadores",label:"Equipo",icon:"◎"},
   {id:"suelo", label:"Análisis de Suelo", icon:"🌍"},
+  {id:"ventas", label:"Ventas", icon:"💰"},
 ];
-const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",};
+const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas"};
 
 export default function App(){
   const [page,setPage]=useState("resumen");
@@ -943,13 +802,12 @@ export default function App(){
   },[]);
 
   const handleDelete=async id=>{try{await deleteDoc(doc(db,"readings",id));}catch{alert("Error al eliminar.");}};
-  const handleDeleteDiag=async id=>{try{await deleteDoc(doc(db,"diagnosticos",id));}catch{alert("Error al eliminar.");}};
   const alerts=readings.filter(r=>{const c=CROPS[r.crop];return c&&(getStatus(r.ph,c.ph)==="danger"||getStatus(r.ce,c.ce)==="danger");});
 
   if(!isAdmin) return <Worker/>;
   if(loading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f4f5f7"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,color:"#27ae60",fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#aaa",marginTop:4}}>Cargando...</div></div></div>;
 
-  const SECTION={suelo:<AnalisisSuelo />,resumen:<Resumen readings={readings} onDelete={handleDelete}/>,alertas:<Alertas readings={readings} onDelete={handleDelete}/>,ia:<DiagnosticoIA/>,reportes:<Reportes readings={readings} onDelete={handleDelete}/>,formulador:<Formulador/>,incidencias:<IncidenciasAdmin/>,tareas:<TareasAdmin/>,instrucciones:<InstruccionesAdmin/>,inventario:<Inventario/>,trabajadores:<Trabajadores readings={readings}/>};
+  const SECTION={suelo:<AnalisisSuelo />,resumen:<Resumen readings={readings} onDelete={handleDelete}/>,alertas:<Alertas readings={readings} onDelete={handleDelete}/>,ia:<DiagnosticoIA/>,reportes:<Reportes readings={readings} onDelete={handleDelete}/>,formulador:<Formulador/>,incidencias:<IncidenciasAdmin/>,tareas:<TareasAdmin/>,instrucciones:<InstruccionesAdmin/>,inventario:<Inventario/>,trabajadores:<Trabajadores readings={readings}/>,ventas:<Ventas/>};
 
   return(
     <div style={{display:"flex",minHeight:"100vh",background:"#f4f5f7",fontFamily:"'Georgia',serif"}}>
