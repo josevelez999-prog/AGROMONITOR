@@ -105,11 +105,12 @@ function PreciosCalidad() {
 
 // Fuerza inputs en modo claro sin importar el tema del SO
 const INP = {
-  width:"100%", padding:"10px 12px", border:"1.5px solid #ccc",
+  width:"100%", padding:"10px 12px", border:"1.5px solid #bbb",
   borderRadius:8, fontSize:14, boxSizing:"border-box",
-  color:"#111", WebkitTextFillColor:"#111", background:"#fff",
-  colorScheme:"light", appearance:"none", WebkitAppearance:"none",
-  outline:"none",
+  color:"#111111 !important", WebkitTextFillColor:"#111111",
+  background:"#ffffff", backgroundColor:"#ffffff",
+  colorScheme:"light",
+  outline:"none", fontFamily:"inherit",
 };
 
 const CROPS = {
@@ -163,7 +164,6 @@ function GestionLotes() {
     kgCosechados:0, kgEstimados:0, notas:""
   });
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
   const [editing, setEditing] = useState(null);
 
   useEffect(() => {
@@ -927,7 +927,24 @@ const SUBTABS = [
 export default function Ventas() {
   const [tab, setTab] = useState("reportes");
   return (
-    <div>
+    <div className="ventas-module">
+      {/* Force light mode on all inputs in this module */}
+      <style>{`
+        .ventas-module input,
+        .ventas-module select,
+        .ventas-module textarea {
+          color: #111 !important;
+          background-color: #ffffff !important;
+          -webkit-text-fill-color: #111 !important;
+          color-scheme: light !important;
+          border-color: #ccc !important;
+        }
+        .ventas-module input::placeholder,
+        .ventas-module textarea::placeholder {
+          color: #aaa !important;
+          -webkit-text-fill-color: #aaa !important;
+        }
+      `}</style>
       <div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#2e7d5a"}}>
         📱 Los trabajadores registran ventas y cosechas desde su app · Tú ves los reportes aquí
       </div>

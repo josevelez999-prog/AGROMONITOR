@@ -772,3 +772,62 @@ function RegistroCosecha({ worker }) {
           })()}
         </div>
       )}
+
+// ─── MAIN WORKER ──────────────────────────────────────────────────────────────
+const TABS = [
+  { id:"registro",     label:"Registrar",  icon:"📊" },
+  { id:"cosecha",      label:"Cosecha",    icon:"🧺" },
+  { id:"tareas",       label:"Tareas",     icon:"✅" },
+  { id:"asistente",    label:"IA",         icon:"🤖" },
+  { id:"incidencias",  label:"Incidencia", icon:"⚠️" },
+  { id:"instrucciones",label:"Info",       icon:"📋" },
+];
+
+export default function Worker() {
+  const [worker, setWorker] = useState(() => localStorage.getItem("gl_worker") || "");
+  const [tab, setTab] = useState("registro");
+
+  if (!worker) return <Login onLogin={n => { localStorage.setItem("gl_worker", n); setWorker(n); }}/>;
+
+  const CONTENT = {
+    registro:      <Registro worker={worker}/>,
+    cosecha:       <RegistroCosecha worker={worker}/>,
+    tareas:        <Tareas worker={worker}/>,
+    asistente:     <AsistenteIA/>,
+    incidencias:   <Incidencias worker={worker}/>,
+    instrucciones: <InstruccionesDia/>,
+  };
+
+  return (
+    <div style={{minHeight:"100vh", background:"#f4f5f7", paddingBottom:76}}>
+      {/* Header */}
+      <div style={{background:"#fff", borderBottom:"0.5px solid #e0e0e0", padding:"12px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:10}}>
+        <div style={{display:"flex", alignItems:"center", gap:8}}>
+          <span style={{fontSize:22}}>🌿</span>
+          <div>
+            <div style={{fontWeight:700, color:"#27ae60", fontSize:16}}>GreenLog</div>
+            <div style={{fontSize:10, color:"#aaa", fontFamily:"'Courier New',monospace"}}>Hola, {worker}</div>
+          </div>
+        </div>
+        <button onClick={() => { localStorage.removeItem("gl_worker"); setWorker(""); }}
+          style={{background:"none", border:"1px solid #e0e0e0", borderRadius:8, color:"#aaa", cursor:"pointer", fontSize:12, padding:"4px 10px"}}>
+          Salir
+        </button>
+      </div>
+
+      {/* Content */}
+      <div style={{padding:"16px 16px 0"}}>{CONTENT[tab]}</div>
+
+      {/* Bottom nav */}
+      <div style={{position:"fixed", bottom:0, left:0, right:0, background:"#fff", borderTop:"1px solid #e0e0e0", display:"flex", zIndex:10, paddingBottom:"env(safe-area-inset-bottom)"}}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{flex:1, padding:"8px 2px", border:"none", background:"transparent", color:tab===t.id?"#27ae60":"#bbb", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:1, borderTop:tab===t.id?"2.5px solid #27ae60":"2.5px solid transparent"}}>
+            <span style={{fontSize:17}}>{t.icon}</span>
+            <span style={{fontSize:9, fontWeight:tab===t.id?700:400}}>{t.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
