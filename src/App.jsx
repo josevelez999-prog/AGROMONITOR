@@ -374,6 +374,111 @@ Responde SOLO en este formato JSON sin markdown ni texto adicional:
   );
 }
 
+
+// ─── IA NUTRICIÓN ─────────────────────────────────────────────────────────────
+function IaNutricion({cropName,etapa,target,water,aportes,fertilizando,ferts,volume,costoTotal,costoPorLitro}){
+  const [loading,setLoading]=useState(false);
+  const [result,setResult]=useState(null);
+  const [history,setHistory]=useState([]);
+  const VCOL={"APROBADA":"#27ae60","MEJORABLE":"#f39c12","REFORMULAR":"#e74c3c"};
+  const VBG={"APROBADA":"#eafaf1","MEJORABLE":"#fef9e7","REFORMULAR":"#fdedec"};
+  const analyze=async()=>{
+    setLoading(true);setResult(null);
+    try{
+      const res=await fetch("/api/analyzeNutricion",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({cropName,etapa,target,water,aportes,fertilizando,
+          ferts:ferts.filter(f=>f.active&&f.meq>0),volume,costoTotal,costoPorLitro})
+      });
+      const data=await res.json();
+      if(data.error)throw new Error(data.error);
+      setResult(data);
+      setHistory(p=>[{date:new Date().toLocaleDateString("es-MX"),cropName,etapa,...data},...p.slice(0,4)]);
+    }catch(e){alert("Error: "+e.message);}
+    setLoading(false);
+  };
+  return(
+    <div>
+      <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:"#444",marginBottom:3}}>Análisis IA de tu solución nutritiva</div>
+            <div style={{fontSize:12,color:"#888"}}>Cultivo: <strong>{cropName}</strong> · Etapa: <strong>{etapa}</strong> · Vol: <strong>{(volume||0).toLocaleString()} L</strong></div>
+          </div>
+          <button onClick={analyze} disabled={loading} style={{padding:"10px 24px",background:loading?"#aaa":"#1a2533",color:loading?"#fff":"#4ecb8d",border:"none",borderRadius:8,cursor:loading?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"'Courier New',monospace"}}>
+            {loading?"⏳ Analizando...":"🤖 ANALIZAR FÓRMULA"}
+          </button>
+        </div>
+      </div>
+      {result&&(
+        <div>
+          <div style={{background:VBG[result.veredicto]||"#f9f9f9",border:`2px solid ${VCOL[result.veredicto]||"#aaa"}`,borderRadius:12,padding:"16px 20px",marginBottom:12,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+            <div style={{fontSize:36}}>{result.veredicto==="APROBADA"?"✅":result.veredicto==="MEJORABLE"?"⚠️":"❌"}</div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:16,color:VCOL[result.veredicto]||"#333",marginBottom:3}}>{result.veredicto}</div>
+              <div style={{fontSize:13,color:"#555"}}>{result.evaluacion_general}</div>
+            </div>
+            {result.puntuacion&&<div style={{textAlign:"center",background:"#fff",borderRadius:10,padding:"8px 16px",border:`1px solid ${VCOL[result.veredicto]}44`}}>
+              <div style={{fontSize:28,fontWeight:700,color:VCOL[result.veredicto],fontFamily:"'Courier New',monospace"}}>{result.puntuacion}</div>
+              <div style={{fontSize:10,color:"#aaa"}}>/ 100</div>
+            </div>}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:12}}>
+            {[{l:"Balance iónico",v:result.balance_ionico,c:{bueno:"#27ae60",aceptable:"#f39c12",deficiente:"#e74c3c"}[result.balance_ionico]},{l:"Adecuación etapa",v:result.adecuacion_etapa,c:{excelente:"#27ae60",buena:"#27ae60",regular:"#f39c12",inadecuada:"#e74c3c"}[result.adecuacion_etapa]},{l:"Eficiencia económica",v:result.eficiencia_economica,c:{buena:"#27ae60",regular:"#f39c12",cara:"#e74c3c"}[result.eficiencia_economica]}].map(m=>(
+              <div key={m.l} style={{background:"#fff",border:`1px solid ${m.c||"#e0e0e0"}33`,borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
+                <div style={{fontSize:13,fontWeight:700,color:m.c||"#555",textTransform:"capitalize"}}>{m.v||"—"}</div>
+                <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{m.l}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+            {result.problemas?.length>0&&<div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#e74c3c",marginBottom:8}}>PROBLEMAS DETECTADOS</div>
+              {result.problemas.map((p,i)=><div key={i} style={{display:"flex",gap:6,marginBottom:5}}><span style={{color:"#e74c3c",flexShrink:0}}>◆</span><span style={{fontSize:12,color:"#555"}}>{p}</span></div>)}
+              {result.deficiencias_riesgo?.length>0&&<div style={{marginTop:8,display:"flex",gap:4,flexWrap:"wrap"}}>{result.deficiencias_riesgo.map((d,i)=><span key={i} style={{background:"#fdedec",color:"#c0392b",border:"1px solid #f5c6c6",borderRadius:8,padding:"2px 8px",fontSize:11,fontWeight:600}}>{d}</span>)}</div>}
+            </div>}
+            {result.recomendaciones_etapa?.length>0&&<div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#27ae60",marginBottom:8}}>PARA ESTA ETAPA</div>
+              {result.recomendaciones_etapa.map((r,i)=><div key={i} style={{display:"flex",gap:6,marginBottom:5}}><span style={{color:"#27ae60",fontWeight:700,flexShrink:0}}>{i+1}.</span><span style={{fontSize:12,color:"#333",background:"#f0faf5",borderRadius:6,padding:"4px 8px",flex:1}}>{r}</span></div>)}
+            </div>}
+          </div>
+          {result.ajustes_recomendados?.length>0&&(
+            <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14,marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#2c3e50",marginBottom:10}}>AJUSTES SUGERIDOS A LA FÓRMULA</div>
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead><tr style={{background:"#fafafa"}}>{["Ion","Acción","Cantidad","Razón"].map(h=><th key={h} style={{padding:"6px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11,borderBottom:"1px solid #f0f0f0"}}>{h}</th>)}</tr></thead>
+                  <tbody>{result.ajustes_recomendados.map((a,i)=>(
+                    <tr key={i} style={{borderBottom:"1px solid #fafafa"}}>
+                      <td style={{padding:"8px 10px",fontWeight:700,fontFamily:"'Courier New',monospace"}}>{a.ion}</td>
+                      <td style={{padding:"8px 10px"}}><span style={{background:a.accion==="aumentar"?"#eafaf1":"#fdedec",color:a.accion==="aumentar"?"#27ae60":"#e74c3c",border:"1px solid",borderColor:a.accion==="aumentar"?"#a9dfbf":"#f5c6c6",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:600}}>{a.accion==="aumentar"?"↑ Aumentar":"↓ Reducir"}</span></td>
+                      <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:600}}>{a.cantidad}</td>
+                      <td style={{padding:"8px 10px",color:"#888",fontSize:11}}>{a.razon}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {result.tip_economia&&<div style={{background:"#fef9e7",border:"1px solid #f39c1244",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#7d6608"}}>💡 <strong>Tip economía:</strong> {result.tip_economia}</div>}
+        </div>
+      )}
+      {!result&&history.length>0&&(
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#444",marginBottom:10}}>ANÁLISIS ANTERIORES (esta sesión)</div>
+          {history.map((h,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #f5f5f5",flexWrap:"wrap"}}>
+              <div style={{flex:1}}><span style={{fontWeight:600,fontSize:12}}>{h.cropName} · {h.etapa}</span><span style={{fontSize:11,color:"#aaa",marginLeft:6}}>{h.date}</span></div>
+              <span style={{background:VBG[h.veredicto]||"#f9f9f9",color:VCOL[h.veredicto]||"#aaa",border:`1px solid ${VCOL[h.veredicto]||"#e0e0e0"}44`,borderRadius:10,padding:"2px 10px",fontSize:11,fontWeight:600}}>{h.veredicto}</span>
+              {h.puntuacion&&<span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:"#2c3e50",fontSize:13}}>{h.puntuacion}/100</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── FORMULADOR ───────────────────────────────────────────────────────────────
 function Formulador(){
   const [crop,setCrop]=useState("jitomate");
@@ -407,7 +512,7 @@ function Formulador(){
         </div>
       </div>
       <div style={{display:"flex",gap:4,marginBottom:12,background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:4}}>
-        {[["tabla","📋 Iones"],["dosis","⚖️ Dosis"],["costos","💰 Costos"],["balance","📊 Balance"],["guardadas",`📁 (${saved.length})`]].map(([k,l])=>(<button key={k} onClick={()=>setSub(k)} style={{flex:1,padding:"7px 6px",border:"none",borderRadius:8,background:sub===k?"#f0f4ff":"transparent",color:sub===k?"#2c3e50":"#888",cursor:"pointer",fontSize:11,fontWeight:sub===k?600:400}}>{l}</button>))}
+        {[["tabla","📋 Iones"],["dosis","⚖️ Dosis"],["costos","💰 Costos"],["balance","📊 Balance"],["ia_nut","🤖 IA"],["guardadas",`📁 (${saved.length})`]].map(([k,l])=>(<button key={k} onClick={()=>setSub(k)} style={{flex:1,padding:"7px 6px",border:"none",borderRadius:8,background:sub===k?"#f0f4ff":"transparent",color:sub===k?"#2c3e50":"#888",cursor:"pointer",fontSize:11,fontWeight:sub===k?600:400}}>{l}</button>))}
       </div>
 
       {sub==="tabla"&&(
@@ -508,6 +613,21 @@ function Formulador(){
         </div>
       )}
 
+      {sub==="ia_nut"&&(
+        <IaNutricion
+          cropName={CROPS[crop]?.name||crop}
+          etapa={etapa}
+          target={target}
+          water={water}
+          aportes={aportes}
+          fertilizando={fert}
+          ferts={ferts}
+          volume={volume}
+          costoTotal={costoTotal}
+          costoPorLitro={costoPorLitro}
+        />
+      )}
+
       {sub==="guardadas"&&(
         <div>
           <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14,marginBottom:12,display:"flex",gap:10,flexWrap:"wrap"}}>
@@ -579,15 +699,30 @@ function TareasAdmin(){
   const [tasks,setTasks]=useState([]);
   const [form,setForm]=useState({title:"",description:"",zone:"",assignedTo:"todos",date:new Date().toISOString().slice(0,10)});
   const [workers,setWorkers]=useState([]);
+  const [editing,setEditingTask]=useState(null);
   useEffect(()=>{const q=query(collection(db,"tasks"),orderBy("date","desc"));const unsub=onSnapshot(q,snap=>setTasks(snap.docs.map(d=>({id:d.id,...d.data()}))));return()=>unsub();},[]);
   useEffect(()=>{const q=query(collection(db,"readings"),orderBy("createdAt","desc"));const unsub=onSnapshot(q,snap=>{setWorkers([...new Set(snap.docs.map(d=>d.data().worker).filter(Boolean))]);});return()=>unsub();},[]);
-  const addTask=async()=>{if(!form.title)return;await addDoc(collection(db,"tasks"),{...form,completedBy:[],createdAt:new Date().toISOString()});setForm(p=>({...p,title:"",description:""}));};
+  const addTask=async()=>{
+    if(!form.title)return;
+    if(editing){
+      await updateDoc(doc(db,"tasks",editing),{...form});
+      setEditingTask(null);
+    }else{
+      await addDoc(collection(db,"tasks"),{...form,completedBy:[],createdAt:new Date().toISOString()});
+    }
+    setForm({title:"",description:"",zone:"",assignedTo:"todos",date:new Date().toISOString().slice(0,10)});
+  };
+  const startEdit=t=>{setForm({title:t.title,description:t.description||"",zone:t.zone||"",assignedTo:t.assignedTo||"todos",date:t.date});setEditingTask(t.id);window.scrollTo(0,0);};
+  const cancelEdit=()=>{setEditingTask(null);setForm({title:"",description:"",zone:"",assignedTo:"todos",date:new Date().toISOString().slice(0,10)});};
   const today=new Date().toISOString().slice(0,10);
   const inp2={padding:"8px 12px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:13,width:"100%",boxSizing:"border-box"};
   return(
     <div>
       <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px",marginBottom:16}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>AGREGAR TAREA</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#444"}}>{editing?"✎ EDITAR TAREA":"AGREGAR TAREA"}</div>
+          {editing&&<span style={{fontSize:11,color:"#f39c12",background:"#fef9e7",border:"1px solid #f39c1244",borderRadius:6,padding:"2px 8px"}}>Editando tarea</span>}
+        </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
           <div style={{gridColumn:"1/-1"}}><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>TÍTULO *</label><input value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))} placeholder="Ej: Revisar pH Zona A" style={inp2}/></div>
           <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>ZONA</label><input value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} placeholder="Zona A" style={inp2}/></div>
@@ -595,7 +730,10 @@ function TareasAdmin(){
           <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>FECHA</label><input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={inp2}/></div>
           <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>DESCRIPCIÓN</label><input value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} placeholder="Detalles..." style={inp2}/></div>
         </div>
-        <button onClick={addTask} style={{padding:"9px 24px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>+ Agregar tarea</button>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={addTask} style={{padding:"9px 24px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>{editing?"Guardar cambios":"+ Agregar tarea"}</button>
+          {editing&&<button onClick={cancelEdit} style={{padding:"9px 16px",border:"1px solid #e0e0e0",borderRadius:8,background:"transparent",color:"#888",cursor:"pointer",fontSize:13}}>Cancelar</button>}
+        </div>
       </div>
       {!tasks.length&&<div style={{background:"#fff",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa"}}>Sin tareas creadas</div>}
       {tasks.map(t=>(
@@ -613,7 +751,10 @@ function TareasAdmin(){
               {t.completedBy?.length>0&&<span style={{color:"#27ae60"}}>✓ {t.completedBy.join(", ")}</span>}
             </div>
           </div>
-          <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} style={{background:"none",border:"none",color:"#ddd",cursor:"pointer",fontSize:18}}>✕</button>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>startEdit(t)} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12,color:"#2980b9",fontWeight:600}}>✎</button>
+            <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12,color:"#c0392b",fontWeight:600}}>✕</button>
+          </div>
         </div>
       ))}
     </div>
