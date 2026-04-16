@@ -1,6 +1,11 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Worker from "./Worker";
 import Ventas from "./Ventas";
+import LoginScreen from "./Auth";
+import UsuariosAdmin from "./UsuariosAdmin";
+import { auth } from "./firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from "recharts";
 import { db } from "./firebase";
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where } from "firebase/firestore";
@@ -922,18 +927,41 @@ const NAV=[
   {id:"trabajadores",label:"Equipo",icon:"◎"},
   {id:"suelo", label:"Análisis de Suelo", icon:"🌍"},
   {id:"ventas", label:"Ventas", icon:"💰"},
+  {id:"usuarios", label:"Usuarios", icon:"👥"},
 ];
-const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas"};
+const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas",usuarios:"Gestión de usuarios"};
 
 export default function App(){
   const [page,setPage]=useState("resumen");
   const [readings,setReadings]=useState([]);
   const [loading,setLoading]=useState(true);
-  const [isAdmin,setIsAdmin]=useState(false);
+  const [authLoading,setAuthLoading]=useState(true);
+  const [currentUser,setCurrentUser]=useState(null);
+  const [userRole,setUserRole]=useState(null);
 
   useEffect(()=>{
-    const p=new URLSearchParams(window.location.search);
-    if(p.get("admin")==="greenlog2026")setIsAdmin(true);
+    const unsub = onAuthStateChanged(auth, async user => {
+      if(user){
+        setCurrentUser(user);
+        try {
+          const snap = await getDoc(doc(db,"usuarios",user.uid));
+          if(snap.exists()){
+            setUserRole(snap.data().rol);
+          } else {
+            // Buscar por email en usuarios
+            const { query:q, collection:col, where, getDocs } = await import("firebase/firestore");
+            const qs = await getDocs(q(col(db,"usuarios"),where("email","==",user.email)));
+            if(!qs.empty) setUserRole(qs.docs[0].data().rol);
+            else setUserRole("trabajador");
+          }
+        } catch { setUserRole("trabajador"); }
+      } else {
+        setCurrentUser(null);
+        setUserRole(null);
+      }
+      setAuthLoading(false);
+    });
+    return()=>unsub();
   },[]);
 
   useEffect(()=>{
@@ -945,10 +973,19 @@ export default function App(){
   const handleDelete=async id=>{try{await deleteDoc(doc(db,"readings",id));}catch{alert("Error al eliminar.");}};
   const alerts=readings.filter(r=>{const c=CROPS[r.crop];return c&&(getStatus(r.ph,c.ph)==="danger"||getStatus(r.ce,c.ce)==="danger");});
 
-  if(!isAdmin) return <Worker/>;
+  // Auth loading
+  if(authLoading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(160deg,#0f1e2e,#1a3a2a)"}}><div style={{textAlign:"center",color:"#fff"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#4ecb8d",marginTop:4}}>Cargando...</div></div></div>;
+
+  // Not logged in
+  if(!currentUser) return <LoginScreen/>;
+
+  // Logged in as worker
+  if(userRole==="trabajador") return <Worker user={currentUser}/>;
+
+  // Data loading for admin
   if(loading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f4f5f7"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,color:"#27ae60",fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#aaa",marginTop:4}}>Cargando...</div></div></div>;
 
-  const SECTION={suelo:<AnalisisSuelo />,resumen:<Resumen readings={readings} onDelete={handleDelete}/>,alertas:<Alertas readings={readings} onDelete={handleDelete}/>,ia:<DiagnosticoIA/>,reportes:<Reportes readings={readings} onDelete={handleDelete}/>,formulador:<Formulador/>,incidencias:<IncidenciasAdmin/>,tareas:<TareasAdmin/>,instrucciones:<InstruccionesAdmin/>,inventario:<Inventario/>,trabajadores:<Trabajadores readings={readings}/>,ventas:<Ventas/>};
+  const SECTION={suelo:<AnalisisSuelo />,resumen:<Resumen readings={readings} onDelete={handleDelete}/>,alertas:<Alertas readings={readings} onDelete={handleDelete}/>,ia:<DiagnosticoIA/>,reportes:<Reportes readings={readings} onDelete={handleDelete}/>,formulador:<Formulador/>,incidencias:<IncidenciasAdmin/>,tareas:<TareasAdmin/>,instrucciones:<InstruccionesAdmin/>,inventario:<Inventario/>,trabajadores:<Trabajadores readings={readings}/>,ventas:<Ventas/>,usuarios:<UsuariosAdmin/>};
 
   return(
     <div style={{display:"flex",minHeight:"100vh",background:"#f4f5f7",fontFamily:"'Georgia',serif"}}>
@@ -978,7 +1015,12 @@ export default function App(){
           <h1 style={{margin:0,fontSize:18,fontWeight:700,color:"#1a2533"}}>{TITLES[page]}</h1>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             {alerts.length>0&&<div style={{background:"#fdedec",border:"1px solid #f5c6c6",borderRadius:20,padding:"5px 12px",fontSize:12,color:"#c0392b",fontWeight:600,cursor:"pointer"}} onClick={()=>setPage("alertas")}>🚨 {alerts.length} alerta{alerts.length>1?"s":""}</div>}
-            <div style={{width:34,height:34,borderRadius:"50%",background:"#1a2533",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12,color:"#4ecb8d",border:"2px solid #4ecb8d"}}>JL</div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:34,height:34,borderRadius:"50%",background:"#1a2533",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12,color:"#4ecb8d",border:"2px solid #4ecb8d"}}>
+                {currentUser?.email?.slice(0,2).toUpperCase()||"JL"}
+              </div>
+              <button onClick={()=>signOut(auth)} style={{padding:"5px 10px",border:"1px solid #3a5060",borderRadius:8,background:"transparent",color:"#7a9ab0",cursor:"pointer",fontSize:11}}>Salir</button>
+            </div>
           </div>
         </div>
         <div style={{padding:"20px 24px",maxWidth:1000,margin:"0 auto"}}>{SECTION[page]}</div>

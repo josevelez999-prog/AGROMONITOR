@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 import { collection, addDoc, onSnapshot, query, where, orderBy, doc } from "firebase/firestore";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { signOut } from "firebase/auth";
 
 const CROPS = {
   jitomate:  { name:"Jitomate",  emoji:"🍅", color:"#c0392b", ph:{min:5.5,max:6.5}, ce:{min:2.5,max:4.0} },
@@ -65,28 +66,6 @@ const LBL = {
   fontFamily:"'Courier New',monospace", fontWeight:600,
 };
 
-// ─── LOGIN ─────────────────────────────────────────────────────────────────────
-function Login({ onLogin }) {
-  const [name, setName] = useState("");
-  return (
-    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#f0faf5,#f4f5f7)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
-      <div style={{background:"#fff",borderRadius:16,padding:32,maxWidth:360,width:"100%",boxShadow:"0 4px 24px #0001",textAlign:"center"}}>
-        <div style={{fontSize:48,marginBottom:8}}>🌿</div>
-        <div style={{fontWeight:700,fontSize:24,color:"#27ae60",marginBottom:4}}>GreenLog</div>
-        <div style={{fontSize:13,color:"#aaa",marginBottom:28}}>Portal de trabajadores</div>
-        <label style={{...LBL,textAlign:"left"}}>Tu nombre</label>
-        <input value={name} onChange={e=>setName(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&name.trim()&&onLogin(name.trim())}
-          placeholder="Ej: Carlos García"
-          style={{...INP,marginBottom:16,textAlign:"center"}}/>
-        <button onClick={()=>name.trim()&&onLogin(name.trim())} disabled={!name.trim()}
-          style={{width:"100%",padding:13,background:name.trim()?"#27ae60":"#d5e8d4",color:"#fff",border:"none",borderRadius:10,cursor:name.trim()?"pointer":"not-allowed",fontSize:15,fontWeight:700}}>
-          Entrar
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ─── REGISTRO pH/CE ────────────────────────────────────────────────────────────
 function Registro({ worker }) {
@@ -721,11 +700,27 @@ const TABS = [
   { id:"instrucciones",label:"Info",      icon:"📋" },
 ];
 
-export default function Worker() {
-  const [worker, setWorker] = useState(()=>localStorage.getItem("gl_worker")||"");
+export default function Worker({ user }) {
   const [tab, setTab] = useState("registro");
+  // Nombre del trabajador desde Firebase Auth o Firestore
+  const [workerName, setWorkerName] = useState("");
 
-  if (!worker) return <Login onLogin={n=>{localStorage.setItem("gl_worker",n);setWorker(n);}}/>;
+  useEffect(()=>{
+    if(!user) return;
+    // Extraer nombre del email: carlos.garcia@greenlog.app → Carlos Garcia
+    const emailUser = user.email?.split("@")[0] || "trabajador";
+    const nombre = user.displayName ||
+      emailUser.split(".").map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(" ");
+    setWorkerName(nombre);
+    // Buscar nombre real en Firestore
+    import("firebase/firestore").then(({query:q,collection:col,where,getDocs})=>{
+      getDocs(q(col(db,"usuarios"),where("email","==",user.email))).then(snap=>{
+        if(!snap.empty) setWorkerName(snap.docs[0].data().nombre);
+      }).catch(()=>{});
+    });
+  },[user]);
+
+  const worker = workerName || user?.email?.split("@")[0] || "Trabajador";
 
   const CONTENT = {
     registro:      <Registro worker={worker}/>,
@@ -746,7 +741,7 @@ export default function Worker() {
             <div style={{fontSize:10,color:"#aaa",fontFamily:"'Courier New',monospace"}}>Hola, {worker}</div>
           </div>
         </div>
-        <button onClick={()=>{localStorage.removeItem("gl_worker");setWorker("");}}
+        <button onClick={()=>signOut(auth)}
           style={{background:"none",border:"1px solid #e0e0e0",borderRadius:8,color:"#aaa",cursor:"pointer",fontSize:12,padding:"4px 10px"}}>
           Salir
         </button>
