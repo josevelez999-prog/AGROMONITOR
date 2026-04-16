@@ -233,7 +233,6 @@ function MiHistorial({ worker }) {
 
 // ─── COSECHA / VENTA / VALIDACIÓN ─────────────────────────────────────────────
 function RegistroCosecha({ worker }) {
-  const [subtab, setSubtab] = useState("cosecha");
   const [lotes, setLotes] = useState([]);
   const [preciosSugeridos, setPreciosSugeridos] = useState({});
   const [saving, setSaving] = useState(false);
@@ -354,51 +353,49 @@ function RegistroCosecha({ worker }) {
 
   return (
     <div>
-      {saved==="cosecha"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>✓ Cosecha registrada</div>}
-      {saved==="venta"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>✓ Venta registrada</div>}
-      {saved==="validacion"&&<div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:12,marginBottom:12,color:"#1a5276",fontWeight:600,textAlign:"center"}}>✓ Validación registrada</div>}
+      {saved==="cosecha"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>🧺 Cosecha registrada — aparece en el panel del encargado</div>}
+      {saved==="venta"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>💰 Venta registrada — aparece en el panel del encargado</div>}
 
-      {/* Sub-pestañas */}
-      <div style={{display:"flex",gap:4,marginBottom:16,background:"#ebebeb",borderRadius:12,padding:4}}>
-        {[["cosecha","🧺 Cosecha"],["venta","💰 Venta"],["validacion","🏷️ Validar"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setSubtab(k)}
-            style={{flex:1,padding:"10px 4px",border:"none",borderRadius:10,background:subtab===k?"#27ae60":"transparent",color:subtab===k?"#fff":"#555",cursor:"pointer",fontSize:13,fontWeight:subtab===k?700:500}}>
-            {l}
-          </button>
-        ))}
-      </div>
 
       {/* ── COSECHA ── */}
-      {subtab==="cosecha"&&(
-        <div>
-          <LoteSelector value={formC.loteId} onChange={v=>setFormC(p=>({...p,loteId:v}))}/>
-          {formC.loteId&&(
-            <>
-              <div style={{marginBottom:16}}>
-                <label style={LBL}>Kg cosechados hoy *</label>
-                <input type="number" step="0.1" min="0" value={formC.kgCosechados}
-                  onChange={e=>setFormC(p=>({...p,kgCosechados:e.target.value}))}
-                  placeholder="Ej: 45.5"
-                  style={{...INP,fontSize:24,fontWeight:700,textAlign:"center",fontFamily:"'Courier New',monospace"}}/>
-              </div>
-              <CalidadSelector value={formC.calidad} onChange={v=>setFormC(p=>({...p,calidad:v}))}/>
-              <div style={{marginBottom:16}}>
-                <label style={LBL}>Observaciones</label>
-                <textarea value={formC.notas} onChange={e=>setFormC(p=>({...p,notas:e.target.value}))}
-                  placeholder="Estado del producto..." style={{...INP,minHeight:70,resize:"vertical"}}/>
-              </div>
-              <button onClick={submitCosecha} disabled={saving}
-                style={{width:"100%",padding:15,background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
-                {saving?"Guardando...":"🧺 Registrar cosecha"}
-              </button>
-            </>
-          )}
+      <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px",marginBottom:20}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#27ae60",marginBottom:14,letterSpacing:0.3,display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:16}}>🧺</span> REGISTRO DE COSECHA
         </div>
-      )}
+        <LoteSelector value={formC.loteId} onChange={v=>setFormC(p=>({...p,loteId:v}))}/>
+        {formC.loteId&&(
+          <>
+            <div style={{marginBottom:16}}>
+              <label style={LBL}>Kg cosechados hoy *</label>
+              <input type="number" step="0.1" min="0" value={formC.kgCosechados}
+                onChange={e=>setFormC(p=>({...p,kgCosechados:e.target.value}))}
+                placeholder="Ej: 45.5"
+                style={{...INP,fontSize:24,fontWeight:700,textAlign:"center",fontFamily:"'Courier New',monospace"}}/>
+            </div>
+            <CalidadSelector value={formC.calidad} onChange={v=>setFormC(p=>({...p,calidad:v}))}/>
+            <div style={{marginBottom:16}}>
+              <label style={LBL}>Observaciones</label>
+              <textarea value={formC.notas} onChange={e=>setFormC(p=>({...p,notas:e.target.value}))}
+                placeholder="Estado del producto, condiciones de la cosecha..."
+                style={{...INP,minHeight:70,resize:"vertical"}}/>
+            </div>
+            <button onClick={submitCosecha} disabled={saving}
+              style={{width:"100%",padding:14,background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+              {saving?"Guardando...":"🧺 Registrar cosecha del día"}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Divisor */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+        <div style={{flex:1,height:1,background:"#e0e0e0"}}/>
+        <span style={{fontSize:11,color:"#aaa",fontWeight:600,letterSpacing:0.5}}>REGISTRO DE VENTA</span>
+        <div style={{flex:1,height:1,background:"#e0e0e0"}}/>
+      </div>
 
       {/* ── VENTA ── */}
-      {subtab==="venta"&&(
-        <div>
+      <div>
           <LoteSelector value={formV.loteId} onChange={v=>setFormV(p=>({...p,loteId:v}))}/>
           <div style={{marginBottom:16}}>
             <label style={LBL}>Comprador / Cliente *</label>
@@ -472,89 +469,8 @@ function RegistroCosecha({ worker }) {
             {saving?"Guardando...":"💰 Registrar venta"}
           </button>
         </div>
-      )}
 
-      {/* ── VALIDACIÓN DE TRATAMIENTO ── */}
-      {subtab==="validacion"&&(
-        <div>
-          <div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1a5276"}}>
-            🏷️ Confirma el tratamiento del producto antes de que salga de la unidad
-          </div>
-          <LoteSelector value={formVL.loteId} onChange={v=>setFormVL(p=>({...p,loteId:v}))}/>
-          {formVL.loteId&&(()=>{
-            const lote=getLote(formVL.loteId);
-            const crop=CROPS[lote?.crop];
-            return (
-              <>
-                {/* Vista previa etiqueta */}
-                <div style={{background:"#fff",border:"2px solid #2980b9",borderRadius:12,padding:16,marginBottom:16,textAlign:"center"}}>
-                  <div style={{fontSize:10,color:"#aaa",letterSpacing:1,marginBottom:4,fontFamily:"'Courier New',monospace"}}>ETIQUETA DEL PRODUCTO</div>
-                  <div style={{fontSize:28,marginBottom:2}}>{crop?.emoji||"🌱"}</div>
-                  <div style={{fontWeight:700,fontSize:16,color:crop?.color||"#333",marginBottom:2}}>{crop?.name||""}</div>
-                  <div style={{fontSize:13,color:"#555",marginBottom:6}}>{lote?.zona}</div>
-                  <div style={{display:"inline-block",background:"#2980b9",color:"#fff",borderRadius:20,padding:"4px 18px",fontWeight:700,fontSize:14,minWidth:100,minHeight:30,lineHeight:"30px"}}>
-                    {formVL.etiqueta||"—"}
-                  </div>
-                  {formVL.kgValidados>0&&<div style={{fontSize:12,color:"#27ae60",fontWeight:700,marginTop:6}}>{formVL.kgValidados} kg</div>}
-                  <div style={{fontSize:10,color:"#aaa",marginTop:4}}>{formVL.fecha}</div>
-                </div>
-                <div style={{marginBottom:16}}>
-                  <label style={LBL}>Nombre del producto / tratamiento *</label>
-                  <input value={formVL.etiqueta}
-                    onChange={e=>setFormVL(p=>({...p,etiqueta:e.target.value}))}
-                    placeholder="Ej: Confidor 350 SC, Ridomil Gold, Sulfato de cobre..."
-                    style={INP}/>
-                  <div style={{fontSize:11,color:"#888",marginTop:5}}>Escribe el nombre exacto del producto tal como aparece en la etiqueta</div>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-                  <div>
-                    <label style={LBL}>Kg validados *</label>
-                    <input type="number" step="0.1" min="0" value={formVL.kgValidados}
-                      onChange={e=>setFormVL(p=>({...p,kgValidados:e.target.value}))}
-                      placeholder="0.0"
-                      style={{...INP,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
-                  </div>
-                  <div>
-                    <label style={LBL}>
-                      Precio venta $/kg
-                      {(()=>{
-                        const sug=getPrecio(lote?.crop,"primera");
-                        return sug?<span style={{color:"#27ae60",fontSize:10,marginLeft:3,cursor:"pointer"}} onClick={()=>setFormVL(p=>({...p,precioVenta:sug}))}>· ${sug} ↵</span>:null;
-                      })()}
-                    </label>
-                    <input type="number" step="0.5" min="0" value={formVL.precioVenta}
-                      onChange={e=>setFormVL(p=>({...p,precioVenta:e.target.value}))}
-                      placeholder="0.00"
-                      style={{...INP,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
-                  </div>
-                </div>
-                {parseFloat(formVL.kgValidados)>0&&parseFloat(formVL.precioVenta)>0&&(
-                  <div style={{background:"#eaf4fb",border:"2px solid #b5d4f4",borderRadius:12,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span style={{fontSize:14,color:"#1a5276",fontWeight:600}}>Valor estimado:</span>
-                    <span style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#2980b9"}}>
-                      ${(parseFloat(formVL.kgValidados)*parseFloat(formVL.precioVenta)).toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                <div style={{marginBottom:16}}>
-                  <label style={LBL}>Fecha de salida</label>
-                  <input type="date" value={formVL.fecha} onChange={e=>setFormVL(p=>({...p,fecha:e.target.value}))} style={INP}/>
-                </div>
-                <div style={{marginBottom:16}}>
-                  <label style={LBL}>Observaciones</label>
-                  <textarea value={formVL.observaciones} onChange={e=>setFormVL(p=>({...p,observaciones:e.target.value}))}
-                    placeholder="Estado del producto, destino, condiciones..."
-                    style={{...INP,minHeight:70,resize:"vertical"}}/>
-                </div>
-                <button onClick={submitValidacion} disabled={saving}
-                  style={{width:"100%",padding:15,background:saving?"#aaa":"#2980b9",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
-                  {saving?"Guardando...":"🏷️ Confirmar validación"}
-                </button>
-              </>
-            );
-          })()}
-        </div>
-      )}
+
     </div>
   );
 }

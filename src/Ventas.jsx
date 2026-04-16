@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 import { db } from "./firebase";
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, setDoc, getDoc } from "firebase/firestore";
 
@@ -519,121 +520,332 @@ function RegistroVentas() {
 // ─── REPORTES DE VENTAS ───────────────────────────────────────────────────────
 function ReportesVentas() {
   const [ventas, setVentas] = useState([]);
+  const [cosechas, setCosechas] = useState([]);
   const [lotes, setLotes] = useState([]);
   const [filterCrop, setFilterCrop] = useState("all");
-  const [filterCanal, setFilterCanal] = useState("all");
+  const [filterPeriodo, setFilterPeriodo] = useState("todo");
 
   useEffect(() => {
     const q1 = query(collection(db,"ventas"), orderBy("createdAt","desc"));
     const unsub1 = onSnapshot(q1, snap => setVentas(snap.docs.map(d=>({id:d.id,...d.data()}))));
     const q2 = query(collection(db,"lotes"), orderBy("createdAt","desc"));
     const unsub2 = onSnapshot(q2, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
-    return () => { unsub1(); unsub2(); };
+    const q3 = query(collection(db,"cosechas_trabajador"), orderBy("createdAt","desc"));
+    const unsub3 = onSnapshot(q3, snap => setCosechas(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, []);
 
-  const filtered = ventas.filter(v => {
-    if (filterCrop !== "all" && v.crop !== filterCrop) return false;
-    if (filterCanal !== "all" && v.canal !== filterCanal) return false;
-    return true;
-  });
+  // Filtro por periodo
+  const now = new Date();
+  const filtrarPeriodo = (arr, campo="createdAt") => {
+    if (filterPeriodo === "todo") return arr;
+    const dias = filterPeriodo === "7d" ? 7 : filterPeriodo === "30d" ? 30 : 90;
+    const desde = new Date(now - dias * 86400000).toISOString();
+    return arr.filter(x => (x[campo]||"") >= desde);
+  };
 
-  // Por cultivo
-  const porCultivo = useMemo(() => {
+  const ventasFilt = filtrarPeriodo(ventas).filter(v => filterCrop === "all" || v.crop === filterCrop);
+  const cosechasFilt = filtrarPeriodo(cosechas).filter(c => filterCrop === "all" || c.crop === filterCrop);
+
+  // ── KPIs globales ──
+  const totalIngresos = ventasFilt.reduce((s,v)=>s+v.totalVenta,0);
+  const totalKgVendidos = ventasFilt.reduce((s,v)=>s+v.kgVendidos,0);
+  const totalKgCosechados = cosechasFilt.reduce((s,c)=>s+c.kgCosechados,0);
+  const precioPromedio = totalKgVendidos > 0 ? totalIngresos/totalKgVendidos : 0;
+  const eficiencia = totalKgCosechados > 0 ? Math.min((totalKgVendidos/totalKgCosechados)*100, 100) : 0;
+
+  // ── Por cultivo — ventas ──
+  const porCultivoV = useMemo(() => {
     const map = {};
-    ventas.forEach(v => {
+    ventasFilt.forEach(v => {
       if (!map[v.crop]) map[v.crop] = { kg:0, total:0, ventas:0 };
       map[v.crop].kg += v.kgVendidos;
       map[v.crop].total += v.totalVenta;
-      map[v.crop].ventas += 1;
+      map[v.crop].ventas++;
     });
     return map;
-  }, [ventas]);
+  }, [ventasFilt]);
 
-  // Por canal
+  // ── Por cultivo — cosechas ──
+  const porCultivoC = useMemo(() => {
+    const map = {};
+    cosechasFilt.forEach(c => {
+      if (!map[c.crop]) map[c.crop] = { kg:0, registros:0 };
+      map[c.crop].kg += c.kgCosechados;
+      map[c.crop].registros++;
+    });
+    return map;
+  }, [cosechasFilt]);
+
+  // ── Comparativo cosecha vs venta por cultivo ──
+  const comparativo = useMemo(() => {
+    const crops = [...new Set([...Object.keys(porCultivoV), ...Object.keys(porCultivoC)])];
+    return crops.map(k => ({
+      name: CROPS[k]?.name || k,
+      emoji: CROPS[k]?.emoji || "🌱",
+      color: CROPS[k]?.color || "#27ae60",
+      cosechado: Math.round(porCultivoC[k]?.kg || 0),
+      vendido: Math.round(porCultivoV[k]?.kg || 0),
+      ingresos: Math.round(porCultivoV[k]?.total || 0),
+    }));
+  }, [porCultivoV, porCultivoC]);
+
+  // ── Por canal ──
   const porCanal = useMemo(() => {
     const map = {};
-    ventas.forEach(v => {
+    ventasFilt.forEach(v => {
       if (!map[v.canal]) map[v.canal] = { kg:0, total:0 };
       map[v.canal].kg += v.kgVendidos;
       map[v.canal].total += v.totalVenta;
     });
     return Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
-  }, [ventas]);
+  }, [ventasFilt]);
 
-  // Por tratamiento
-  const porTratamiento = useMemo(() => {
-    const map = {};
-    ventas.forEach(v => {
-      const t = v.tratamiento || "sin_datos";
-      if (!map[t]) map[t] = { kg:0, total:0 };
-      map[t].kg += v.kgVendidos;
-      map[t].total += v.totalVenta;
-    });
-    return Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
-  }, [ventas]);
-
-  // Por calidad
+  // ── Por calidad ──
   const porCalidad = useMemo(() => {
     const map = {};
-    ventas.forEach(v => {
+    ventasFilt.forEach(v => {
       if (!map[v.calidad]) map[v.calidad] = { kg:0, total:0 };
       map[v.calidad].kg += v.kgVendidos;
       map[v.calidad].total += v.totalVenta;
     });
     return map;
-  }, [ventas]);
+  }, [ventasFilt]);
 
-  const totalGeneral = ventas.reduce((s,v)=>s+v.totalVenta,0);
+  // ── Por tratamiento ──
+  const porTratamiento = useMemo(() => {
+    const map = {};
+    ventasFilt.forEach(v => {
+      const t = v.tratamiento || "convencional";
+      if (!map[t]) map[t] = { kg:0, total:0 };
+      map[t].kg += v.kgVendidos;
+      map[t].total += v.totalVenta;
+    });
+    return Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
+  }, [ventasFilt]);
 
-  // Exportar CSV
+  // ── Calidad cosechas ──
+  const calCosecha = useMemo(() => {
+    const map = {};
+    cosechasFilt.forEach(c => {
+      if (!map[c.calidad]) map[c.calidad] = { kg:0 };
+      map[c.calidad].kg += c.kgCosechados;
+    });
+    return map;
+  }, [cosechasFilt]);
+
+  // ── Tendencia por fecha (últimas ventas agrupadas) ──
+  const tendencia = useMemo(() => {
+    const map = {};
+    [...ventasFilt].sort((a,b)=>a.fecha?.localeCompare(b.fecha)).forEach(v => {
+      const d = v.fecha?.slice(5) || "";
+      if (!map[d]) map[d] = { fecha:d, ingresos:0, kg:0 };
+      map[d].ingresos += Math.round(v.totalVenta);
+      map[d].kg += Math.round(v.kgVendidos);
+    });
+    return Object.values(map).slice(-14);
+  }, [ventasFilt]);
+
   const exportCSV = () => {
     const h = ["Fecha","Cultivo","Lote","Tratamiento","Comprador","Canal","Calidad","Kg","$/kg","Total","Folio"];
-    const rows = filtered.map(v => {
+    const rows = ventasFilt.map(v => {
       const trat = TRATAMIENTOS.find(t=>t.id===v.tratamiento);
       const cal = CALIDADES.find(c=>c.id===v.calidad);
       return [v.fecha,v.cropName||"",v.loteName||"",trat?.label||"",v.comprador,v.canal,cal?.label||"",v.kgVendidos,v.precioKg,v.totalVenta,v.factura||""].map(x=>`"${x}"`).join(",");
     });
     const blob = new Blob(["\uFEFF",[h.join(","),...rows].join("\n")],{type:"text/csv;charset=utf-8;"});
-    const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`ventas_greenlog_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`ventas_${new Date().toISOString().slice(0,10)}.csv`; a.click();
   };
+
+  const fmt = v => Number(v||0).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});
 
   return (
     <div>
+      {/* ── FILTROS ── */}
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-        <select value={filterCrop} onChange={e=>setFilterCrop(e.target.value)} style={{padding:"7px 12px",border:"1px solid #e0e0e0",borderRadius:20,fontSize:12,color:"#555",background:"#fff"}}>
-          <option value="all">Todos los cultivos</option>
+        <select value={filterCrop} onChange={e=>setFilterCrop(e.target.value)} style={{...INP,padding:"8px 14px",borderRadius:20,fontSize:12,width:"auto"}}>
+          <option value="all">🌱 Todos los cultivos</option>
           {Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}
         </select>
-        <select value={filterCanal} onChange={e=>setFilterCanal(e.target.value)} style={{padding:"7px 12px",border:"1px solid #e0e0e0",borderRadius:20,fontSize:12,color:"#555",background:"#fff"}}>
-          <option value="all">Todos los canales</option>
-          {CANALES.map(c=><option key={c} value={c}>{c}</option>)}
+        <select value={filterPeriodo} onChange={e=>setFilterPeriodo(e.target.value)} style={{...INP,padding:"8px 14px",borderRadius:20,fontSize:12,width:"auto"}}>
+          <option value="todo">📅 Todo el tiempo</option>
+          <option value="7d">Últimos 7 días</option>
+          <option value="30d">Últimos 30 días</option>
+          <option value="90d">Últimos 90 días</option>
         </select>
-        <button onClick={exportCSV} style={{marginLeft:"auto",padding:"7px 16px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ Exportar CSV</button>
+        <button onClick={exportCSV} style={{marginLeft:"auto",padding:"8px 16px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
       </div>
 
-      {/* Por cultivo */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:16}}>
-        {Object.entries(porCultivo).map(([k,data])=>{
-          const crop = CROPS[k];
-          const pct = totalGeneral>0 ? n(data.total/totalGeneral*100,1) : 0;
-          return (
-            <div key={k} style={{background:"#fff",border:`1px solid ${crop?.color}33`,borderTop:`3px solid ${crop?.color}`,borderRadius:12,padding:"14px 16px"}}>
-              <div style={{fontWeight:700,color:crop?.color,fontSize:14,marginBottom:10}}>{crop?.emoji} {crop?.name}</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <div style={{textAlign:"center",background:"#f9f9f9",borderRadius:8,padding:"8px"}}><div style={{fontSize:16,fontWeight:700,color:"#27ae60",fontFamily:"'Courier New',monospace"}}>${fmt(data.total)}</div><div style={{fontSize:9,color:"#aaa"}}>Ingresos</div></div>
-                <div style={{textAlign:"center",background:"#f9f9f9",borderRadius:8,padding:"8px"}}><div style={{fontSize:16,fontWeight:700,color:"#2980b9",fontFamily:"'Courier New',monospace"}}>{fmt(data.kg)} kg</div><div style={{fontSize:9,color:"#aaa"}}>Volumen</div></div>
-              </div>
-              <div style={{marginTop:8,background:"#f0f0f0",borderRadius:3,height:5,overflow:"hidden"}}>
-                <div style={{width:`${pct}%`,height:"100%",background:crop?.color,borderRadius:3}}/>
-              </div>
-              <div style={{fontSize:10,color:"#aaa",marginTop:3,textAlign:"right"}}>{pct}% del total</div>
+      {/* ── KPIs GLOBALES ── */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:20}}>
+        {[
+          {icon:"💰",label:"Ingresos totales",v:`$${fmt(totalIngresos)}`,c:"#27ae60"},
+          {icon:"⚖️",label:"Kg vendidos",v:`${fmt(totalKgVendidos)} kg`,c:"#2980b9"},
+          {icon:"🧺",label:"Kg cosechados",v:`${fmt(totalKgCosechados)} kg`,c:"#8e44ad"},
+          {icon:"📊",label:"Precio promedio/kg",v:`$${fmt(precioPromedio)}`,c:"#e67e22"},
+          {icon:"🎯",label:"Eficiencia venta",v:`${eficiencia.toFixed(1)}%`,c:eficiencia>=80?"#27ae60":eficiencia>=60?"#f39c12":"#e74c3c"},
+          {icon:"🏷️",label:"Transacciones",v:ventasFilt.length,c:"#7f8c8d"},
+        ].map(k=>(
+          <div key={k.label} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 16px"}}>
+            <div style={{fontSize:20}}>{k.icon}</div>
+            <div style={{fontSize:22,fontWeight:700,color:k.c,fontFamily:"'Courier New',monospace",lineHeight:1.1,marginTop:4}}>{k.v}</div>
+            <div style={{fontSize:10,color:"#888",marginTop:2}}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── GRÁFICA TENDENCIA ── */}
+      {tendencia.length >= 2 && (
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:14,letterSpacing:0.3}}>📈 TENDENCIA DE INGRESOS</div>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={tendencia} margin={{top:5,right:20,left:0,bottom:0}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+              <XAxis dataKey="fecha" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={50} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`}/>
+              <Tooltip formatter={(v,n)=>n==="ingresos"?[`$${v.toLocaleString("es-MX")}`,`Ingresos`]:[`${v} kg`,"Kg"]} contentStyle={{fontSize:11,borderRadius:8,border:"1px solid #e0e0e0"}}/>
+              <Legend wrapperStyle={{fontSize:11}}/>
+              <Line type="monotone" dataKey="ingresos" name="Ingresos $" stroke="#27ae60" strokeWidth={2.5} dot={{r:3}} activeDot={{r:5}}/>
+              <Line type="monotone" dataKey="kg" name="Kg vendidos" stroke="#2980b9" strokeWidth={2} dot={{r:3}} strokeDasharray="4 2"/>
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* ── COSECHA VS VENTA POR CULTIVO ── */}
+      {comparativo.length > 0 && (
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:14,letterSpacing:0.3}}>🧺 COSECHA VS VENTA POR CULTIVO (kg)</div>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={comparativo} margin={{top:5,right:20,left:0,bottom:0}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+              <XAxis dataKey="name" tick={{fontSize:11,fill:"#555"}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={40}/>
+              <Tooltip contentStyle={{fontSize:11,borderRadius:8,border:"1px solid #e0e0e0"}}/>
+              <Legend wrapperStyle={{fontSize:11}}/>
+              <Bar dataKey="cosechado" name="Kg cosechados" radius={[4,4,0,0]}>
+                {comparativo.map((d,i)=><Cell key={i} fill={d.color+"88"}/>)}
+              </Bar>
+              <Bar dataKey="vendido" name="Kg vendidos" radius={[4,4,0,0]}>
+                {comparativo.map((d,i)=><Cell key={i} fill={d.color}/>)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          {/* Tarjetas por cultivo */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:10,marginTop:14}}>
+            {comparativo.map(d=>{
+              const pct = d.cosechado > 0 ? Math.min((d.vendido/d.cosechado)*100,100) : 0;
+              return (
+                <div key={d.name} style={{background:"#f9f9f9",borderRadius:10,padding:"12px 14px",borderLeft:`4px solid ${d.color}`}}>
+                  <div style={{fontWeight:700,color:d.color,marginBottom:6}}>{d.emoji} {d.name}</div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                    <span style={{color:"#888"}}>Cosechado</span>
+                    <span style={{fontFamily:"'Courier New',monospace",fontWeight:700}}>{d.cosechado.toLocaleString()} kg</span>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
+                    <span style={{color:"#888"}}>Vendido</span>
+                    <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:d.color}}>{d.vendido.toLocaleString()} kg</span>
+                  </div>
+                  <div style={{background:"#e0e0e0",borderRadius:4,height:6,overflow:"hidden"}}>
+                    <div style={{width:`${pct}%`,height:"100%",background:d.color,borderRadius:4,transition:"width 0.5s"}}/>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+                    <span style={{fontSize:10,color:"#aaa"}}>{pct.toFixed(1)}% comercializado</span>
+                    <span style={{fontSize:11,fontWeight:700,color:"#27ae60",fontFamily:"'Courier New',monospace"}}>${Math.round(d.ingresos).toLocaleString()}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── 4 GRÁFICAS ── */}
+      {ventasFilt.length >= 2 && (
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+
+          {/* Ingresos por cultivo */}
+          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12,letterSpacing:0.3}}>INGRESOS POR CULTIVO ($)</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={Object.entries(porCultivoV).map(([k,d])=>({name:CROPS[k]?.name||k,ingresos:Math.round(d.total)}))} margin={{top:5,right:10,left:0,bottom:0}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                <XAxis dataKey="name" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+                <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={45} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`}/>
+                <Tooltip formatter={v=>[`$${v.toLocaleString("es-MX")}`,""]} contentStyle={{fontSize:11,borderRadius:8}}/>
+                <Bar dataKey="ingresos" radius={[4,4,0,0]}>
+                  {Object.entries(porCultivoV).map(([k],i)=><Cell key={i} fill={CROPS[k]?.color||"#27ae60"}/>)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Calidad cosecha vs venta - donut */}
+          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:4,letterSpacing:0.3}}>CALIDAD — COSECHA VS VENTA</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
+              {CALIDADES.map(c=>{
+                const vc=calCosecha[c.id]?.kg||0;
+                const vv=porCalidad[c.id]?.kg||0;
+                return(
+                  <div key={c.id} style={{background:c.color+"0d",borderRadius:8,padding:"6px 8px",textAlign:"center",border:`1px solid ${c.color}22`}}>
+                    <div style={{fontSize:12,fontWeight:700,color:c.color}}>{c.label}</div>
+                    <div style={{fontSize:10,color:"#888",marginTop:2}}>🧺 {vc} kg · 💰 {vv} kg</div>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+            <ResponsiveContainer width="100%" height={120}>
+              <BarChart data={CALIDADES.map(c=>({name:c.label,cosecha:Math.round(calCosecha[c.id]?.kg||0),venta:Math.round(porCalidad[c.id]?.kg||0),color:c.color}))} margin={{top:0,right:10,left:0,bottom:0}}>
+                <XAxis dataKey="name" tick={{fontSize:9,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+                <YAxis hide/>
+                <Tooltip contentStyle={{fontSize:11,borderRadius:8}}/>
+                <Bar dataKey="cosecha" name="Cosechado" fill="#bbb" radius={[2,2,0,0]}/>
+                <Bar dataKey="venta" name="Vendido" radius={[2,2,0,0]}>
+                  {CALIDADES.map((c,i)=><Cell key={i} fill={c.color}/>)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
 
+          {/* Por canal - horizontal */}
+          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12,letterSpacing:0.3}}>INGRESOS POR CANAL</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={porCanal.slice(0,6).map(([c,d])=>({canal:c.length>14?c.slice(0,14)+"…":c,ingresos:Math.round(d.total)}))} layout="vertical" margin={{top:0,right:20,left:0,bottom:0}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false}/>
+                <XAxis type="number" tick={{fontSize:9,fill:"#aaa"}} axisLine={false} tickLine={false} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`}/>
+                <YAxis type="category" dataKey="canal" tick={{fontSize:10,fill:"#555"}} axisLine={false} tickLine={false} width={95}/>
+                <Tooltip formatter={v=>[`$${v.toLocaleString("es-MX")}`,""]} contentStyle={{fontSize:11,borderRadius:8}}/>
+                <Bar dataKey="ingresos" fill="#2980b9" radius={[0,4,4,0]}/>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Por tipo de producción */}
+          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12,letterSpacing:0.3}}>TIPO DE PRODUCCIÓN</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={porTratamiento.slice(0,5).map(([t,d])=>({tipo:(TRATAMIENTOS.find(x=>x.id===t)?.label||t).slice(0,12),ingresos:Math.round(d.total),color:TRATAMIENTOS.find(x=>x.id===t)?.color||"#27ae60"}))} margin={{top:5,right:10,left:0,bottom:0}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                <XAxis dataKey="tipo" tick={{fontSize:9,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+                <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={45} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`}/>
+                <Tooltip formatter={v=>[`$${v.toLocaleString("es-MX")}`,""]} contentStyle={{fontSize:11,borderRadius:8}}/>
+                <Bar dataKey="ingresos" radius={[4,4,0,0]}>
+                  {porTratamiento.slice(0,5).map(([t],i)=><Cell key={i} fill={TRATAMIENTOS.find(x=>x.id===t)?.color||"#27ae60"}/>)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+        </div>
+      )}
+
+      {/* ── TABLA DETALLE COSECHAS ── */}
+      <CosechasAdmin/>
+
+      {/* ── TABLA RESUMEN TABULAR ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-        {/* Por canal */}
         <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
           <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12,letterSpacing:0.3}}>CANAL DE VENTA</div>
           {porCanal.map(([canal,data])=>(
@@ -647,13 +859,11 @@ function ReportesVentas() {
           ))}
           {!porCanal.length&&<div style={{color:"#aaa",fontSize:12,textAlign:"center",padding:"1rem"}}>Sin datos</div>}
         </div>
-
-        {/* Por tratamiento */}
         <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
           <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12,letterSpacing:0.3}}>TIPO DE PRODUCCIÓN</div>
           {porTratamiento.map(([tratId,data])=>{
-            const trat = TRATAMIENTOS.find(t=>t.id===tratId);
-            return (
+            const trat=TRATAMIENTOS.find(t=>t.id===tratId);
+            return(
               <div key={tratId} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f5f5f5",alignItems:"center"}}>
                 <span style={{fontSize:12,color:trat?.color||"#555",fontWeight:500}}>{trat?.icon} {trat?.label||tratId}</span>
                 <div style={{textAlign:"right"}}>
@@ -667,62 +877,47 @@ function ReportesVentas() {
         </div>
       </div>
 
-      {/* Por calidad */}
-      <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px",marginBottom:12}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12,letterSpacing:0.3}}>DISTRIBUCIÓN POR CALIDAD</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
-          {CALIDADES.map(cal=>{
-            const data = porCalidad[cal.id] || {kg:0,total:0};
-            const pct = ventas.reduce((s,v)=>s+v.kgVendidos,0)>0 ? n(data.kg/ventas.reduce((s,v)=>s+v.kgVendidos,0)*100,1) : 0;
-            return (
-              <div key={cal.id} style={{background:cal.color+"0d",border:`1px solid ${cal.color}33`,borderRadius:10,padding:"10px",textAlign:"center"}}>
-                <div style={{fontSize:18}}>{cal.icon}</div>
-                <div style={{fontWeight:700,fontSize:13,color:cal.color}}>{cal.label}</div>
-                <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#2c3e50",marginTop:4}}>{fmt(data.kg)} kg</div>
-                <div style={{fontSize:11,color:"#27ae60",fontWeight:600}}>${fmt(data.total)}</div>
-                <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{pct}% del volumen</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Lotes con balance */}
-      {lotes.length>0&&(
-        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+      {/* ── BALANCE POR LOTE ── */}
+      {lotes.length > 0 && (
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px",marginBottom:16}}>
           <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12,letterSpacing:0.3}}>BALANCE POR LOTE</div>
           {lotes.map(lote=>{
             const crop=CROPS[lote.crop];
             const trat=TRATAMIENTOS.find(t=>t.id===lote.tratamiento);
-            const ventasLote=ventas.filter(v=>v.loteId===lote.id);
+            const ventasLote=ventasFilt.filter(v=>v.loteId===lote.id);
             const kgVendido=ventasLote.reduce((s,v)=>s+v.kgVendidos,0);
             const ingresos=ventasLote.reduce((s,v)=>s+v.totalVenta,0);
-            const kgDisp=lote.kgCosechados-kgVendido;
+            const kgDisp=Math.max(0,lote.kgCosechados-kgVendido);
+            const pctV = lote.kgCosechados > 0 ? Math.min(kgVendido/lote.kgCosechados*100,100) : 0;
             return(
-              <div key={lote.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid #f5f5f5",flexWrap:"wrap"}}>
-                <span style={{fontSize:18}}>{crop?.emoji}</span>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:600,fontSize:13}}>{lote.nombre}</div>
-                  <div style={{fontSize:11,color:trat?.color,fontWeight:500}}>{trat?.icon} {trat?.label}</div>
+              <div key={lote.id} style={{padding:"10px 0",borderBottom:"1px solid #f5f5f5"}}>
+                <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:6}}>
+                  <span style={{fontSize:18}}>{crop?.emoji}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:600,fontSize:13}}>{lote.nombre}</div>
+                    <div style={{fontSize:11,color:trat?.color,fontWeight:500}}>{trat?.icon} {trat?.label}</div>
+                  </div>
+                  <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                    <div style={{textAlign:"center"}}><div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:"#27ae60"}}>{fmt(kgVendido)} kg</div><div style={{fontSize:9,color:"#aaa"}}>Vendido</div></div>
+                    <div style={{textAlign:"center"}}><div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:kgDisp>0?"#f39c12":"#aaa"}}>{fmt(kgDisp)} kg</div><div style={{fontSize:9,color:"#aaa"}}>Disponible</div></div>
+                    <div style={{textAlign:"center"}}><div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:"#2c3e50"}}>${fmt(ingresos)}</div><div style={{fontSize:9,color:"#aaa"}}>Ingresos</div></div>
+                  </div>
                 </div>
-                <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-                  <div style={{textAlign:"center"}}><div style={{fontFamily:"'Courier New',monospace",fontSize:12,fontWeight:700,color:"#27ae60"}}>{fmt(kgVendido)} kg</div><div style={{fontSize:9,color:"#aaa"}}>Vendido</div></div>
-                  <div style={{textAlign:"center"}}><div style={{fontFamily:"'Courier New',monospace",fontSize:12,fontWeight:700,color:kgDisp>0?"#f39c12":"#aaa"}}>{fmt(kgDisp)} kg</div><div style={{fontSize:9,color:"#aaa"}}>Disponible</div></div>
-                  <div style={{textAlign:"center"}}><div style={{fontFamily:"'Courier New',monospace",fontSize:12,fontWeight:700,color:"#2c3e50"}}>${fmt(ingresos)}</div><div style={{fontSize:9,color:"#aaa"}}>Ingresos</div></div>
+                <div style={{background:"#e0e0e0",borderRadius:4,height:5,overflow:"hidden"}}>
+                  <div style={{width:`${pctV}%`,height:"100%",background:crop?.color||"#27ae60",borderRadius:4}}/>
                 </div>
+                <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{pctV.toFixed(1)}% comercializado</div>
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Cosechas registradas por trabajadores */}
-      <CosechasAdmin/>
     </div>
   );
 }
 
-// ─── COSECHAS ADMIN ──────────────────────────────────────────────────────────
+
 function CosechasAdmin() {
   const [cosechas, setCosechas] = useState([]);
   const [editing, setEditing] = useState(null);
