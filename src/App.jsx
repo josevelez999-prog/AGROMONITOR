@@ -3,10 +3,12 @@ import Worker from "./Worker";
 import Ventas from "./Ventas";
 import LoginScreen from "./Auth";
 import UsuariosAdmin from "./UsuariosAdmin";
-import { db, auth } from "./firebase";
+import { auth } from "./firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where, getDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from "recharts";
+import { db } from "./firebase";
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where } from "firebase/firestore";
 import AnalisisSuelo from "./SueloAnalisis";
 
 const CROPS = {
@@ -274,45 +276,16 @@ function DiagnosticoIA(){
     const crop=CROPS[form.crop];
     const CROP_NUT_STR={jitomate:"N alto, K alto fructificación, Ca firmeza",fresa:"N bajo maduración, K alto, Ca y B calidad",arandano:"pH ácido crítico 4.5-5.5, N amoniacal",zarzamora:"N moderado, K alto maduración, Fe quelado"};
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:imgBase64}},{type:"text",text:`Eres un ingeniero agrónomo mexicano especialista en producción protegida e hidroponía con 20 años de experiencia en cultivos de jitomate, fresa, arándano y zarzamora bajo invernadero y sistemas mixtos.
-
-Tienes conocimiento profundo en:
-- Nutrición vegetal y formulación de soluciones nutritivas (método meq/L)
-- Fisiología vegetal y etapas fenológicas
-- Fitopatología: enfermedades fúngicas, bacterianas y virales
-- Entomología agrícola: plagas comunes en cultivos protegidos de México
-- Manejo integrado de plagas y enfermedades (MIP)
-- Interpretación de parámetros de riego (pH, CE, temperatura)
-- Condiciones climáticas del centro-occidente de México
-
-Datos del registro actual:
-- Cultivo: ${crop.name}
-- pH medido: ${form.ph || "no registrado"}
-- CE medida: ${form.ce || "no registrada"} mS/cm
-- Zona: ${form.zone || "no especificada"}
-- Observaciones del trabajador: ${form.notes || "ninguna"}
-- Referencia nutricional: ${CROP_NUT_STR[form.crop]}
-
-Analiza la imagen adjunta considerando todos estos datos. Da un diagnóstico preciso y práctico, orientado a un productor mexicano con recursos limitados.
-
-Responde SOLO en este formato JSON sin markdown ni texto adicional:
-{
-  "diagnostico": "nombre técnico del problema en español",
-  "severidad": "baja|media|alta",
-  "causas": ["causa 1 específica", "causa 2 específica"],
-  "acciones": ["acción inmediata 1", "acción a mediano plazo 2", "acción preventiva 3"],
-  "productos_sugeridos": ["producto comercial disponible en México 1", "alternativa 2"],
-  "ajuste_ph": "subir|bajar|mantener",
-  "ajuste_ce": "subir|bajar|mantener",
-  "urgencia": "mensaje directo de una línea para el encargado"
-}`}]}]})});
-      const data=await res.json();
-      const text=data.content?.find(b=>b.type==="text")?.text||"";
-      const result=JSON.parse(text.replace(/```json|```/g,"").trim());
+      const res=await fetch("/api/analyze",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({imgBase64,cropName:crop.name,ph:form.ph,ce:form.ce,zone:form.zone,notes:form.notes,cropNutRef:CROP_NUT_STR[form.crop]})
+      });
+      const result=await res.json();
+      if(result.error)throw new Error(result.error);
       const id=Date.now();
       setDiagnoses(p=>[{id,...form,ph:parseFloat(form.ph)||0,ce:parseFloat(form.ce)||0,date:new Date().toISOString().slice(0,10),imgPreview,result},...p]);
       setSel(id);setView("historial");setForm({crop:"jitomate",zone:"",worker:"",ph:"",ce:"",notes:""});setImgPreview(null);setImgBase64(null);
-    }catch{alert("Error al analizar. Verifica la API key.");}
+    }catch(e){alert("Error al analizar: "+(e.message||"verifica tu conexión"));}
     setLoading(false);
   };
   return(
