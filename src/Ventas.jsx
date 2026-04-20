@@ -1119,7 +1119,10 @@ const SUBTABS = [
   { id:"validaciones", label:"✅ Validaciones" },
 ];
 
-export default function Ventas() {
+export default function Ventas({ readOnly=false }) {
+  const tabsDisp = readOnly
+    ? [{ id:"reportes", label:"📊 Reportes" },{ id:"lotes", label:"📦 Lotes" }]
+    : SUBTABS;
   const [tab, setTab] = useState("reportes");
   return (
     <div className="ventas-module">
@@ -1140,11 +1143,12 @@ export default function Ventas() {
           -webkit-text-fill-color: #aaa !important;
         }
       `}</style>
+      {readOnly&&<div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"8px 14px",marginBottom:10,fontSize:12,color:"#1a5276"}}>👁️ Modo observador — solo lectura</div>}
       <div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#2e7d5a"}}>
         📱 Los trabajadores registran ventas y cosechas desde su app · Tú ves los reportes aquí
       </div>
       <div style={{display:"flex",gap:4,marginBottom:16,background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:4}}>
-        {SUBTABS.map(t=>(
+        {tabsDisp.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"9px 8px",border:"none",borderRadius:8,background:tab===t.id?"#1a2533":"transparent",color:tab===t.id?"#4ecb8d":"#888",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?700:400,transition:"all 0.15s"}}>
             {t.label}
           </button>

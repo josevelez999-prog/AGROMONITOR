@@ -11,8 +11,9 @@ const INP = {
 };
 
 const ROLES = [
-  { id:"trabajador", label:"Trabajador", color:"#27ae60", icon:"👷", desc:"Acceso a la app de campo" },
-  { id:"admin",      label:"Administrador", color:"#1a2533", icon:"🔑", desc:"Acceso total al panel admin" },
+  { id:"trabajador",  label:"Trabajador",    color:"#27ae60", icon:"👷", desc:"Acceso a la app de campo" },
+  { id:"observador",  label:"Observador",    color:"#2980b9", icon:"👁️", desc:"Panel admin — solo lectura + IA" },
+  { id:"admin",       label:"Administrador", color:"#1a2533", icon:"🔑", desc:"Acceso total al panel admin" },
 ];
 
 export default function UsuariosAdmin() {
@@ -185,7 +186,7 @@ export default function UsuariosAdmin() {
                 {/* Avatar */}
                 <div style={{
                   width:44,height:44,borderRadius:"50%",flexShrink:0,
-                  background:u.activo?(rol?.id==="admin"?"#1a2533":"#e8f8f0"):"#f0f0f0",
+                  background:u.activo?(rol?.id==="admin"?"#1a2533":rol?.id==="observador"?"#eaf4fb":"#e8f8f0"):"#f0f0f0",
                   display:"flex",alignItems:"center",justifyContent:"center",
                   fontWeight:700,fontSize:15,
                   color:u.activo?(rol?.id==="admin"?"#4ecb8d":"#27ae60"):"#aaa",

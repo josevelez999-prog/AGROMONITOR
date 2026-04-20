@@ -625,7 +625,7 @@ function Formulador(){
 }
 
 // ─── INCIDENCIAS ADMIN ────────────────────────────────────────────────────────
-function IncidenciasAdmin(){
+function IncidenciasAdmin({ readOnly=false }){
   const [data,setData]=useState([]);
   const [filter,setFilter]=useState("pendiente");
   useEffect(()=>{const q=query(collection(db,"incidencias"),orderBy("createdAt","desc"));const unsub=onSnapshot(q,snap=>setData(snap.docs.map(d=>({id:d.id,...d.data()}))));return()=>unsub();},[]);
@@ -784,7 +784,7 @@ function InstruccionesAdmin(){
 }
 
 // ─── INVENTARIO ───────────────────────────────────────────────────────────────
-function Inventario(){
+function Inventario({ readOnly=false }){
   const [items,setItems]=useState([]);
   const [form,setForm]=useState({name:"",unit:"kg",stock:0,minStock:0,precio:0});
   const [editing,setEditing]=useState(null);
@@ -805,10 +805,10 @@ function Inventario(){
           <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>MÍNIMO</label><input type="number" min="0" step="0.1" value={form.minStock} onChange={e=>setForm(p=>({...p,minStock:e.target.value}))} style={inp2}/></div>
           <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>$/kg o L</label><input type="number" min="0" step="1" value={form.precio} onChange={e=>setForm(p=>({...p,precio:e.target.value}))} style={inp2}/></div>
         </div>
-        <div style={{display:"flex",gap:8}}>
+        {!readOnly&&<div style={{display:"flex",gap:8}}>
           <button onClick={save} style={{padding:"8px 20px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:12}}>{editing?"Actualizar":"+ Agregar"}</button>
           {editing&&<button onClick={()=>{setEditing(null);setForm({name:"",unit:"kg",stock:0,minStock:0,precio:0});}} style={{padding:"8px 16px",border:"1px solid #e0e0e0",borderRadius:8,background:"transparent",color:"#888",cursor:"pointer",fontSize:12}}>Cancelar</button>}
-        </div>
+        </div>}
       </div>
       {!items.length&&<div style={{background:"#fff",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa"}}>Sin insumos registrados</div>}
       {items.length>0&&(
@@ -823,9 +823,9 @@ function Inventario(){
                     <td style={{padding:"10px",fontWeight:600}}>{item.name}</td>
                     <td style={{padding:"10px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <button onClick={()=>upd(item.id,-1,item.stock)} style={{width:24,height:24,border:"1px solid #e0e0e0",borderRadius:4,background:"#f5f5f5",cursor:"pointer",fontSize:14,lineHeight:1}}>−</button>
+                        {!readOnly&&<button onClick={()=>upd(item.id,-1,item.stock)} style={{width:24,height:24,border:"1px solid #e0e0e0",borderRadius:4,background:"#f5f5f5",cursor:"pointer",fontSize:14,lineHeight:1}}>−</button>}
                         <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:low?"#e74c3c":"#333",minWidth:50,textAlign:"center"}}>{item.stock} {item.unit}</span>
-                        <button onClick={()=>upd(item.id,1,item.stock)} style={{width:24,height:24,border:"1px solid #e0e0e0",borderRadius:4,background:"#f5f5f5",cursor:"pointer",fontSize:14,lineHeight:1}}>+</button>
+                        {!readOnly&&<button onClick={()=>upd(item.id,1,item.stock)} style={{width:24,height:24,border:"1px solid #e0e0e0",borderRadius:4,background:"#f5f5f5",cursor:"pointer",fontSize:14,lineHeight:1}}>+</button>}
                       </div>
                     </td>
                     <td style={{padding:"10px",color:"#888",fontFamily:"'Courier New',monospace"}}>{item.minStock} {item.unit}</td>
@@ -951,10 +951,35 @@ export default function App(){
   // Logged in as worker
   if(userRole==="trabajador") return <Worker user={currentUser}/>;
 
-  // Data loading for admin
+  // Data loading for admin/observador
   if(loading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f4f5f7"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,color:"#27ae60",fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#aaa",marginTop:4}}>Cargando...</div></div></div>;
 
-  const SECTION={suelo:<AnalisisSuelo />,resumen:<Resumen readings={readings} onDelete={handleDelete}/>,alertas:<Alertas readings={readings} onDelete={handleDelete}/>,ia:<DiagnosticoIA/>,reportes:<Reportes readings={readings} onDelete={handleDelete}/>,formulador:<Formulador/>,incidencias:<IncidenciasAdmin/>,tareas:<TareasAdmin/>,instrucciones:<InstruccionesAdmin/>,inventario:<Inventario/>,trabajadores:<Trabajadores readings={readings}/>,ventas:<Ventas/>,usuarios:<UsuariosAdmin/>};
+  const esObservador = userRole === "observador";
+
+  // Secciones bloqueadas para observador — solo lectura
+  const Bloqueado = ({nombre}) => (
+    <div style={{background:"#fff",borderRadius:12,padding:"3rem",textAlign:"center",color:"#aaa",border:"0.5px solid #e0e0e0"}}>
+      <div style={{fontSize:40,marginBottom:8}}>🔒</div>
+      <div style={{fontWeight:600,fontSize:15,marginBottom:6,color:"#555"}}>Acceso restringido</div>
+      <div style={{fontSize:13}}>Como observador no puedes modificar {nombre}.<br/>Contacta al administrador si necesitas acceso.</div>
+    </div>
+  );
+
+  const SECTION={
+    suelo:    <AnalisisSuelo/>,
+    resumen:  <Resumen readings={readings} onDelete={esObservador?()=>{}:handleDelete}/>,
+    alertas:  <Alertas readings={readings} onDelete={esObservador?()=>{}:handleDelete}/>,
+    ia:       <DiagnosticoIA/>,
+    reportes: <Reportes readings={readings} onDelete={esObservador?()=>{}:handleDelete}/>,
+    formulador: <Formulador readOnly={esObservador}/>,
+    incidencias: esObservador ? <IncidenciasAdmin readOnly/> : <IncidenciasAdmin/>,
+    tareas:   esObservador ? <Bloqueado nombre="las tareas"/> : <TareasAdmin/>,
+    instrucciones: esObservador ? <Bloqueado nombre="las instrucciones"/> : <InstruccionesAdmin/>,
+    inventario: esObservador ? <Inventario readOnly/> : <Inventario/>,
+    trabajadores: <Trabajadores readings={readings}/>,
+    ventas:   <Ventas readOnly={esObservador}/>,
+    usuarios: esObservador ? <Bloqueado nombre="los usuarios"/> : <UsuariosAdmin/>,
+  };
 
   return(
     <div style={{display:"flex",minHeight:"100vh",background:"#f4f5f7",fontFamily:"'Georgia',serif"}}>
@@ -962,7 +987,7 @@ export default function App(){
         <div style={{padding:"20px 18px 14px",borderBottom:"1px solid #243040"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:22}}>🌿</span>
-            <div><div style={{color:"#4ecb8d",fontWeight:700,fontSize:16,letterSpacing:-0.3}}>GreenLog</div><div style={{color:"#3a5060",fontSize:10,fontFamily:"'Courier New',monospace",marginTop:1}}>ADMINISTRADOR</div></div>
+            <div><div style={{color:"#4ecb8d",fontWeight:700,fontSize:16,letterSpacing:-0.3}}>GreenLog</div><div style={{color:"#3a5060",fontSize:10,fontFamily:"'Courier New',monospace",marginTop:1}}>{esObservador?"OBSERVADOR":"ADMINISTRADOR"}</div></div>
           </div>
         </div>
         <nav style={{flex:1,padding:"8px 0"}}>
@@ -985,9 +1010,10 @@ export default function App(){
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             {alerts.length>0&&<div style={{background:"#fdedec",border:"1px solid #f5c6c6",borderRadius:20,padding:"5px 12px",fontSize:12,color:"#c0392b",fontWeight:600,cursor:"pointer"}} onClick={()=>setPage("alertas")}>🚨 {alerts.length} alerta{alerts.length>1?"s":""}</div>}
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <div style={{width:34,height:34,borderRadius:"50%",background:"#1a2533",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12,color:"#4ecb8d",border:"2px solid #4ecb8d"}}>
+              <div style={{width:34,height:34,borderRadius:"50%",background:esObservador?"#2980b9":"#1a2533",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12,color:"#4ecb8d",border:`2px solid ${esObservador?"#5dade2":"#4ecb8d"}`}}>
                 {currentUser?.email?.slice(0,2).toUpperCase()||"JL"}
               </div>
+              {esObservador&&<span style={{background:"#2980b9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>Observador</span>}
               <button onClick={()=>signOut(auth)} style={{padding:"5px 10px",border:"1px solid #3a5060",borderRadius:8,background:"transparent",color:"#7a9ab0",cursor:"pointer",fontSize:11}}>Salir</button>
             </div>
           </div>
