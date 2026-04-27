@@ -42,6 +42,7 @@ const CROPS = {
     entrada: { ph:{min:5.5,max:6.5}, ce:{min:1.5,max:2.5} },
     salida:  { ph:{min:5.8,max:6.8}, ce:{min:2.0,max:3.5} },
     ph:{min:5.5,max:6.5}, ce:{min:1.5,max:2.5},
+    noDrenaje: true,
   },
 };
 const SYMPTOMS = {
