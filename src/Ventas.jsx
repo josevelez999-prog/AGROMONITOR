@@ -158,43 +158,20 @@ function StatCard({ icon, label, value, color, sub }) {
 // ─── LOTES ────────────────────────────────────────────────────────────────────
 function GestionLotes() {
   const [lotes, setLotes] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     nombre:"", crop:"jitomate", zona:"", tratamiento:"convencional",
     fechaCosecha:new Date().toISOString().slice(0,10),
     kgCosechados:0, kgEstimados:0, notas:""
   });
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (editing) {
-      setForm({
-        loteId: editing.loteId||"",
-        crop: editing.crop||"jitomate",
-        comprador: editing.comprador||"",
-        canal: editing.canal||"Mercado local",
-        calidad: editing.calidad||"primera",
-        kgVendidos: editing.kgVendidos||0,
-        precioKg: editing.precioKg||0,
-        fecha: editing.fecha||new Date().toISOString().slice(0,10),
-        notas: editing.notas||"",
-        factura: editing.factura||"",
-      });
-    }
-  }, [editing]);
-
-  useEffect(() => {
+  useEffect(()=>{
     const q = query(collection(db,"lotes"), orderBy("createdAt","desc"));
     const unsub = onSnapshot(q, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return () => unsub();
   }, []);
-
-  useEffect(()=>{
-    const u1 = onSnapshot(query(collection(db,"ventas")), s=>setVentas(s.docs.map(d=>({id:d.id,...d.data()}))));
-    const u2 = onSnapshot(query(collection(db,"cosechas_trabajador")), s=>setCosechas(s.docs.map(d=>({id:d.id,...d.data()}))));
-    const u3 = onSnapshot(query(collection(db,"mermas")), s=>setMermasLote(s.docs.map(d=>({id:d.id,...d.data()}))));
-    return()=>{u1();u2();u3();};
-  },[]);
 
   const save = async () => {
     if (!form.nombre || !form.zona) { alert("Llena nombre y zona"); return; }
@@ -215,64 +192,43 @@ function GestionLotes() {
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
         <div style={{fontSize:12,color:"#888"}}>Lotes registrados: <strong style={{color:"#333"}}>{lotes.length}</strong></div>
-        <button onClick={()=>{setShowForm(!showForm);setEditing(null);}} style={{padding:"9px 20px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>
-          {showForm?"Cancelar":"+ Nuevo lote"}
+        <button onClick={()=>{setShowForm(!showForm);setEditing(null);}}
+          style={{padding:"9px 20px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>
+          {showForm?"✕ Cancelar":"+ Nuevo lote"}
         </button>
       </div>
 
-      {showForm && (
-        <div style={{background:"#fff",border:"1px solid #a9dfbf",borderRadius:12,padding:"18px",marginBottom:16}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:14,letterSpacing:0.3}}>{editing?"EDITAR LOTE":"NUEVO LOTE DE PRODUCCIÓN"}</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-            <div style={{gridColumn:"1/-1"}}>
-              <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>NOMBRE DEL LOTE *</label>
-              <input value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} placeholder="Ej: Jitomate Lote A — Mar 2026" style={inp}/>
-            </div>
+      {showForm&&(
+        <div style={{background:"#fff",border:"1px solid #a9dfbf",borderRadius:12,padding:18,marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:14,letterSpacing:0.3}}>{editing?"EDITAR LOTE":"NUEVO LOTE"}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+            <div><label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Nombre *</label><input value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} placeholder="Ej: Bloque A-1" style={inp}/></div>
+            <div><label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Zona *</label><input value={form.zona} onChange={e=>setForm(p=>({...p,zona:e.target.value}))} placeholder="Zona A" style={inp}/></div>
             <div>
-              <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>CULTIVO</label>
+              <label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Cultivo</label>
               <select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={inp}>
                 {Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}
               </select>
             </div>
             <div>
-              <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>ZONA / PARCELA</label>
-              <input value={form.zona} onChange={e=>setForm(p=>({...p,zona:e.target.value}))} placeholder="Zona A" style={inp}/>
+              <label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Tipo de producción</label>
+              <select value={form.tratamiento} onChange={e=>setForm(p=>({...p,tratamiento:e.target.value}))} style={inp}>
+                {TRATAMIENTOS.map(t=><option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
+              </select>
             </div>
-            <div style={{gridColumn:"1/-1"}}>
-              <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:6}}>TRATAMIENTO / SEGMENTACIÓN</label>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {TRATAMIENTOS.map(t=>(
-                  <button key={t.id} onClick={()=>setForm(p=>({...p,tratamiento:t.id}))}
-                    style={{padding:"7px 12px",border:`1.5px solid ${form.tratamiento===t.id?t.color:"#e0e0e0"}`,borderRadius:20,background:form.tratamiento===t.id?t.color+"18":"transparent",color:form.tratamiento===t.id?t.color:"#666",cursor:"pointer",fontSize:12,fontWeight:form.tratamiento===t.id?700:400}}>
-                    {t.icon} {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>FECHA DE COSECHA</label>
-              <input type="date" value={form.fechaCosecha} onChange={e=>setForm(p=>({...p,fechaCosecha:e.target.value}))} style={inp}/>
-            </div>
-            <div>
-              <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>KG ESTIMADOS</label>
-              <input type="number" step="1" min="0" value={form.kgEstimados} onChange={e=>setForm(p=>({...p,kgEstimados:e.target.value}))} style={inp}/>
-            </div>
-            <div>
-              <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>KG COSECHADOS REALES</label>
-              <input type="number" step="0.1" min="0" value={form.kgCosechados} onChange={e=>setForm(p=>({...p,kgCosechados:e.target.value}))} style={inp}/>
-            </div>
-            <div>
-              <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>NOTAS</label>
-              <input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Observaciones del lote" style={inp}/>
-            </div>
+            <div><label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Kg cosechados</label><input type="number" step="0.1" min="0" value={form.kgCosechados} onChange={e=>setForm(p=>({...p,kgCosechados:e.target.value}))} style={inp}/></div>
+            <div><label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Kg estimados</label><input type="number" step="0.1" min="0" value={form.kgEstimados} onChange={e=>setForm(p=>({...p,kgEstimados:e.target.value}))} style={inp}/></div>
+            <div><label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Fecha cosecha</label><input type="date" value={form.fechaCosecha} onChange={e=>setForm(p=>({...p,fechaCosecha:e.target.value}))} style={inp}/></div>
+            <div><label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Notas</label><input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Observaciones..." style={inp}/></div>
           </div>
-          <button onClick={save} style={{padding:"9px 24px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>
-            {editing?"Actualizar lote":"Crear lote"}
+          <button onClick={save} disabled={saving}
+            style={{padding:"9px 24px",background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:saving?"not-allowed":"pointer",fontWeight:600,fontSize:13}}>
+            {saving?"Guardando...":(editing?"Guardar cambios":"+ Crear lote")}
           </button>
         </div>
       )}
 
-      {!lotes.length && (
+      {!lotes.length&&(
         <div style={{background:"#fff",borderRadius:12,padding:"3rem",textAlign:"center",color:"#aaa",border:"0.5px solid #e0e0e0"}}>
           <div style={{fontSize:40,marginBottom:8}}>📦</div>
           <div style={{fontWeight:500,marginBottom:4}}>Sin lotes de producción</div>
@@ -280,50 +236,27 @@ function GestionLotes() {
         </div>
       )}
 
-      {lotes.map(lote => {
-        const crop = CROPS[lote.crop];
-        const trat = TRATAMIENTOS.find(t=>t.id===lote.tratamiento);
-        const kgVendido = Number((ventas||[]).filter(v=>v.loteId===lote.id).reduce((s,v)=>s+(parseFloat(v.kgVendidos)||0),0));
-        const kgCosechado = Number((cosechas||[]).filter(c=>c.loteId===lote.id).reduce((s,c)=>s+(parseFloat(c.kgCosechados)||0),0) || parseFloat(lote.kgCosechados) || 0);
-        const kgMerma = Number((mermasLote||[]).filter(m=>m.loteId===lote.id).reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0));
-        const kgDisp = Math.max(0, kgCosechado - kgVendido - kgMerma);
-        const pct = kgCosechado > 0 ? Math.min((kgVendido/kgCosechado)*100, 100) : 0;
-        return (
+      {lotes.map(lote=>{
+        const crop=CROPS[lote.crop];
+        const trat=TRATAMIENTOS.find(t=>t.id===lote.tratamiento);
+        const eficiencia=lote.kgEstimados>0?((lote.kgCosechados/lote.kgEstimados)*100).toFixed(1):null;
+        return(
           <div key={lote.id} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderTop:`3px solid ${crop?.color||"#27ae60"}`,borderRadius:12,padding:"14px 18px",marginBottom:10}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
               <span style={{fontSize:24}}>{crop?.emoji}</span>
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,fontSize:14,marginBottom:3}}>{lote.nombre}</div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:4}}>
                   <span style={{background:(trat?.color||"#888")+"18",color:trat?.color||"#888",border:`1px solid ${trat?.color||"#888"}44`,borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:600}}>{trat?.icon} {trat?.label}</span>
                   <span style={{fontSize:12,color:"#888"}}>📍 {lote.zona}</span>
                   <span style={{fontSize:12,color:"#888"}}>📅 {lote.fechaCosecha}</span>
                 </div>
-                <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:8}}>
-                  <div style={{textAlign:"center",background:"#f0faf5",borderRadius:8,padding:"6px 12px"}}>
-                    <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#27ae60"}}>{kgCosechado.toFixed(1)} kg</div>
-                    <div style={{fontSize:9,color:"#aaa"}}>Cosechados</div>
-                  </div>
-                  <div style={{textAlign:"center",background:"#eaf4fb",borderRadius:8,padding:"6px 12px"}}>
-                    <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#2980b9"}}>{kgVendido.toFixed(1)} kg</div>
-                    <div style={{fontSize:9,color:"#aaa"}}>Vendidos</div>
-                  </div>
-                  {kgMerma>0&&(
-                    <div style={{textAlign:"center",background:"#fef9e7",borderRadius:8,padding:"6px 12px"}}>
-                      <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#f39c12"}}>{kgMerma.toFixed(1)} kg</div>
-                      <div style={{fontSize:9,color:"#aaa"}}>Merma</div>
-                    </div>
-                  )}
-                  <div style={{textAlign:"center",background:kgDisp>0?"#fff3cd":"#eafaf1",border:`2px solid ${kgDisp>0?"#f39c12":"#a9dfbf"}`,borderRadius:8,padding:"6px 12px"}}>
-                    <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:kgDisp>0?"#f39c12":"#27ae60"}}>{kgDisp.toFixed(1)} kg</div>
-                    <div style={{fontSize:9,color:"#888",fontWeight:600}}>Por vender</div>
-                  </div>
+                <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                  <span style={{fontFamily:"'Courier New',monospace",fontSize:13,color:"#27ae60",fontWeight:700}}>{lote.kgCosechados} kg cosechados</span>
+                  {lote.kgEstimados>0&&<span style={{fontFamily:"'Courier New',monospace",fontSize:12,color:"#aaa"}}>{lote.kgEstimados} kg estimados</span>}
+                  {eficiencia&&<span style={{fontFamily:"'Courier New',monospace",fontSize:12,color:eficiencia>=90?"#27ae60":eficiencia>=70?"#f39c12":"#e74c3c",fontWeight:600}}>{eficiencia}% eficiencia</span>}
                 </div>
-                <div style={{background:"#e0e0e0",borderRadius:4,height:6,overflow:"hidden",marginBottom:3}}>
-                  <div style={{width:`${pct}%`,height:"100%",background:crop?.color||"#27ae60",borderRadius:4}}/>
-                </div>
-                <div style={{fontSize:10,color:"#aaa",marginBottom:4}}>{pct.toFixed(1)}% comercializado</div>
-                {lote.notas&&<div style={{fontSize:11,color:"#aaa"}}>📝 {lote.notas}</div>}
+                {lote.notas&&<div style={{fontSize:11,color:"#aaa",marginTop:4}}>📝 {lote.notas}</div>}
               </div>
               <div style={{display:"flex",gap:6}}>
                 <button onClick={()=>{setForm({...lote});setEditing(lote.id);setShowForm(true);}} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12,color:"#2980b9"}}>✎ Editar</button>
@@ -336,7 +269,6 @@ function GestionLotes() {
     </div>
   );
 }
-
 // ─── REGISTRO DE VENTAS ───────────────────────────────────────────────────────
 function RegistroVentas() {
   const [ventas, setVentas] = useState([]);
