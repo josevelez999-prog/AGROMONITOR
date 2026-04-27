@@ -104,7 +104,7 @@ const LBL = {
 function Registro({ worker }) {
   const [form, setForm] = useState({
     crop:"jitomate", zone:"", invernadero:"INV 2",
-    tipo:"entrada", // entrada | salida
+    tipo:"entrada",
     ph:"", ce:"", drenaje:"", volumenEntrada:"", notes:"",
     ca:"", no3:"", k:"", fe:"",
   });
@@ -128,8 +128,7 @@ function Registro({ worker }) {
         if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
         canvas.width=w;canvas.height=h;
         canvas.getContext("2d").drawImage(img,0,0,w,h);
-        const compressed = canvas.toDataURL("image/jpeg",0.75);
-        setImgPreview(compressed);
+        setImgPreview(canvas.toDataURL("image/jpeg",0.75));
         canvas.toBlob(blob=>setImgFile(new File([blob],file.name,{type:"image/jpeg"})),"image/jpeg",0.75);
       };
       img.src = ev.target.result;
@@ -157,43 +156,38 @@ function Registro({ worker }) {
         no3: form.no3 ? parseFloat(form.no3) : null,
         k:   form.k   ? parseFloat(form.k)   : null,
         fe:  form.fe  ? parseFloat(form.fe)  : null,
-        date:now.toISOString().slice(0,10),
-        time:now.toTimeString().slice(0,5),
+        date:now.toISOString().slice(0,10), time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(), photoURL,
       };
-      // Remove empty optional fields
       Object.keys(data).forEach(k => data[k] === null && delete data[k]);
       await addDoc(collection(db,"readings"), data);
       setSaved(true);
-      setForm(p=>({...p, zone:"", ph:"", ce:"", drenaje:"", notes:"", ca:"", no3:"", k:"", fe:""}));
+      setForm(p=>({...p,zone:"",ph:"",ce:"",drenaje:"",volumenEntrada:"",notes:"",ca:"",no3:"",k:"",fe:""}));
       setImgFile(null); setImgPreview(null);
       setTimeout(()=>setSaved(false),4000);
     } catch { alert("Error al guardar."); }
     setSaving(false);
   };
 
-  const statusColor = (v, r) => {
+  const sBorder = (v, r) => {
     if (!v) return "#ccc";
-    const val = parseFloat(v);
-    if (isNaN(val)) return "#ccc";
-    if (val < r.min || val > r.max) return "#e74c3c";
-    const m = (r.max-r.min)*0.15;
-    return (val < r.min+m || val > r.max-m) ? "#f39c12" : "#27ae60";
+    const val = parseFloat(v); if (isNaN(val)) return "#ccc";
+    if (val<r.min||val>r.max) return "#e74c3c";
+    const m=(r.max-r.min)*0.15;
+    return (val<r.min+m||val>r.max-m)?"#f39c12":"#27ae60";
   };
-  const statusText = (v, r) => {
+  const sText = (v, r) => {
     if (!v) return null;
-    const val = parseFloat(v);
-    if (isNaN(val)) return null;
-    if (val < r.min || val > r.max) return "⚠ Fuera de rango";
-    const m = (r.max-r.min)*0.15;
-    return (val < r.min+m || val > r.max-m) ? "⚠ Cerca del límite" : "✓ Normal";
+    const val = parseFloat(v); if (isNaN(val)) return null;
+    if (val<r.min||val>r.max) return "⚠ Fuera de rango";
+    const m=(r.max-r.min)*0.15;
+    return (val<r.min+m||val>r.max-m)?"⚠ Cerca del límite":"✓ Normal";
   };
 
   return (
     <div>
       {saved&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:16,color:"#27ae60",fontWeight:600,textAlign:"center"}}>✓ Medición enviada</div>}
 
-      {/* Cultivo */}
       <div style={{marginBottom:14}}>
         <label style={LBL}>Cultivo</label>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -206,11 +200,10 @@ function Registro({ worker }) {
         </div>
       </div>
 
-      {/* Tipo: Entrada o Salida */}
       <div style={{marginBottom:14}}>
         <label style={LBL}>Tipo de medición</label>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          {[["entrada","⬇ Entrada","#27ae60","Solución que entra al cultivo"],["salida","⬆ Salida / Drenaje","#2980b9","Solución que drena del cultivo"]].map(([val,label,color,desc])=>(
+          {[["entrada","⬇ Entrada","#27ae60","Solución que entra"],["salida","⬆ Salida / Drenaje","#2980b9","Solución que drena"]].map(([val,label,color,desc])=>(
             <button key={val} onClick={()=>setForm(p=>({...p,tipo:val}))}
               style={{padding:"12px 10px",border:`2px solid ${form.tipo===val?color:"#ddd"}`,borderRadius:12,background:form.tipo===val?color+"15":"#fff",cursor:"pointer",textAlign:"left"}}>
               <div style={{fontWeight:700,fontSize:14,color:form.tipo===val?color:"#333",marginBottom:2}}>{label}</div>
@@ -220,15 +213,13 @@ function Registro({ worker }) {
         </div>
       </div>
 
-      {/* Rangos óptimos */}
       <div style={{background:"#f0faf5",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:12,color:"#555",border:`1px solid ${crop.color}33`}}>
-        <strong style={{color:crop.color}}>{crop.emoji} {crop.name} — {form.tipo==="entrada"?"Entrada":"Salida/Drenaje"}</strong>
+        <strong style={{color:crop.color}}>{crop.emoji} {crop.name} — {form.tipo==="entrada"?"Entrada":"Salida"}</strong>
         <span style={{marginLeft:10}}>pH: <strong>{rangos.ph.min}–{rangos.ph.max}</strong></span>
         <span style={{marginLeft:10}}>CE: <strong>{rangos.ce.min}–{rangos.ce.max} mS/cm</strong></span>
       </div>
 
-      {/* Invernadero (solo jitomate) */}
-      {crop.invernaderos && (
+      {crop.invernaderos&&(
         <div style={{marginBottom:14}}>
           <label style={LBL}>Invernadero</label>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -243,55 +234,44 @@ function Registro({ worker }) {
       )}
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-        {/* Zona */}
         <div style={{gridColumn:"1/-1"}}>
           <label style={LBL}>Zona / Área *</label>
           <input value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} placeholder="Ej: Zona A" style={INP}/>
         </div>
 
-        {/* Volumen entrada */}
         {form.tipo==="entrada"&&(
           <div style={{gridColumn:"1/-1"}}>
             <label style={LBL}>Volumen de entrada (litros)</label>
-            <input type="number" step="0.1" min="0" value={form.volumenEntrada||""}
-              onChange={e=>setForm(p=>({...p,volumenEntrada:e.target.value}))}
-              placeholder="Ej: 12.5 L"
-              style={INP}/>
-            <div style={{fontSize:10,color:"#888",marginTop:3}}>Volumen de solución nutritiva aplicada</div>
+            <input type="number" step="0.1" min="0" value={form.volumenEntrada}
+              onChange={e=>setForm(p=>({...p,volumenEntrada:e.target.value}))} placeholder="Ej: 12.5 L" style={INP}/>
           </div>
         )}
 
-        {/* pH */}
         <div>
           <label style={LBL}>pH medido *</label>
           <input type="number" step="0.1" min="0" max="14" value={form.ph}
             onChange={e=>setForm(p=>({...p,ph:e.target.value}))} placeholder={`${rangos.ph.min}–${rangos.ph.max}`}
-            style={{...INP,borderColor:statusColor(form.ph,rangos.ph)}}/>
-          {form.ph&&<div style={{fontSize:10,marginTop:3,color:statusColor(form.ph,rangos.ph)}}>{statusText(form.ph,rangos.ph)}</div>}
+            style={{...INP,borderColor:sBorder(form.ph,rangos.ph)}}/>
+          {form.ph&&<div style={{fontSize:10,marginTop:3,color:sBorder(form.ph,rangos.ph)}}>{sText(form.ph,rangos.ph)}</div>}
         </div>
 
-        {/* CE */}
         <div>
           <label style={LBL}>CE mS/cm *</label>
           <input type="number" step="0.1" min="0" max="15" value={form.ce}
             onChange={e=>setForm(p=>({...p,ce:e.target.value}))} placeholder={`${rangos.ce.min}–${rangos.ce.max}`}
-            style={{...INP,borderColor:statusColor(form.ce,rangos.ce)}}/>
-          {form.ce&&<div style={{fontSize:10,marginTop:3,color:statusColor(form.ce,rangos.ce)}}>{statusText(form.ce,rangos.ce)}</div>}
+            style={{...INP,borderColor:sBorder(form.ce,rangos.ce)}}/>
+          {form.ce&&<div style={{fontSize:10,marginTop:3,color:sBorder(form.ce,rangos.ce)}}>{sText(form.ce,rangos.ce)}</div>}
         </div>
 
-        {/* Drenaje — solo en salida, no para zarzamora */}
         {form.tipo==="salida"&&!crop.noDrenaje&&(
           <div style={{gridColumn:"1/-1"}}>
             <label style={LBL}>Volumen de drenaje (litros)</label>
             <input type="number" step="0.1" min="0" value={form.drenaje}
-              onChange={e=>setForm(p=>({...p,drenaje:e.target.value}))} placeholder="Ej: 4.5 L"
-              style={INP}/>
-            <div style={{fontSize:10,color:"#888",marginTop:3}}>Cantidad de solución que drenó del cultivo</div>
+              onChange={e=>setForm(p=>({...p,drenaje:e.target.value}))} placeholder="Ej: 4.5 L" style={INP}/>
           </div>
         )}
 
-        {/* Campos extra fresa */}
-        {crop.extraFields && crop.extraFields.map(f=>(
+        {crop.extraFields&&crop.extraFields.map(f=>(
           <div key={f.key}>
             <label style={LBL}>{f.label} <span style={{color:"#bbb",fontWeight:400}}>(opcional)</span></label>
             <input type="number" step="0.1" min="0" value={form[f.key]}
@@ -304,7 +284,6 @@ function Registro({ worker }) {
           </div>
         ))}
 
-        {/* Observaciones */}
         <div style={{gridColumn:"1/-1"}}>
           <label style={LBL}>Observaciones</label>
           <textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))}
@@ -312,7 +291,6 @@ function Registro({ worker }) {
         </div>
       </div>
 
-      {/* Foto */}
       <div style={{marginBottom:16}}>
         <label style={LBL}>Foto (opcional)</label>
         <div onClick={()=>fileRef.current.click()} style={{border:"2px dashed #d5e8d4",borderRadius:10,padding:imgPreview?"0":"1.5rem",textAlign:"center",cursor:"pointer",overflow:"hidden",background:"#f9fff9"}}>
@@ -331,7 +309,6 @@ function Registro({ worker }) {
   );
 }
 
-// ─── MI HISTORIAL ─────────────────────────────────────────────────────────────
 function MiHistorial({ worker }) {
   const [readings, setReadings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -370,17 +347,20 @@ function MiHistorial({ worker }) {
 }
 
 // ─── COSECHA / VENTA / VALIDACIÓN ─────────────────────────────────────────────
+// ─── COSECHA / VENTA / VALIDACIÓN / MERMA ─────────────────────────────────────
 function RegistroCosecha({ worker }) {
+  const [subtab, setSubtab] = useState("cosecha");
   const [lotes, setLotes] = useState([]);
   const [preciosSugeridos, setPreciosSugeridos] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState("");
-  const [subtab, setSubtab] = useState("cosecha");
 
   const [formC, setFormC] = useState({ loteId:"", kgCosechados:"", calidad:"primera", notas:"" });
   const [formV, setFormV] = useState({ loteId:"", comprador:"", canal:"Mercado local", calidad:"primera", kgVendidos:"", precioKg:"", factura:"", notas:"", fecha:new Date().toISOString().slice(0,10) });
   const [formVL, setFormVL] = useState({ loteId:"", etiqueta:"", kgValidados:"", precioVenta:"", observaciones:"", fecha:new Date().toISOString().slice(0,10) });
   const [formMerma, setFormMerma] = useState({ loteId:"", kgMerma:"", causa:"", notas:"", fecha:new Date().toISOString().slice(0,10) });
+
+  const CANALES_W = ["Mercado local","Central de abastos","Supermercado","Restaurante","Exportación","Venta directa","Agroindustria","Otro"];
 
   useEffect(()=>{
     const q = query(collection(db,"lotes"),orderBy("createdAt","desc"));
@@ -401,7 +381,7 @@ function RegistroCosecha({ worker }) {
       <label style={LBL}>Lote de producción *</label>
       {!lotes.length
         ? <div style={{background:"#f5f5f5",borderRadius:10,padding:14,textAlign:"center",color:"#aaa",fontSize:13,border:"1px solid #eee"}}>El encargado aún no ha creado lotes</div>
-        : lotes.map(lote=>{
+        : lotes.map(lote => {
             const c=CROPS[lote.crop]; const sel=value===lote.id;
             return (
               <button key={lote.id} onClick={()=>onChange(lote.id)}
@@ -422,35 +402,17 @@ function RegistroCosecha({ worker }) {
   const CalidadSelector = ({ value, onChange }) => (
     <div style={{marginBottom:16}}>
       <label style={LBL}>Calidad del producto</label>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
         {CALIDADES.map(c=>(
           <button key={c.id} onClick={()=>onChange(c.id)}
-            style={{padding:"12px 8px",border:`2px solid ${value===c.id?c.color:"#ddd"}`,borderRadius:12,background:value===c.id?c.color+"18":"#fff",cursor:"pointer",textAlign:"center"}}>
-            <div style={{fontSize:22,marginBottom:3}}>{c.icon}</div>
-            <div style={{fontWeight:600,fontSize:13,color:value===c.id?c.color:"#444"}}>{c.label}</div>
+            style={{padding:"10px 8px",border:`2px solid ${value===c.id?c.color:"#ddd"}`,borderRadius:12,background:value===c.id?c.color+"18":"#fff",cursor:"pointer",textAlign:"center"}}>
+            <div style={{fontSize:20,marginBottom:3}}>{c.icon}</div>
+            <div style={{fontWeight:600,fontSize:12,color:value===c.id?c.color:"#444"}}>{c.label}</div>
           </button>
         ))}
       </div>
     </div>
   );
-
-  const submitMerma = async () => {
-    if (!formMerma.loteId||!formMerma.kgMerma) { alert("Selecciona lote y escribe los kg de merma"); return; }
-    setSaving(true);
-    try {
-      const lote=getLote(formMerma.loteId); const now=new Date();
-      await addDoc(collection(db,"mermas"),{
-        ...formMerma, kgMerma:parseFloat(formMerma.kgMerma)||0,
-        worker, date:now.toISOString().slice(0,10), time:now.toTimeString().slice(0,5),
-        createdAt:now.toISOString(), loteName:lote?.nombre||"",
-        crop:lote?.crop||"", zona:lote?.zona||"",
-      });
-      setSaved("merma");
-      setFormMerma({loteId:"",kgMerma:"",causa:"",notas:"",fecha:now.toISOString().slice(0,10)});
-      setTimeout(()=>setSaved(""),4000);
-    } catch(e) { alert("Error: "+e.message); }
-    setSaving(false);
-  };
 
   const submitCosecha = async () => {
     if (!formC.loteId||!formC.kgCosechados) { alert("Selecciona lote y escribe los kg"); return; }
@@ -490,7 +452,7 @@ function RegistroCosecha({ worker }) {
   };
 
   const submitValidacion = async () => {
-    if (!formVL.loteId||!formVL.kgValidados||!formVL.etiqueta) { alert("Selecciona lote, escribe la etiqueta y los kg"); return; }
+    if (!formVL.loteId||!formVL.kgValidados||!formVL.etiqueta) { alert("Selecciona lote, etiqueta y kg"); return; }
     setSaving(true);
     try {
       const lote=getLote(formVL.loteId); const now=new Date();
@@ -509,15 +471,31 @@ function RegistroCosecha({ worker }) {
     setSaving(false);
   };
 
+  const submitMerma = async () => {
+    if (!formMerma.loteId||!formMerma.kgMerma) { alert("Selecciona lote y escribe los kg de merma"); return; }
+    setSaving(true);
+    try {
+      const lote=getLote(formMerma.loteId); const now=new Date();
+      await addDoc(collection(db,"mermas"),{
+        ...formMerma,kgMerma:parseFloat(formMerma.kgMerma)||0,
+        worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
+        createdAt:now.toISOString(),loteName:lote?.nombre||"",
+        crop:lote?.crop||"",zona:lote?.zona||"",
+      });
+      setSaved("merma");
+      setFormMerma({loteId:"",kgMerma:"",causa:"",notas:"",fecha:now.toISOString().slice(0,10)});
+      setTimeout(()=>setSaved(""),4000);
+    } catch(e) { alert("Error: "+e.message); }
+    setSaving(false);
+  };
+
   return (
     <div>
-      {saved==="cosecha"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>🧺 Cosecha registrada — aparece en el panel del encargado</div>}
       {saved==="cosecha"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>🧺 Cosecha registrada</div>}
       {saved==="venta"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>💰 Venta registrada</div>}
       {saved==="validacion"&&<div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:12,marginBottom:12,color:"#1a5276",fontWeight:600,textAlign:"center"}}>✓ Validación registrada</div>}
       {saved==="merma"&&<div style={{background:"#fef9e7",border:"1px solid #f39c1244",borderRadius:10,padding:12,marginBottom:12,color:"#f39c12",fontWeight:600,textAlign:"center"}}>⚠ Merma registrada</div>}
 
-      {/* Sub-pestañas */}
       <div style={{display:"flex",gap:4,marginBottom:16,background:"#ebebeb",borderRadius:12,padding:4}}>
         {[["cosecha","🧺 Cosecha"],["venta","💰 Venta"],["validacion","🏷️ Validar"],["merma","⚠ Merma"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSubtab(k)}
@@ -527,57 +505,43 @@ function RegistroCosecha({ worker }) {
         ))}
       </div>
 
-
-      {/* ── COSECHA ── */}
       {subtab==="cosecha"&&(
-      <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px",marginBottom:20}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#27ae60",marginBottom:14,letterSpacing:0.3,display:"flex",alignItems:"center",gap:6}}>
-          <span style={{fontSize:16}}>🧺</span> REGISTRO DE COSECHA
+        <div>
+          <LoteSelector value={formC.loteId} onChange={v=>setFormC(p=>({...p,loteId:v}))}/>
+          {formC.loteId&&(
+            <>
+              <div style={{marginBottom:16}}>
+                <label style={LBL}>Kg cosechados hoy *</label>
+                <input type="number" step="0.1" min="0" value={formC.kgCosechados}
+                  onChange={e=>setFormC(p=>({...p,kgCosechados:e.target.value}))} placeholder="Ej: 45.5"
+                  style={{...INP,fontSize:24,fontWeight:700,textAlign:"center",fontFamily:"'Courier New',monospace"}}/>
+              </div>
+              <CalidadSelector value={formC.calidad} onChange={v=>setFormC(p=>({...p,calidad:v}))}/>
+              <div style={{marginBottom:16}}>
+                <label style={LBL}>Observaciones</label>
+                <textarea value={formC.notas} onChange={e=>setFormC(p=>({...p,notas:e.target.value}))}
+                  placeholder="Estado del producto..." style={{...INP,minHeight:70,resize:"vertical"}}/>
+              </div>
+              <button onClick={submitCosecha} disabled={saving}
+                style={{width:"100%",padding:14,background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+                {saving?"Guardando...":"🧺 Registrar cosecha del día"}
+              </button>
+            </>
+          )}
         </div>
-        <LoteSelector value={formC.loteId} onChange={v=>setFormC(p=>({...p,loteId:v}))}/>
-        {formC.loteId&&(
-          <>
-            <div style={{marginBottom:16}}>
-              <label style={LBL}>Kg cosechados hoy *</label>
-              <input type="number" step="0.1" min="0" value={formC.kgCosechados}
-                onChange={e=>setFormC(p=>({...p,kgCosechados:e.target.value}))}
-                placeholder="Ej: 45.5"
-                style={{...INP,fontSize:24,fontWeight:700,textAlign:"center",fontFamily:"'Courier New',monospace"}}/>
-            </div>
-            <CalidadSelector value={formC.calidad} onChange={v=>setFormC(p=>({...p,calidad:v}))}/>
-            <div style={{marginBottom:16}}>
-              <label style={LBL}>Observaciones</label>
-              <textarea value={formC.notas} onChange={e=>setFormC(p=>({...p,notas:e.target.value}))}
-                placeholder="Estado del producto, condiciones de la cosecha..."
-                style={{...INP,minHeight:70,resize:"vertical"}}/>
-            </div>
-            <button onClick={submitCosecha} disabled={saving}
-              style={{width:"100%",padding:14,background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
-              {saving?"Guardando...":"🧺 Registrar cosecha del día"}
-            </button>
-          </>
-        )}
-      </div>
       )}
 
-      {subtab==="venta"&&<div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-        <div style={{flex:1,height:1,background:"#e0e0e0"}}/>
-        <span style={{fontSize:11,color:"#aaa",fontWeight:600,letterSpacing:0.5}}>REGISTRAR VENTA</span>
-        <div style={{flex:1,height:1,background:"#e0e0e0"}}/>
-      </div>}
-
-      {/* ── VENTA ── */}
-      <div>
+      {subtab==="venta"&&(
+        <div>
           <LoteSelector value={formV.loteId} onChange={v=>setFormV(p=>({...p,loteId:v}))}/>
           <div style={{marginBottom:16}}>
             <label style={LBL}>Comprador / Cliente *</label>
-            <input value={formV.comprador} onChange={e=>setFormV(p=>({...p,comprador:e.target.value}))}
-              placeholder="Nombre del comprador" style={INP}/>
+            <input value={formV.comprador} onChange={e=>setFormV(p=>({...p,comprador:e.target.value}))} placeholder="Nombre del comprador" style={INP}/>
           </div>
           <div style={{marginBottom:16}}>
             <label style={LBL}>Canal de venta</label>
             <select value={formV.canal} onChange={e=>setFormV(p=>({...p,canal:e.target.value}))} style={INP}>
-              {CANALES.map(c=><option key={c} value={c}>{c}</option>)}
+              {CANALES_W.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <CalidadSelector value={formV.calidad} onChange={v=>{
@@ -589,37 +553,23 @@ function RegistroCosecha({ worker }) {
             <div>
               <label style={LBL}>Kg vendidos *</label>
               <input type="number" step="0.1" min="0" value={formV.kgVendidos}
-                onChange={e=>setFormV(p=>({...p,kgVendidos:e.target.value}))}
-                placeholder="0.0"
+                onChange={e=>setFormV(p=>({...p,kgVendidos:e.target.value}))} placeholder="0.0"
                 style={{...INP,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
             </div>
             <div>
               <label style={LBL}>
                 Precio $/kg *
-                {(()=>{
-                  const lote=getLote(formV.loteId);
-                  const sug=lote?getPrecio(lote.crop,formV.calidad):null;
-                  return sug
-                    ? <span style={{color:"#27ae60",fontWeight:700,fontSize:10,marginLeft:3,cursor:"pointer"}}
-                        onClick={()=>setFormV(p=>({...p,precioKg:sug}))}>
-                        · ${sug} sugerido ↵
-                      </span>
-                    : null;
-                })()}
+                {(()=>{const lote=getLote(formV.loteId);const sug=lote?getPrecio(lote.crop,formV.calidad):null;return sug?<span style={{color:"#27ae60",fontWeight:700,fontSize:10,marginLeft:3,cursor:"pointer"}} onClick={()=>setFormV(p=>({...p,precioKg:sug}))}>· ${sug} sugerido ↵</span>:null;})()}
               </label>
               <input type="number" step="0.5" min="0" value={formV.precioKg}
-                onChange={e=>setFormV(p=>({...p,precioKg:e.target.value}))}
-                placeholder="0.00"
+                onChange={e=>setFormV(p=>({...p,precioKg:e.target.value}))} placeholder="0.00"
                 style={{...INP,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
             </div>
           </div>
-          {/* Total en tiempo real */}
           {parseFloat(formV.kgVendidos)>0&&parseFloat(formV.precioKg)>0&&(
             <div style={{background:"#eafaf1",border:"2px solid #a9dfbf",borderRadius:12,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{fontSize:14,color:"#2e7d5a",fontWeight:600}}>Total esta venta:</span>
-              <span style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#27ae60"}}>
-                ${(parseFloat(formV.kgVendidos)*parseFloat(formV.precioKg)).toFixed(2)}
-              </span>
+              <span style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#27ae60"}}>${(parseFloat(formV.kgVendidos)*parseFloat(formV.precioKg)).toFixed(2)}</span>
             </div>
           )}
           <div style={{marginBottom:16}}>
@@ -628,8 +578,7 @@ function RegistroCosecha({ worker }) {
           </div>
           <div style={{marginBottom:16}}>
             <label style={LBL}>Folio / Remisión</label>
-            <input value={formV.factura} onChange={e=>setFormV(p=>({...p,factura:e.target.value}))}
-              placeholder="Núm. de factura o remisión" style={INP}/>
+            <input value={formV.factura} onChange={e=>setFormV(p=>({...p,factura:e.target.value}))} placeholder="Núm. de factura o remisión" style={INP}/>
           </div>
           <div style={{marginBottom:16}}>
             <label style={LBL}>Notas</label>
@@ -643,7 +592,6 @@ function RegistroCosecha({ worker }) {
         </div>
       )}
 
-      {/* ── VALIDACIÓN DE TRATAMIENTO ── */}
       {subtab==="validacion"&&(
         <div>
           <div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1a5276"}}>
@@ -660,46 +608,34 @@ function RegistroCosecha({ worker }) {
                   <div style={{fontSize:28,marginBottom:2}}>{crop?.emoji||"🌱"}</div>
                   <div style={{fontWeight:700,fontSize:16,color:crop?.color||"#333",marginBottom:2}}>{crop?.name||""}</div>
                   <div style={{fontSize:13,color:"#555",marginBottom:6}}>{lote?.zona}</div>
-                  <div style={{display:"inline-block",background:"#2980b9",color:"#fff",borderRadius:20,padding:"4px 18px",fontWeight:700,fontSize:14,minWidth:100,minHeight:30,lineHeight:"30px"}}>
+                  <div style={{display:"inline-block",background:"#2980b9",color:"#fff",borderRadius:20,padding:"4px 18px",fontWeight:700,fontSize:14,minWidth:100}}>
                     {formVL.etiqueta||"—"}
                   </div>
                   {formVL.kgValidados>0&&<div style={{fontSize:12,color:"#27ae60",fontWeight:700,marginTop:6}}>{formVL.kgValidados} kg</div>}
-                  <div style={{fontSize:10,color:"#aaa",marginTop:4}}>{formVL.fecha}</div>
                 </div>
                 <div style={{marginBottom:16}}>
                   <label style={LBL}>Nombre del producto / tratamiento *</label>
                   <input value={formVL.etiqueta} onChange={e=>setFormVL(p=>({...p,etiqueta:e.target.value}))}
                     placeholder="Ej: Confidor 350 SC, Ridomil Gold..." style={INP}/>
-                  <div style={{fontSize:11,color:"#888",marginTop:5}}>Escribe el nombre exacto del producto tal como aparece en la etiqueta</div>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
                   <div>
                     <label style={LBL}>Kg validados *</label>
                     <input type="number" step="0.1" min="0" value={formVL.kgValidados}
-                      onChange={e=>setFormVL(p=>({...p,kgValidados:e.target.value}))}
-                      placeholder="0.0" style={{...INP,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
+                      onChange={e=>setFormVL(p=>({...p,kgValidados:e.target.value}))} placeholder="0.0"
+                      style={{...INP,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
                   </div>
                   <div>
                     <label style={LBL}>Precio venta $/kg</label>
                     <input type="number" step="0.5" min="0" value={formVL.precioVenta}
-                      onChange={e=>setFormVL(p=>({...p,precioVenta:e.target.value}))}
-                      placeholder="0.00" style={{...INP,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
+                      onChange={e=>setFormVL(p=>({...p,precioVenta:e.target.value}))} placeholder="0.00"
+                      style={{...INP,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
                   </div>
-                </div>
-                {parseFloat(formVL.kgValidados)>0&&parseFloat(formVL.precioVenta)>0&&(
-                  <div style={{background:"#eaf4fb",border:"2px solid #b5d4f4",borderRadius:12,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span style={{fontSize:14,color:"#1a5276",fontWeight:600}}>Valor estimado:</span>
-                    <span style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#2980b9"}}>${(parseFloat(formVL.kgValidados)*parseFloat(formVL.precioVenta)).toFixed(2)}</span>
-                  </div>
-                )}
-                <div style={{marginBottom:16}}>
-                  <label style={LBL}>Fecha de salida</label>
-                  <input type="date" value={formVL.fecha} onChange={e=>setFormVL(p=>({...p,fecha:e.target.value}))} style={INP}/>
                 </div>
                 <div style={{marginBottom:16}}>
                   <label style={LBL}>Observaciones</label>
                   <textarea value={formVL.observaciones} onChange={e=>setFormVL(p=>({...p,observaciones:e.target.value}))}
-                    placeholder="Estado del producto, destino, condiciones..." style={{...INP,minHeight:70,resize:"vertical"}}/>
+                    placeholder="Estado del producto, destino..." style={{...INP,minHeight:60,resize:"vertical"}}/>
                 </div>
                 <button onClick={submitValidacion} disabled={saving}
                   style={{width:"100%",padding:15,background:saving?"#aaa":"#2980b9",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
@@ -711,7 +647,6 @@ function RegistroCosecha({ worker }) {
         </div>
       )}
 
-      {/* ── MERMA ── */}
       {subtab==="merma"&&(
         <div>
           <div style={{background:"#fef9e7",border:"1px solid #f39c1244",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#856404"}}>
@@ -723,8 +658,7 @@ function RegistroCosecha({ worker }) {
               <div style={{marginBottom:16}}>
                 <label style={LBL}>Kg de merma *</label>
                 <input type="number" step="0.1" min="0" value={formMerma.kgMerma}
-                  onChange={e=>setFormMerma(p=>({...p,kgMerma:e.target.value}))}
-                  placeholder="Ej: 3.5 kg"
+                  onChange={e=>setFormMerma(p=>({...p,kgMerma:e.target.value}))} placeholder="Ej: 3.5 kg"
                   style={{...INP,fontSize:22,fontWeight:700,textAlign:"center",fontFamily:"'Courier New',monospace"}}/>
               </div>
               <div style={{marginBottom:16}}>
@@ -745,7 +679,7 @@ function RegistroCosecha({ worker }) {
               <div style={{marginBottom:16}}>
                 <label style={LBL}>Notas adicionales</label>
                 <textarea value={formMerma.notas} onChange={e=>setFormMerma(p=>({...p,notas:e.target.value}))}
-                  placeholder="Descripción detallada de la merma..." style={{...INP,minHeight:60,resize:"vertical"}}/>
+                  placeholder="Descripción detallada..." style={{...INP,minHeight:60,resize:"vertical"}}/>
               </div>
               <button onClick={submitMerma} disabled={saving}
                 style={{width:"100%",padding:15,background:saving?"#aaa":"#f39c12",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
@@ -755,12 +689,10 @@ function RegistroCosecha({ worker }) {
           )}
         </div>
       )}
-
     </div>
   );
 }
 
-// ─── TAREAS ────────────────────────────────────────────────────────────────────
 function Tareas({ worker }) {
   const [tasks, setTasks] = useState([]);
   const today = new Date().toISOString().slice(0,10);
