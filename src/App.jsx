@@ -75,8 +75,7 @@ function exportCSV(readings){
     const ps=getStatus(r.ph,rng.ph||c.ph),cs=getStatus(r.ce,rng.ce||c.ce);
     return[r.date,r.time||"",c.name,r.zone||"",r.invernadero||"",r.tipo||"entrada",r.ph,r.ce,r.drenaje||"",r.ca||"",r.no3||"",r.k||"",r.fe||"",SL[ps],SL[cs],r.worker,r.notes||"",r.photoURL||""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
   }).filter(Boolean);
-  const blob=new Blob(["﻿",[h.join(","),...rows].join("
-")],{type:"text/csv;charset=utf-8;"});
+  const blob=new Blob(["\uFEFF",[h.join(","),...rows].join("\n")],{type:"text/csv;charset=utf-8;"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`greenlog_${new Date().toISOString().slice(0,10)}.csv`;a.click();
 }
 
