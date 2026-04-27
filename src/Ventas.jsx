@@ -50,7 +50,7 @@ function PreciosCalidad() {
     {id:"primera",label:"Primera ⭐",color:"#27ae60"},
     {id:"segunda",label:"Segunda ⚡",color:"#f39c12"},
     {id:"tercera",label:"Tercera ▲",color:"#e67e22"},
-    {id:"descarte",label:"Descarte ✕",color:"#e74c3c"},
+    {id:"merma_venta",label:"Descarte ✕",color:"#e74c3c"},
   ];
 
   return (
@@ -136,10 +136,9 @@ const CANALES = [
 ];
 
 const CALIDADES = [
-  { id:"primera",  label:"Primera",  color:"#27ae60", icon:"⭐" },
-  { id:"segunda",  label:"Segunda",  color:"#f39c12", icon:"⚡" },
-  { id:"tercera",  label:"Tercera",  color:"#e67e22", icon:"▲" },
-  { id:"descarte", label:"Descarte", color:"#e74c3c", icon:"✕" },
+  { id:"primera", label:"Primera", color:"#27ae60", icon:"⭐" },
+  { id:"segunda", label:"Segunda", color:"#f39c12", icon:"⚡" },
+  { id:"tercera", label:"Tercera", color:"#e67e22", icon:"▲"  },
 ];
 
 const n = (v, d=2) => Number(parseFloat(v||0).toFixed(d));
@@ -923,7 +922,7 @@ function CosechasAdmin() {
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({});
   const CROPS_C = {jitomate:{name:"Jitomate",emoji:"🍅"},fresa:{name:"Fresa",emoji:"🍓"},arandano:{name:"Arándano",emoji:"🫐"},zarzamora:{name:"Zarzamora",emoji:"🫐"}};
-  const CALIDADES_C = [{id:"primera",label:"Primera",color:"#27ae60"},{id:"segunda",label:"Segunda",color:"#f39c12"},{id:"tercera",label:"Tercera",color:"#e67e22"},{id:"descarte",label:"Descarte",color:"#e74c3c"}];
+  const CALIDADES_C = [{id:"primera",label:"Primera",color:"#27ae60"},{id:"segunda",label:"Segunda",color:"#f39c12"},{id:"tercera",label:"Tercera",color:"#e67e22"},{id:"merma_venta",label:"Merma",color:"#e74c3c"}];
   const inp = INP;
 
   useEffect(()=>{
@@ -1110,6 +1109,140 @@ function ValidacionesAdmin() {
   );
 }
 
+
+// ─── MERMAS ADMIN ─────────────────────────────────────────────────────────────
+function MermasAdmin() {
+  const [mermas, setMermas] = useState([]);
+  const [filterCrop, setFilterCrop] = useState("all");
+
+  useEffect(()=>{
+    const q = query(collection(db,"mermas"), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap=>setMermas(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    return()=>unsub();
+  },[]);
+
+  const filtered = filterCrop==="all" ? mermas : mermas.filter(m=>m.crop===filterCrop);
+  const totalKg = filtered.reduce((s,m)=>s+(m.kgMerma||0),0);
+
+  // Por causa
+  const porCausa = {};
+  filtered.forEach(m=>{
+    const c = m.causa||"Sin especificar";
+    if(!porCausa[c]) porCausa[c]={kg:0,count:0};
+    porCausa[c].kg += m.kgMerma||0;
+    porCausa[c].count++;
+  });
+
+  // Por cultivo
+  const porCultivo = {};
+  filtered.forEach(m=>{
+    if(!porCultivo[m.crop]) porCultivo[m.crop]={kg:0,count:0};
+    porCultivo[m.crop].kg += m.kgMerma||0;
+    porCultivo[m.crop].count++;
+  });
+
+  const fmt = v => Number(v||0).toLocaleString("es-MX",{minimumFractionDigits:1,maximumFractionDigits:1});
+
+  return (
+    <div>
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 16px"}}>
+          <div style={{fontSize:20}}>⚠️</div>
+          <div style={{fontSize:24,fontWeight:700,color:"#f39c12",fontFamily:"'Courier New',monospace",marginTop:4}}>{fmt(totalKg)} kg</div>
+          <div style={{fontSize:11,color:"#888",marginTop:2}}>Total merma</div>
+        </div>
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 16px"}}>
+          <div style={{fontSize:20}}>📋</div>
+          <div style={{fontSize:24,fontWeight:700,color:"#e74c3c",fontFamily:"'Courier New',monospace",marginTop:4}}>{filtered.length}</div>
+          <div style={{fontSize:11,color:"#888",marginTop:2}}>Registros</div>
+        </div>
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 16px"}}>
+          <div style={{fontSize:20}}>🔢</div>
+          <div style={{fontSize:24,fontWeight:700,color:"#8e44ad",fontFamily:"'Courier New',monospace",marginTop:4}}>{Object.keys(porCausa).length}</div>
+          <div style={{fontSize:11,color:"#888",marginTop:2}}>Causas distintas</div>
+        </div>
+      </div>
+
+      {/* Filtro */}
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+        {[["all","Todos"],["jitomate","🍅 Jitomate"],["fresa","🍓 Fresa"],["arandano","🫐 Arándano"],["zarzamora","🫐 Zarzamora"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setFilterCrop(k)}
+            style={{padding:"6px 14px",border:`1px solid ${filterCrop===k?"#f39c12":"#e0e0e0"}`,borderRadius:20,background:filterCrop===k?"#fef9e7":"#fff",color:filterCrop===k?"#f39c12":"#666",cursor:"pointer",fontSize:12,fontWeight:filterCrop===k?700:400}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* Por causa y por cultivo */}
+      {filtered.length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12,letterSpacing:0.3}}>POR CAUSA</div>
+            {Object.entries(porCausa).sort((a,b)=>b[1].kg-a[1].kg).map(([causa,data])=>(
+              <div key={causa} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f5f5f5",alignItems:"center"}}>
+                <span style={{fontSize:12,color:"#555"}}>{causa}</span>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontFamily:"'Courier New',monospace",fontSize:12,fontWeight:700,color:"#f39c12"}}>{fmt(data.kg)} kg</div>
+                  <div style={{fontSize:10,color:"#aaa"}}>{data.count} registro{data.count!==1?"s":""}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12,letterSpacing:0.3}}>POR CULTIVO</div>
+            {Object.entries(porCultivo).sort((a,b)=>b[1].kg-a[1].kg).map(([crop,data])=>{
+              const c = CROPS[crop];
+              return(
+                <div key={crop} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f5f5f5",alignItems:"center"}}>
+                  <span style={{fontSize:12,color:c?.color||"#555",fontWeight:500}}>{c?.emoji} {c?.name||crop}</span>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontFamily:"'Courier New',monospace",fontSize:12,fontWeight:700,color:"#f39c12"}}>{fmt(data.kg)} kg</div>
+                    <div style={{fontSize:10,color:"#aaa"}}>{data.count} registro{data.count!==1?"s":""}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Lista de mermas */}
+      {!filtered.length&&(
+        <div style={{background:"#fff",borderRadius:12,padding:"3rem",textAlign:"center",color:"#aaa",border:"0.5px solid #e0e0e0"}}>
+          <div style={{fontSize:40,marginBottom:8}}>✅</div>
+          <div style={{fontWeight:500,marginBottom:4}}>Sin mermas registradas</div>
+          <div style={{fontSize:12}}>Los trabajadores registran mermas desde su app</div>
+        </div>
+      )}
+      {filtered.map(m=>{
+        const crop=CROPS[m.crop];
+        return(
+          <div key={m.id} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderLeft:"4px solid #f39c12",borderRadius:12,padding:"12px 16px",marginBottom:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+              <span style={{fontSize:20}}>{crop?.emoji||"🌱"}</span>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:2}}>
+                  <span style={{fontWeight:600,fontSize:13,color:crop?.color||"#333"}}>{crop?.name||m.crop}</span>
+                  <span style={{background:"#fef9e7",color:"#f39c12",border:"1px solid #f39c1244",borderRadius:8,padding:"1px 8px",fontSize:11,fontWeight:600}}>{m.causa||"Sin causa"}</span>
+                </div>
+                <div style={{fontSize:11,color:"#aaa"}}>{m.loteName||"Sin lote"} · {m.zona||""} · {m.worker} · {m.date}</div>
+                {m.notas&&<div style={{fontSize:11,color:"#888",marginTop:2}}>📝 {m.notas}</div>}
+              </div>
+              <div style={{textAlign:"center",background:"#fef9e7",borderRadius:10,padding:"8px 14px",border:"1px solid #f39c1244"}}>
+                <div style={{fontFamily:"'Courier New',monospace",fontSize:18,fontWeight:700,color:"#f39c12"}}>{fmt(m.kgMerma)} kg</div>
+                <div style={{fontSize:9,color:"#aaa"}}>merma</div>
+              </div>
+              <button onClick={()=>{if(window.confirm("¿Eliminar este registro?"))deleteDoc(doc(db,"mermas",m.id));}}
+                style={{background:"#fdedec",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 const SUBTABS = [
   { id:"reportes", label:"📊 Reportes"  },
@@ -1117,6 +1250,7 @@ const SUBTABS = [
   { id:"ventas",   label:"📋 Historial" },
   { id:"precios",  label:"🏷️ Precios"   },
   { id:"validaciones", label:"✅ Validaciones" },
+  { id:"mermas", label:"⚠️ Mermas" },
 ];
 
 export default function Ventas({ readOnly=false }) {
@@ -1159,6 +1293,7 @@ export default function Ventas({ readOnly=false }) {
       {tab==="ventas"   && <RegistroVentas/>}
       {tab==="precios"  && <PreciosCalidad/>}
       {tab==="validaciones" && <ValidacionesAdmin/>}
+      {tab==="mermas" && <MermasAdmin/>}
     </div>
   );
 }

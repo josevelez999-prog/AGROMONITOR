@@ -12,6 +12,12 @@ const CROPS = {
     // backward compat
     ph:{min:5.5,max:6.2}, ce:{min:2.5,max:4.0},
     invernaderos: ["INV 2","INV 3","INV 5","INV 6"],
+    extraFields: [
+      { key:"ca",  label:"Calcio (Ca)",    unit:"mg/L", min:120, max:180, placeholder:"150" },
+      { key:"no3", label:"Nitratos (NO₃)", unit:"mg/L", min:150, max:200, placeholder:"175" },
+      { key:"k",   label:"Potasio (K)",    unit:"mg/L", min:200, max:300, placeholder:"250" },
+      { key:"fe",  label:"Hierro (Fe)",    unit:"mg/L", min:1.5, max:3.0, placeholder:"2.0" },
+    ],
   },
   fresa: {
     name:"Fresa", emoji:"🍓", color:"#e74c3c",
@@ -65,10 +71,9 @@ const SYMPTOMS = {
   ],
 };
 const CALIDADES = [
-  { id:"primera",  label:"Primera",  color:"#27ae60", icon:"⭐" },
-  { id:"segunda",  label:"Segunda",  color:"#f39c12", icon:"⚡" },
-  { id:"tercera",  label:"Tercera",  color:"#e67e22", icon:"▲"  },
-  { id:"descarte", label:"Descarte", color:"#e74c3c", icon:"✕"  },
+  { id:"primera", label:"Primera", color:"#27ae60", icon:"⭐" },
+  { id:"segunda", label:"Segunda", color:"#f39c12", icon:"⚡" },
+  { id:"tercera", label:"Tercera", color:"#e67e22", icon:"▲"  },
 ];
 const CANALES = ["Mercado local","Central de abastos","Supermercado","Restaurante","Exportación","Venta directa","Agroindustria","Otro"];
 const SEV_COLOR = { alta:"#e74c3c", media:"#f39c12", baja:"#27ae60" };
@@ -100,7 +105,7 @@ function Registro({ worker }) {
   const [form, setForm] = useState({
     crop:"jitomate", zone:"", invernadero:"INV 2",
     tipo:"entrada", // entrada | salida
-    ph:"", ce:"", drenaje:"", notes:"",
+    ph:"", ce:"", drenaje:"", volumenEntrada:"", notes:"",
     ca:"", no3:"", k:"", fe:"",
   });
   const [imgFile, setImgFile] = useState(null);
@@ -147,6 +152,7 @@ function Registro({ worker }) {
         ...form, worker,
         ph:parseFloat(form.ph), ce:parseFloat(form.ce),
         drenaje: form.drenaje ? parseFloat(form.drenaje) : null,
+        volumenEntrada: form.volumenEntrada ? parseFloat(form.volumenEntrada) : null,
         ca:  form.ca  ? parseFloat(form.ca)  : null,
         no3: form.no3 ? parseFloat(form.no3) : null,
         k:   form.k   ? parseFloat(form.k)   : null,
@@ -243,6 +249,18 @@ function Registro({ worker }) {
           <input value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} placeholder="Ej: Zona A" style={INP}/>
         </div>
 
+        {/* Volumen entrada */}
+        {form.tipo==="entrada"&&(
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={LBL}>Volumen de entrada (litros)</label>
+            <input type="number" step="0.1" min="0" value={form.volumenEntrada||""}
+              onChange={e=>setForm(p=>({...p,volumenEntrada:e.target.value}))}
+              placeholder="Ej: 12.5 L"
+              style={INP}/>
+            <div style={{fontSize:10,color:"#888",marginTop:3}}>Volumen de solución nutritiva aplicada</div>
+          </div>
+        )}
+
         {/* pH */}
         <div>
           <label style={LBL}>pH medido *</label>
@@ -261,8 +279,8 @@ function Registro({ worker }) {
           {form.ce&&<div style={{fontSize:10,marginTop:3,color:statusColor(form.ce,rangos.ce)}}>{statusText(form.ce,rangos.ce)}</div>}
         </div>
 
-        {/* Drenaje — solo en salida */}
-        {form.tipo==="salida"&&(
+        {/* Drenaje — solo en salida, no para zarzamora */}
+        {form.tipo==="salida"&&!crop.noDrenaje&&(
           <div style={{gridColumn:"1/-1"}}>
             <label style={LBL}>Volumen de drenaje (litros)</label>
             <input type="number" step="0.1" min="0" value={form.drenaje}
@@ -357,10 +375,12 @@ function RegistroCosecha({ worker }) {
   const [preciosSugeridos, setPreciosSugeridos] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState("");
+  const [subtab, setSubtab] = useState("cosecha");
 
   const [formC, setFormC] = useState({ loteId:"", kgCosechados:"", calidad:"primera", notas:"" });
   const [formV, setFormV] = useState({ loteId:"", comprador:"", canal:"Mercado local", calidad:"primera", kgVendidos:"", precioKg:"", factura:"", notas:"", fecha:new Date().toISOString().slice(0,10) });
   const [formVL, setFormVL] = useState({ loteId:"", etiqueta:"", kgValidados:"", precioVenta:"", observaciones:"", fecha:new Date().toISOString().slice(0,10) });
+  const [formMerma, setFormMerma] = useState({ loteId:"", kgMerma:"", causa:"", notas:"", fecha:new Date().toISOString().slice(0,10) });
 
   useEffect(()=>{
     const q = query(collection(db,"lotes"),orderBy("createdAt","desc"));
@@ -413,6 +433,24 @@ function RegistroCosecha({ worker }) {
       </div>
     </div>
   );
+
+  const submitMerma = async () => {
+    if (!formMerma.loteId||!formMerma.kgMerma) { alert("Selecciona lote y escribe los kg de merma"); return; }
+    setSaving(true);
+    try {
+      const lote=getLote(formMerma.loteId); const now=new Date();
+      await addDoc(collection(db,"mermas"),{
+        ...formMerma, kgMerma:parseFloat(formMerma.kgMerma)||0,
+        worker, date:now.toISOString().slice(0,10), time:now.toTimeString().slice(0,5),
+        createdAt:now.toISOString(), loteName:lote?.nombre||"",
+        crop:lote?.crop||"", zona:lote?.zona||"",
+      });
+      setSaved("merma");
+      setFormMerma({loteId:"",kgMerma:"",causa:"",notas:"",fecha:now.toISOString().slice(0,10)});
+      setTimeout(()=>setSaved(""),4000);
+    } catch(e) { alert("Error: "+e.message); }
+    setSaving(false);
+  };
 
   const submitCosecha = async () => {
     if (!formC.loteId||!formC.kgCosechados) { alert("Selecciona lote y escribe los kg"); return; }
@@ -474,11 +512,24 @@ function RegistroCosecha({ worker }) {
   return (
     <div>
       {saved==="cosecha"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>🧺 Cosecha registrada — aparece en el panel del encargado</div>}
-      {saved==="venta"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>💰 Venta registrada — aparece en el panel del encargado</div>}
+      {saved==="cosecha"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>🧺 Cosecha registrada</div>}
+      {saved==="venta"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>💰 Venta registrada</div>}
+      {saved==="validacion"&&<div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:12,marginBottom:12,color:"#1a5276",fontWeight:600,textAlign:"center"}}>✓ Validación registrada</div>}
+      {saved==="merma"&&<div style={{background:"#fef9e7",border:"1px solid #f39c1244",borderRadius:10,padding:12,marginBottom:12,color:"#f39c12",fontWeight:600,textAlign:"center"}}>⚠ Merma registrada</div>}
+
+      {/* Sub-pestañas */}
+      <div style={{display:"flex",gap:4,marginBottom:16,background:"#ebebeb",borderRadius:12,padding:4}}>
+        {[["cosecha","🧺 Cosecha"],["venta","💰 Venta"],["validacion","🏷️ Validar"],["merma","⚠ Merma"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setSubtab(k)}
+            style={{flex:1,padding:"10px 4px",border:"none",borderRadius:10,background:subtab===k?"#27ae60":"transparent",color:subtab===k?"#fff":"#555",cursor:"pointer",fontSize:12,fontWeight:subtab===k?700:500}}>
+            {l}
+          </button>
+        ))}
+      </div>
 
 
       {/* ── COSECHA ── */}
-      <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px",marginBottom:20}}>
+      {subtab==="cosecha"&&<div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px",marginBottom:20}}>
         <div style={{fontSize:12,fontWeight:700,color:"#27ae60",marginBottom:14,letterSpacing:0.3,display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontSize:16}}>🧺</span> REGISTRO DE COSECHA
         </div>
@@ -505,9 +556,14 @@ function RegistroCosecha({ worker }) {
             </button>
           </>
         )}
-      </div>
+      </div>}
 
       {/* Divisor */}
+      {subtab==="venta"&&<div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+        <div style={{flex:1,height:1,background:"#e0e0e0"}}/>
+        <span style={{fontSize:11,color:"#aaa",fontWeight:600,letterSpacing:0.5}}>REGISTRAR VENTA</span>
+        <div style={{flex:1,height:1,background:"#e0e0e0"}}/>
+      </div>}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
         <div style={{flex:1,height:1,background:"#e0e0e0"}}/>
         <span style={{fontSize:11,color:"#aaa",fontWeight:600,letterSpacing:0.5}}>REGISTRO DE VENTA</span>
@@ -588,8 +644,120 @@ function RegistroCosecha({ worker }) {
             style={{width:"100%",padding:15,background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
             {saving?"Guardando...":"💰 Registrar venta"}
           </button>
-        </div>
+        </div>}
 
+      {/* ── VALIDACIÓN DE TRATAMIENTO ── */}
+      {subtab==="validacion"&&(
+        <div>
+          <div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1a5276"}}>
+            🏷️ Confirma el tratamiento del producto antes de que salga de la unidad
+          </div>
+          <LoteSelector value={formVL.loteId} onChange={v=>setFormVL(p=>({...p,loteId:v}))}/>
+          {formVL.loteId&&(()=>{
+            const lote=getLote(formVL.loteId);
+            const crop=CROPS[lote?.crop];
+            return (
+              <>
+                <div style={{background:"#fff",border:"2px solid #2980b9",borderRadius:12,padding:16,marginBottom:16,textAlign:"center"}}>
+                  <div style={{fontSize:10,color:"#aaa",letterSpacing:1,marginBottom:4,fontFamily:"'Courier New',monospace"}}>ETIQUETA DEL PRODUCTO</div>
+                  <div style={{fontSize:28,marginBottom:2}}>{crop?.emoji||"🌱"}</div>
+                  <div style={{fontWeight:700,fontSize:16,color:crop?.color||"#333",marginBottom:2}}>{crop?.name||""}</div>
+                  <div style={{fontSize:13,color:"#555",marginBottom:6}}>{lote?.zona}</div>
+                  <div style={{display:"inline-block",background:"#2980b9",color:"#fff",borderRadius:20,padding:"4px 18px",fontWeight:700,fontSize:14,minWidth:100,minHeight:30,lineHeight:"30px"}}>
+                    {formVL.etiqueta||"—"}
+                  </div>
+                  {formVL.kgValidados>0&&<div style={{fontSize:12,color:"#27ae60",fontWeight:700,marginTop:6}}>{formVL.kgValidados} kg</div>}
+                  <div style={{fontSize:10,color:"#aaa",marginTop:4}}>{formVL.fecha}</div>
+                </div>
+                <div style={{marginBottom:16}}>
+                  <label style={LBL}>Nombre del producto / tratamiento *</label>
+                  <input value={formVL.etiqueta} onChange={e=>setFormVL(p=>({...p,etiqueta:e.target.value}))}
+                    placeholder="Ej: Confidor 350 SC, Ridomil Gold..." style={INP}/>
+                  <div style={{fontSize:11,color:"#888",marginTop:5}}>Escribe el nombre exacto del producto tal como aparece en la etiqueta</div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+                  <div>
+                    <label style={LBL}>Kg validados *</label>
+                    <input type="number" step="0.1" min="0" value={formVL.kgValidados}
+                      onChange={e=>setFormVL(p=>({...p,kgValidados:e.target.value}))}
+                      placeholder="0.0" style={{...INP,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
+                  </div>
+                  <div>
+                    <label style={LBL}>Precio venta $/kg</label>
+                    <input type="number" step="0.5" min="0" value={formVL.precioVenta}
+                      onChange={e=>setFormVL(p=>({...p,precioVenta:e.target.value}))}
+                      placeholder="0.00" style={{...INP,textAlign:"center",fontFamily:"'Courier New',monospace",fontWeight:700}}/>
+                  </div>
+                </div>
+                {parseFloat(formVL.kgValidados)>0&&parseFloat(formVL.precioVenta)>0&&(
+                  <div style={{background:"#eaf4fb",border:"2px solid #b5d4f4",borderRadius:12,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:14,color:"#1a5276",fontWeight:600}}>Valor estimado:</span>
+                    <span style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#2980b9"}}>${(parseFloat(formVL.kgValidados)*parseFloat(formVL.precioVenta)).toFixed(2)}</span>
+                  </div>
+                )}
+                <div style={{marginBottom:16}}>
+                  <label style={LBL}>Fecha de salida</label>
+                  <input type="date" value={formVL.fecha} onChange={e=>setFormVL(p=>({...p,fecha:e.target.value}))} style={INP}/>
+                </div>
+                <div style={{marginBottom:16}}>
+                  <label style={LBL}>Observaciones</label>
+                  <textarea value={formVL.observaciones} onChange={e=>setFormVL(p=>({...p,observaciones:e.target.value}))}
+                    placeholder="Estado del producto, destino, condiciones..." style={{...INP,minHeight:70,resize:"vertical"}}/>
+                </div>
+                <button onClick={submitValidacion} disabled={saving}
+                  style={{width:"100%",padding:15,background:saving?"#aaa":"#2980b9",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+                  {saving?"Guardando...":"🏷️ Confirmar validación"}
+                </button>
+              </>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ── MERMA ── */}
+      {subtab==="merma"&&(
+        <div>
+          <div style={{background:"#fef9e7",border:"1px solid #f39c1244",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#856404"}}>
+            ⚠ Registra el producto que no se puede vender — merma, desperdicio o pérdida del día
+          </div>
+          <LoteSelector value={formMerma.loteId} onChange={v=>setFormMerma(p=>({...p,loteId:v}))}/>
+          {formMerma.loteId&&(
+            <>
+              <div style={{marginBottom:16}}>
+                <label style={LBL}>Kg de merma *</label>
+                <input type="number" step="0.1" min="0" value={formMerma.kgMerma}
+                  onChange={e=>setFormMerma(p=>({...p,kgMerma:e.target.value}))}
+                  placeholder="Ej: 3.5 kg"
+                  style={{...INP,fontSize:22,fontWeight:700,textAlign:"center",fontFamily:"'Courier New',monospace"}}/>
+              </div>
+              <div style={{marginBottom:16}}>
+                <label style={LBL}>Causa de la merma</label>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  {["Plaga o enfermedad","Daño mecánico","Sobremadurez","Calibre fuera","Pudrición","Otra causa"].map(causa=>(
+                    <button key={causa} onClick={()=>setFormMerma(p=>({...p,causa}))}
+                      style={{padding:"10px 8px",border:`1.5px solid ${formMerma.causa===causa?"#f39c12":"#ddd"}`,borderRadius:10,background:formMerma.causa===causa?"#fef9e7":"#fff",cursor:"pointer",fontSize:12,fontWeight:formMerma.causa===causa?700:400,color:formMerma.causa===causa?"#f39c12":"#555",textAlign:"left"}}>
+                      {causa}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{marginBottom:16}}>
+                <label style={LBL}>Fecha</label>
+                <input type="date" value={formMerma.fecha} onChange={e=>setFormMerma(p=>({...p,fecha:e.target.value}))} style={INP}/>
+              </div>
+              <div style={{marginBottom:16}}>
+                <label style={LBL}>Notas adicionales</label>
+                <textarea value={formMerma.notas} onChange={e=>setFormMerma(p=>({...p,notas:e.target.value}))}
+                  placeholder="Descripción detallada de la merma..." style={{...INP,minHeight:60,resize:"vertical"}}/>
+              </div>
+              <button onClick={submitMerma} disabled={saving}
+                style={{width:"100%",padding:15,background:saving?"#aaa":"#f39c12",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+                {saving?"Guardando...":"⚠ Registrar merma"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
     </div>
   );
