@@ -10,10 +10,27 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import AnalisisSuelo from "./SueloAnalisis";
 
 const CROPS = {
-  jitomate:  { name:"Jitomate",  emoji:"🍅", color:"#c0392b", ph:{min:5.5,max:6.5}, ce:{min:2.5,max:4.0} },
-  fresa:     { name:"Fresa",     emoji:"🍓", color:"#e74c3c", ph:{min:5.5,max:6.5}, ce:{min:1.0,max:2.0} },
-  arandano:  { name:"Arándano",  emoji:"🫐", color:"#2980b9", ph:{min:4.5,max:5.5}, ce:{min:1.0,max:2.0} },
-  zarzamora: { name:"Zarzamora", emoji:"🫐", color:"#8e44ad", ph:{min:5.5,max:6.5}, ce:{min:1.5,max:2.5} },
+  jitomate:  { name:"Jitomate",  emoji:"🍅", color:"#c0392b",
+    ph:{min:5.5,max:6.2}, ce:{min:2.5,max:4.0},
+    entrada:{ph:{min:5.5,max:6.2},ce:{min:2.5,max:4.0}},
+    salida: {ph:{min:5.8,max:6.5},ce:{min:3.5,max:6.0}},
+    invernaderos:["INV 2","INV 3","INV 5","INV 6"],
+  },
+  fresa:     { name:"Fresa",     emoji:"🍓", color:"#e74c3c",
+    ph:{min:5.5,max:6.5}, ce:{min:1.0,max:2.0},
+    entrada:{ph:{min:5.5,max:6.5},ce:{min:1.0,max:2.0}},
+    salida: {ph:{min:5.8,max:6.8},ce:{min:1.5,max:2.5}},
+  },
+  arandano:  { name:"Arándano",  emoji:"🫐", color:"#2980b9",
+    ph:{min:4.5,max:5.5}, ce:{min:1.0,max:2.0},
+    entrada:{ph:{min:4.5,max:5.5},ce:{min:1.0,max:2.0}},
+    salida: {ph:{min:4.8,max:5.8},ce:{min:1.5,max:2.5}},
+  },
+  zarzamora: { name:"Zarzamora", emoji:"🫐", color:"#8e44ad",
+    ph:{min:5.5,max:6.5}, ce:{min:1.5,max:2.5},
+    entrada:{ph:{min:5.5,max:6.5},ce:{min:1.5,max:2.5}},
+    salida: {ph:{min:5.8,max:6.8},ce:{min:2.0,max:3.5}},
+  },
 };
 const ETAPAS = ["Vegetativo","Floración","Fructificación","Post-cosecha"];
 const ANIONS  = ["NO3","H2PO4","SO4","HCO3","Cl"];
@@ -42,13 +59,26 @@ const FERTS_INIT = [
 
 const n=(v,d=2)=>Number(parseFloat(v||0).toFixed(d));
 const getStatus=(v,r)=>{if(v<r.min||v>r.max)return"danger";const m=(r.max-r.min)*0.15;return(v<r.min+m||v>r.max-m)?"warning":"ok";};
+const getRangos=(crop,tipo)=>{ const c=CROPS[crop]; if(!c) return null; return tipo==="salida"?c.salida:c.entrada; };
+const getStatusR=(v,crop,tipo,campo)=>{ const r=getRangos(crop,tipo); if(!r) return getStatus(v,CROPS[crop]?.[campo]||{min:0,max:14}); return getStatus(v,r[campo]); };
 const SC={ok:"#27ae60",warning:"#f39c12",danger:"#e74c3c"};
 const SB={ok:"#eafaf1",warning:"#fef9e7",danger:"#fdedec"};
 const SL={ok:"OK",warning:"Alerta",danger:"Crítico"};
 
 function Badge({status,small}){return <span style={{background:SB[status],color:SC[status],border:`1px solid ${SC[status]}44`,borderRadius:20,padding:small?"1px 7px":"3px 10px",fontSize:small?10:11,fontWeight:600,whiteSpace:"nowrap",fontFamily:"'Courier New',monospace"}}>{status==="danger"?"✗":status==="warning"?"⚠":"✓"} {SL[status]}</span>;}
 function Sparkline({data,color}){if(!data||data.length<2)return null;const min=Math.min(...data),max=Math.max(...data),range=max-min||1,w=80,h=28;const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-((v-min)/range)*h}`).join(" ");return <svg width={w} height={h} style={{overflow:"visible"}}><polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round"/><circle cx={w} cy={h-((data[data.length-1]-min)/range)*h} r={2.5} fill={color}/></svg>;}
-function exportCSV(readings){const h=["Fecha","Hora","Cultivo","Zona","pH","CE","Estado pH","Estado CE","Trabajador","Notas","Foto"];const rows=readings.map(r=>{const c=CROPS[r.crop];if(!c)return null;const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return[r.date,r.time||"",c.name,r.zone,r.ph,r.ce,SL[ps],SL[cs],r.worker,r.notes||"",r.photoURL||""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");}).filter(Boolean);const blob=new Blob(["\uFEFF",[h.join(","),...rows].join("\n")],{type:"text/csv;charset=utf-8;"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`greenlog_${new Date().toISOString().slice(0,10)}.csv`;a.click();}
+function exportCSV(readings){
+  const h=["Fecha","Hora","Cultivo","Zona","Invernadero","Tipo","pH","CE","Drenaje(L)","Ca(mg/L)","NO3(mg/L)","K(mg/L)","Fe(mg/L)","Estado pH","Estado CE","Trabajador","Notas","Foto"];
+  const rows=readings.map(r=>{
+    const c=CROPS[r.crop];if(!c)return null;
+    const rng=getRangos(r.crop,r.tipo)||c;
+    const ps=getStatus(r.ph,rng.ph||c.ph),cs=getStatus(r.ce,rng.ce||c.ce);
+    return[r.date,r.time||"",c.name,r.zone||"",r.invernadero||"",r.tipo||"entrada",r.ph,r.ce,r.drenaje||"",r.ca||"",r.no3||"",r.k||"",r.fe||"",SL[ps],SL[cs],r.worker,r.notes||"",r.photoURL||""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
+  }).filter(Boolean);
+  const blob=new Blob(["﻿",[h.join(","),...rows].join("
+")],{type:"text/csv;charset=utf-8;"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`greenlog_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+}
 
 // ─── RESUMEN ──────────────────────────────────────────────────────────────────
 function Resumen({readings,onDelete}){
@@ -172,57 +202,370 @@ function Alertas({readings,onDelete}){
 // ─── REPORTES ─────────────────────────────────────────────────────────────────
 function Reportes({readings,onDelete}){
   const [cropFilter,setCropFilter]=useState("jitomate");
+  const [tipoFilter,setTipoFilter]=useState("all"); // all | entrada | salida
+  const [invFilter,setInvFilter]=useState("all");
   const [metric,setMetric]=useState("ph");
   const [sub,setSub]=useState("tendencia");
   const crop=CROPS[cropFilter];
-  const cr=readings.filter(r=>r.crop===cropFilter);
-  const chartData=useMemo(()=>{const g={};cr.sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{if(!g[r.date])g[r.date]={date:r.date,phVals:[],ceVals:[]};g[r.date].phVals.push(r.ph);g[r.date].ceVals.push(r.ce);});return Object.values(g).map(d=>({date:d.date.slice(5),ph:n(d.phVals.reduce((s,v)=>s+v,0)/d.phVals.length),ce:n(d.ceVals.reduce((s,v)=>s+v,0)/d.ceVals.length)}));},[readings,cropFilter]);
-  const compareData=useMemo(()=>{const w={};cr.forEach(r=>{const d=new Date(r.date);const wk=`S${Math.ceil(d.getDate()/7)}-${d.getMonth()+1}`;if(!w[wk])w[wk]={week:wk,phVals:[],ceVals:[]};w[wk].phVals.push(r.ph);w[wk].ceVals.push(r.ce);});return Object.values(w).map(wk=>({week:wk.week,ph:n(wk.phVals.reduce((s,v)=>s+v,0)/wk.phVals.length),ce:n(wk.ceVals.reduce((s,v)=>s+v,0)/wk.ceVals.length),registros:wk.phVals.length}));},[readings,cropFilter]);
-  const stats=useMemo(()=>{const vals=cr.map(r=>r[metric]);if(!vals.length)return{avg:"—",min:"—",max:"—",out:0,total:0};return{avg:n(vals.reduce((s,v)=>s+v,0)/vals.length),min:n(Math.min(...vals)),max:n(Math.max(...vals)),out:vals.filter(v=>metric==="ph"?(v<crop.ph.min||v>crop.ph.max):(v<crop.ce.min||v>crop.ce.max)).length,total:vals.length};},[readings,cropFilter,metric]);
-  const yD=metric==="ph"?[3.5,8.5]:[0,6];
+
+  // Filter readings
+  const cr=useMemo(()=>{
+    let r=readings.filter(x=>x.crop===cropFilter);
+    if(tipoFilter!=="all") r=r.filter(x=>(x.tipo||"entrada")===tipoFilter);
+    if(invFilter!=="all"&&crop.invernaderos) r=r.filter(x=>x.invernadero===invFilter);
+    return r;
+  },[readings,cropFilter,tipoFilter,invFilter]);
+
+  // Stats using tipo-aware ranges
+  const stats=useMemo(()=>{
+    const vals=cr.map(r=>r[metric]);
+    if(!vals.length)return{avg:"—",min:"—",max:"—",out:0,total:0};
+    const getRng=(r)=>{const rng=getRangos(r.crop,r.tipo||"entrada");return rng?rng[metric]:crop[metric];};
+    return{
+      avg:n(vals.reduce((s,v)=>s+v,0)/vals.length),
+      min:n(Math.min(...vals)),max:n(Math.max(...vals)),
+      out:cr.filter(r=>{const rng=getRng(r);return rng&&(r[metric]<rng.min||r[metric]>rng.max);}).length,
+      total:vals.length,
+    };
+  },[cr,metric]);
+
+  // Tendencia chart
+  const chartData=useMemo(()=>{
+    const g={};
+    [...cr].sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{
+      if(!g[r.date])g[r.date]={date:r.date,phVals:[],ceVals:[]};
+      g[r.date].phVals.push(r.ph);g[r.date].ceVals.push(r.ce);
+    });
+    return Object.values(g).map(d=>({
+      date:d.date.slice(5),
+      ph:n(d.phVals.reduce((s,v)=>s+v,0)/d.phVals.length),
+      ce:n(d.ceVals.reduce((s,v)=>s+v,0)/d.ceVals.length),
+    }));
+  },[cr]);
+
+  // Entrada vs Salida comparison
+  const entSalData=useMemo(()=>{
+    const ent=readings.filter(r=>r.crop===cropFilter&&(r.tipo||"entrada")==="entrada");
+    const sal=readings.filter(r=>r.crop===cropFilter&&r.tipo==="salida");
+    const dates=[...new Set([...ent,...sal].map(r=>r.date.slice(5)))].sort().slice(-10);
+    return dates.map(d=>({
+      date:d,
+      phEnt:ent.filter(r=>r.date.slice(5)===d).length?n(ent.filter(r=>r.date.slice(5)===d).reduce((s,r)=>s+r.ph,0)/ent.filter(r=>r.date.slice(5)===d).length):null,
+      phSal:sal.filter(r=>r.date.slice(5)===d).length?n(sal.filter(r=>r.date.slice(5)===d).reduce((s,r)=>s+r.ph,0)/sal.filter(r=>r.date.slice(5)===d).length):null,
+      ceEnt:ent.filter(r=>r.date.slice(5)===d).length?n(ent.filter(r=>r.date.slice(5)===d).reduce((s,r)=>s+r.ce,0)/ent.filter(r=>r.date.slice(5)===d).length):null,
+      ceSal:sal.filter(r=>r.date.slice(5)===d).length?n(sal.filter(r=>r.date.slice(5)===d).reduce((s,r)=>s+r.ce,0)/sal.filter(r=>r.date.slice(5)===d).length):null,
+    })).filter(d=>d.phEnt||d.phSal);
+  },[readings,cropFilter]);
+
+  // Invernadero comparison (jitomate only)
+  const invData=useMemo(()=>{
+    if(!crop.invernaderos) return [];
+    return crop.invernaderos.map(inv=>{
+      const rs=readings.filter(r=>r.crop===cropFilter&&r.invernadero===inv&&(r.tipo||"entrada")==="entrada");
+      if(!rs.length) return null;
+      return{
+        inv,
+        ph:n(rs.reduce((s,r)=>s+r.ph,0)/rs.length),
+        ce:n(rs.reduce((s,r)=>s+r.ce,0)/rs.length),
+        alertas:rs.filter(r=>{const rng=crop.entrada;return r.ph<rng.ph.min||r.ph>rng.ph.max||r.ce<rng.ce.min||r.ce>rng.ce.max;}).length,
+        total:rs.length,
+      };
+    }).filter(Boolean);
+  },[readings,cropFilter]);
+
+  // Drenaje trend
+  const drenajeData=useMemo(()=>{
+    const sal=readings.filter(r=>r.crop===cropFilter&&r.tipo==="salida"&&r.drenaje);
+    const g={};
+    sal.forEach(r=>{if(!g[r.date.slice(5)])g[r.date.slice(5)]={date:r.date.slice(5),vals:[]};g[r.date.slice(5)].vals.push(r.drenaje);});
+    return Object.values(g).map(d=>({date:d.date,drenaje:n(d.vals.reduce((s,v)=>s+v,0)/d.vals.length)})).slice(-14);
+  },[readings,cropFilter]);
+
+  // Fresa extra nutrients
+  const nutData=useMemo(()=>{
+    if(cropFilter!=="fresa") return [];
+    const rs=readings.filter(r=>r.crop==="fresa"&&(r.ca||r.no3||r.k||r.fe));
+    const g={};
+    rs.forEach(r=>{if(!g[r.date.slice(5)])g[r.date.slice(5)]={date:r.date.slice(5),caV:[],no3V:[],kV:[],feV:[]};
+      if(r.ca) g[r.date.slice(5)].caV.push(r.ca);
+      if(r.no3) g[r.date.slice(5)].no3V.push(r.no3);
+      if(r.k) g[r.date.slice(5)].kV.push(r.k);
+      if(r.fe) g[r.date.slice(5)].feV.push(r.fe);
+    });
+    return Object.values(g).map(d=>({
+      date:d.date,
+      ca:d.caV.length?n(d.caV.reduce((s,v)=>s+v,0)/d.caV.length):null,
+      no3:d.no3V.length?n(d.no3V.reduce((s,v)=>s+v,0)/d.no3V.length):null,
+      k:d.kV.length?n(d.kV.reduce((s,v)=>s+v,0)/d.kV.length):null,
+      fe:d.feV.length?n(d.feV.reduce((s,v)=>s+v,0)/d.feV.length):null,
+    }));
+  },[readings,cropFilter]);
+
+  // Semana comparacion
+  const compareData=useMemo(()=>{
+    const w={};
+    cr.forEach(r=>{const d=new Date(r.date);const wk=`S${Math.ceil(d.getDate()/7)}-${d.getMonth()+1}`;if(!w[wk])w[wk]={week:wk,phVals:[],ceVals:[]};w[wk].phVals.push(r.ph);w[wk].ceVals.push(r.ce);});
+    return Object.values(w).map(wk=>({week:wk.week,ph:n(wk.phVals.reduce((s,v)=>s+v,0)/wk.phVals.length),ce:n(wk.ceVals.reduce((s,v)=>s+v,0)/wk.ceVals.length)}));
+  },[cr]);
+
+  const rangosRef = tipoFilter==="salida" ? crop.salida : crop.entrada;
+
   return(
     <div>
+      {/* Filtros */}
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(CROPS).map(([k,c])=>(<button key={k} onClick={()=>setCropFilter(k)} style={{padding:"7px 14px",border:`1px solid ${cropFilter===k?c.color:"#e0e0e0"}`,borderRadius:20,background:cropFilter===k?c.color+"18":"transparent",color:cropFilter===k?c.color:"#666",cursor:"pointer",fontSize:12,fontWeight:500}}>{c.emoji} {c.name}</button>))}</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {Object.entries(CROPS).map(([k,c])=>(
+            <button key={k} onClick={()=>{setCropFilter(k);setInvFilter("all");}} style={{padding:"7px 14px",border:`1px solid ${cropFilter===k?c.color:"#e0e0e0"}`,borderRadius:20,background:cropFilter===k?c.color+"18":"transparent",color:cropFilter===k?c.color:"#666",cursor:"pointer",fontSize:12,fontWeight:500}}>
+              {c.emoji} {c.name}
+            </button>
+          ))}
+        </div>
+        {/* Tipo Entrada/Salida */}
+        <div style={{display:"flex",gap:4,background:"#f0f0f0",borderRadius:20,padding:3}}>
+          {[["all","Todos"],["entrada","⬇ Entrada"],["salida","⬆ Salida"]].map(([v,l])=>(
+            <button key={v} onClick={()=>setTipoFilter(v)} style={{padding:"5px 12px",border:"none",borderRadius:16,background:tipoFilter===v?"#fff":"transparent",color:tipoFilter===v?"#333":"#888",cursor:"pointer",fontSize:11,fontWeight:tipoFilter===v?700:400,boxShadow:tipoFilter===v?"0 1px 4px #0001":"none"}}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {/* Invernadero (solo jitomate) */}
+        {crop.invernaderos&&(
+          <div style={{display:"flex",gap:4,background:"#f0f0f0",borderRadius:20,padding:3}}>
+            {["all",...crop.invernaderos].map(inv=>(
+              <button key={inv} onClick={()=>setInvFilter(inv)} style={{padding:"5px 12px",border:"none",borderRadius:16,background:invFilter===inv?"#fff":"transparent",color:invFilter===inv?"#c0392b":"#888",cursor:"pointer",fontSize:11,fontWeight:invFilter===inv?700:400,boxShadow:invFilter===inv?"0 1px 4px #0001":"none"}}>
+                {inv==="all"?"Todos":inv}
+              </button>
+            ))}
+          </div>
+        )}
         <button onClick={()=>exportCSV(cr)} style={{marginLeft:"auto",padding:"7px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
       </div>
-      <div style={{display:"flex",gap:4,marginBottom:12,background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:4}}>
-        {[["tendencia","📈 Tendencia"],["comparar","📊 Comparar semanas"],["historial","📋 Historial"]].map(([k,l])=>(<button key={k} onClick={()=>setSub(k)} style={{flex:1,padding:"7px 8px",border:"none",borderRadius:8,background:sub===k?"#f0f4ff":"transparent",color:sub===k?"#2c3e50":"#888",cursor:"pointer",fontSize:12,fontWeight:sub===k?600:400}}>{l}</button>))}
-      </div>
+
+      {/* KPIs */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:16}}>
-        {[{l:"Promedio",v:stats.avg,c:crop.color},{l:"Mínimo",v:stats.min,c:"#2980b9"},{l:"Máximo",v:stats.max,c:"#8e44ad"},{l:"Fuera rango",v:stats.out,c:"#e74c3c"},{l:"Total",v:stats.total,c:"#27ae60"}].map(s=>(<div key={s.l} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:"12px",textAlign:"center"}}><div style={{fontSize:20,fontWeight:700,color:s.c,fontFamily:"'Courier New',monospace"}}>{s.v}</div><div style={{fontSize:10,color:"#aaa",marginTop:2}}>{s.l}</div></div>))}
+        {[{l:"Promedio",v:stats.avg,c:crop.color},{l:"Mínimo",v:stats.min,c:"#2980b9"},{l:"Máximo",v:stats.max,c:"#8e44ad"},{l:"Fuera rango",v:stats.out,c:"#e74c3c"},{l:"Total",v:stats.total,c:"#27ae60"}].map(s=>(
+          <div key={s.l} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:"12px",textAlign:"center"}}>
+            <div style={{fontSize:20,fontWeight:700,color:s.c,fontFamily:"'Courier New',monospace"}}>{s.v}</div>
+            <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{s.l}</div>
+          </div>
+        ))}
       </div>
+
+      {/* Sub tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:12,background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:4,flexWrap:"wrap"}}>
+        {[
+          ["tendencia","📈 Tendencia"],
+          ["ent_sal","⇅ Entrada vs Salida"],
+          ...(crop.invernaderos?[["invernaderos","🏠 Invernaderos"]]:[]),
+          ...(drenajeData.length>0?[["drenaje","💧 Drenaje"]]:[]),
+          ...(cropFilter==="fresa"?[["nutrientes","🔬 Nutrientes"]]:[]),
+          ["semanas","📊 Semanas"],
+          ["historial","📋 Historial"],
+        ].map(([k,l])=>(
+          <button key={k} onClick={()=>setSub(k)} style={{flex:1,minWidth:100,padding:"7px 6px",border:"none",borderRadius:8,background:sub===k?"#f0f4ff":"transparent",color:sub===k?"#2c3e50":"#888",cursor:"pointer",fontSize:11,fontWeight:sub===k?600:400}}>
+            {l}
+          </button>
+        ))}
+        <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
+          {[["ph","pH"],["ce","CE"]].map(([v,l])=>(
+            <button key={v} onClick={()=>setMetric(v)} style={{padding:"5px 10px",border:`1px solid ${metric===v?"#2c3e50":"#e0e0e0"}`,borderRadius:8,background:metric===v?"#2c3e50":"transparent",color:metric===v?"#fff":"#666",cursor:"pointer",fontSize:11}}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── TENDENCIA ── */}
       {sub==="tendencia"&&(
         <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:20,marginBottom:12}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#444"}}>TENDENCIA — {crop.emoji} {crop.name}</div>
-            <div style={{display:"flex",gap:6}}>{[["ph","pH"],["ce","CE"]].map(([v,l])=>(<button key={v} onClick={()=>setMetric(v)} style={{padding:"5px 12px",border:`1px solid ${metric===v?"#2c3e50":"#e0e0e0"}`,borderRadius:16,background:metric===v?"#2c3e50":"transparent",color:metric===v?"#fff":"#666",cursor:"pointer",fontSize:11}}>{l}</button>))}</div>
+          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>
+            TENDENCIA — {crop.emoji} {crop.name}
+            {tipoFilter!=="all"&&<span style={{marginLeft:8,fontSize:11,color:tipoFilter==="entrada"?"#27ae60":"#2980b9",fontWeight:600}}>{tipoFilter==="entrada"?"⬇ Entrada":"⬆ Salida"}</span>}
           </div>
-          {chartData.length<2?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Necesitas al menos 2 registros para ver la gráfica</div>:(
+          {chartData.length<2?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Necesitas al menos 2 registros</div>:(
             <ResponsiveContainer width="100%" height={230}>
               <LineChart data={chartData} margin={{top:5,right:20,left:0,bottom:0}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
                 <XAxis dataKey="date" tick={{fontSize:11,fill:"#aaa"}} axisLine={false} tickLine={false}/>
-                <YAxis domain={yD} tick={{fontSize:11,fill:"#aaa"}} axisLine={false} tickLine={false} width={32}/>
-                <Tooltip contentStyle={{fontSize:12,border:"1px solid #e0e0e0",borderRadius:8}} labelStyle={{fontWeight:700}}/>
-                <ReferenceLine y={metric==="ph"?crop.ph.min:crop.ce.min} stroke="#f39c12" strokeDasharray="4 2"/>
-                <ReferenceLine y={metric==="ph"?crop.ph.max:crop.ce.max} stroke="#f39c12" strokeDasharray="4 2"/>
+                <YAxis domain={metric==="ph"?[3.5,8.5]:[0,8]} tick={{fontSize:11,fill:"#aaa"}} axisLine={false} tickLine={false} width={32}/>
+                <Tooltip contentStyle={{fontSize:12,border:"1px solid #e0e0e0",borderRadius:8}}/>
+                <ReferenceLine y={rangosRef[metric].min} stroke="#f39c12" strokeDasharray="4 2" label={{value:"Mín",fill:"#f39c12",fontSize:9,position:"right"}}/>
+                <ReferenceLine y={rangosRef[metric].max} stroke="#f39c12" strokeDasharray="4 2" label={{value:"Máx",fill:"#f39c12",fontSize:9,position:"right"}}/>
                 <Line type="monotone" dataKey={metric} stroke={crop.color} strokeWidth={2.5} dot={{r:4,fill:crop.color}} activeDot={{r:6}}/>
               </LineChart>
             </ResponsiveContainer>
           )}
         </div>
       )}
-      {sub==="comparar"&&(
+
+      {/* ── ENTRADA VS SALIDA ── */}
+      {sub==="ent_sal"&&(
+        <div>
+          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:20,marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>COMPARATIVO ENTRADA vs SALIDA — {metric==="ph"?"pH":"CE"}</div>
+            {entSalData.length<2?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Necesitas registros de entrada y salida para comparar</div>:(
+              <ResponsiveContainer width="100%" height={230}>
+                <LineChart data={entSalData} margin={{top:5,right:20,left:0,bottom:0}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                  <XAxis dataKey="date" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={32}/>
+                  <Tooltip contentStyle={{fontSize:11,borderRadius:8}}/>
+                  <Legend wrapperStyle={{fontSize:11}}/>
+                  <Line type="monotone" dataKey={metric==="ph"?"phEnt":"ceEnt"} name="⬇ Entrada" stroke="#27ae60" strokeWidth={2.5} dot={{r:3}} connectNulls/>
+                  <Line type="monotone" dataKey={metric==="ph"?"phSal":"ceSal"} name="⬆ Salida" stroke="#2980b9" strokeWidth={2.5} dot={{r:3}} strokeDasharray="6 2" connectNulls/>
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          {/* Mini cards entrada vs salida */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            {[["entrada","⬇ Entrada","#27ae60"],["salida","⬆ Salida/Drenaje","#2980b9"]].map(([tipo,label,color])=>{
+              const rs=readings.filter(r=>r.crop===cropFilter&&(r.tipo||"entrada")===tipo);
+              const rng=CROPS[cropFilter][tipo];
+              if(!rs.length||!rng) return <div key={tipo} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14,textAlign:"center",color:"#aaa"}}>{label}<br/><small>Sin datos</small></div>;
+              const phAvg=n(rs.reduce((s,r)=>s+r.ph,0)/rs.length);
+              const ceAvg=n(rs.reduce((s,r)=>s+r.ce,0)/rs.length);
+              const phOk=phAvg>=rng.ph.min&&phAvg<=rng.ph.max;
+              const ceOk=ceAvg>=rng.ce.min&&ceAvg<=rng.ce.max;
+              return(
+                <div key={tipo} style={{background:"#fff",border:`1px solid ${color}33`,borderTop:`3px solid ${color}`,borderRadius:12,padding:14}}>
+                  <div style={{fontWeight:700,color,fontSize:13,marginBottom:10}}>{label}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <div style={{textAlign:"center",background:phOk?"#eafaf1":"#fdedec",borderRadius:8,padding:"8px"}}>
+                      <div style={{fontSize:20,fontWeight:700,color:phOk?"#27ae60":"#e74c3c",fontFamily:"'Courier New',monospace"}}>{phAvg}</div>
+                      <div style={{fontSize:9,color:"#aaa"}}>pH prom.</div>
+                      <div style={{fontSize:9,color:"#888"}}>Rango: {rng.ph.min}–{rng.ph.max}</div>
+                    </div>
+                    <div style={{textAlign:"center",background:ceOk?"#eafaf1":"#fdedec",borderRadius:8,padding:"8px"}}>
+                      <div style={{fontSize:20,fontWeight:700,color:ceOk?"#27ae60":"#e74c3c",fontFamily:"'Courier New',monospace"}}>{ceAvg}</div>
+                      <div style={{fontSize:9,color:"#aaa"}}>CE prom.</div>
+                      <div style={{fontSize:9,color:"#888"}}>Rango: {rng.ce.min}–{rng.ce.max}</div>
+                    </div>
+                  </div>
+                  <div style={{fontSize:10,color:"#aaa",marginTop:6}}>{rs.length} registros</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── INVERNADEROS ── */}
+      {sub==="invernaderos"&&crop.invernaderos&&(
+        <div>
+          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:20,marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>pH y CE PROMEDIO POR INVERNADERO</div>
+            {invData.length<1?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos por invernadero aún</div>:(
+              <ResponsiveContainer width="100%" height={230}>
+                <BarChart data={invData} margin={{top:5,right:20,left:0,bottom:0}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                  <XAxis dataKey="inv" tick={{fontSize:12,fill:"#555",fontWeight:600}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={32}/>
+                  <Tooltip contentStyle={{fontSize:11,borderRadius:8}}/>
+                  <Legend wrapperStyle={{fontSize:11}}/>
+                  <ReferenceLine y={crop.entrada.ph.min} stroke="#f39c12" strokeDasharray="4 2"/>
+                  <ReferenceLine y={crop.entrada.ph.max} stroke="#f39c12" strokeDasharray="4 2"/>
+                  <Bar dataKey="ph" name="pH prom." fill={crop.color} radius={[4,4,0,0]}/>
+                  <Bar dataKey="ce" name="CE prom." fill={crop.color+"88"} radius={[4,4,0,0]}/>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          {/* Tarjetas por invernadero */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
+            {invData.map(d=>{
+              const phOk=d.ph>=crop.entrada.ph.min&&d.ph<=crop.entrada.ph.max;
+              const ceOk=d.ce>=crop.entrada.ce.min&&d.ce<=crop.entrada.ce.max;
+              const status=(!phOk||!ceOk)?"danger":"ok";
+              return(
+                <div key={d.inv} style={{background:"#fff",border:`1px solid ${SC[status]}33`,borderTop:`3px solid ${SC[status]}`,borderRadius:12,padding:14,textAlign:"center"}}>
+                  <div style={{fontWeight:700,fontSize:16,color:"#c0392b",marginBottom:8}}>{d.inv}</div>
+                  <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:phOk?"#27ae60":"#e74c3c"}}>pH {d.ph}</div>
+                  <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:ceOk?"#27ae60":"#e74c3c",marginBottom:6}}>CE {d.ce}</div>
+                  {d.alertas>0&&<div style={{fontSize:10,color:"#e74c3c",fontWeight:600}}>⚠ {d.alertas} alerta{d.alertas>1?"s":""}</div>}
+                  <div style={{fontSize:10,color:"#aaa",marginTop:4}}>{d.total} registros</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── DRENAJE ── */}
+      {sub==="drenaje"&&(
         <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:20,marginBottom:12}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:16}}>COMPARAR SEMANAS — {crop.emoji} {crop.name}</div>
-          {compareData.length<2?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Necesitas registros de al menos 2 semanas distintas</div>:(
+          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:4}}>VOLUMEN DE DRENAJE (L) — {crop.emoji} {crop.name}</div>
+          <div style={{fontSize:11,color:"#888",marginBottom:12}}>Promedio diario de solución drenada. Rango recomendado: 20–35% del volumen de riego</div>
+          {drenajeData.length<2?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos de drenaje. Registra mediciones de Salida con volumen de drenaje.</div>:(
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={drenajeData} margin={{top:5,right:20,left:0,bottom:0}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                <XAxis dataKey="date" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+                <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={40} unit=" L"/>
+                <Tooltip formatter={v=>[`${v} L`,"Drenaje"]} contentStyle={{fontSize:11,borderRadius:8}}/>
+                <Bar dataKey="drenaje" name="Drenaje (L)" fill="#2980b9" radius={[4,4,0,0]}/>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      )}
+
+      {/* ── NUTRIENTES FRESA ── */}
+      {sub==="nutrientes"&&cropFilter==="fresa"&&(
+        <div>
+          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:20,marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>NUTRIENTES FRESA (mg/L)</div>
+            {nutData.length<1?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos de nutrientes. Los trabajadores deben registrar Ca, NO₃, K, Fe en la app.</div>:(
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={nutData} margin={{top:5,right:20,left:0,bottom:0}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                  <XAxis dataKey="date" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={40}/>
+                  <Tooltip contentStyle={{fontSize:11,borderRadius:8}} formatter={(v,n)=>[`${v} mg/L`,n]}/>
+                  <Legend wrapperStyle={{fontSize:11}}/>
+                  <Line type="monotone" dataKey="ca" name="Ca" stroke="#e74c3c" strokeWidth={2} dot={{r:3}} connectNulls/>
+                  <Line type="monotone" dataKey="no3" name="NO₃" stroke="#2980b9" strokeWidth={2} dot={{r:3}} connectNulls/>
+                  <Line type="monotone" dataKey="k" name="K" stroke="#8e44ad" strokeWidth={2} dot={{r:3}} connectNulls/>
+                  <Line type="monotone" dataKey="fe" name="Fe" stroke="#f39c12" strokeWidth={2} dot={{r:3}} connectNulls/>
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          {/* Rangos de referencia fresa */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
+            {[
+              {label:"Calcio (Ca)",unit:"mg/L",min:120,max:180,color:"#e74c3c",key:"ca"},
+              {label:"Nitratos NO₃",unit:"mg/L",min:150,max:200,color:"#2980b9",key:"no3"},
+              {label:"Potasio K",unit:"mg/L",min:200,max:300,color:"#8e44ad",key:"k"},
+              {label:"Hierro Fe",unit:"mg/L",min:1.5,max:3.0,color:"#f39c12",key:"fe"},
+            ].map(f=>{
+              const vals=readings.filter(r=>r.crop==="fresa"&&r[f.key]).map(r=>r[f.key]);
+              const avg=vals.length?n(vals.reduce((s,v)=>s+v,0)/vals.length):null;
+              const ok=avg?avg>=f.min&&avg<=f.max:null;
+              return(
+                <div key={f.key} style={{background:"#fff",border:`1px solid ${f.color}33`,borderTop:`3px solid ${f.color}`,borderRadius:10,padding:"12px",textAlign:"center"}}>
+                  <div style={{fontSize:11,fontWeight:600,color:f.color,marginBottom:4}}>{f.label}</div>
+                  {avg?<><div style={{fontSize:18,fontWeight:700,color:ok?"#27ae60":"#e74c3c",fontFamily:"'Courier New',monospace"}}>{avg}</div><div style={{fontSize:9,color:"#aaa"}}>{f.unit}</div></>:<div style={{fontSize:11,color:"#bbb"}}>Sin datos</div>}
+                  <div style={{fontSize:9,color:"#888",marginTop:3}}>Rango: {f.min}–{f.max}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── SEMANAS ── */}
+      {sub==="semanas"&&(
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:20,marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>COMPARAR SEMANAS</div>
+          {compareData.length<2?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Necesitas registros de al menos 2 semanas</div>:(
             <ResponsiveContainer width="100%" height={230}>
               <BarChart data={compareData} margin={{top:5,right:20,left:0,bottom:0}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
                 <XAxis dataKey="week" tick={{fontSize:11,fill:"#aaa"}} axisLine={false} tickLine={false}/>
                 <YAxis tick={{fontSize:11,fill:"#aaa"}} axisLine={false} tickLine={false} width={32}/>
-                <Tooltip contentStyle={{fontSize:12,border:"1px solid #e0e0e0",borderRadius:8}}/>
+                <Tooltip contentStyle={{fontSize:12,borderRadius:8}}/>
                 <Legend wrapperStyle={{fontSize:11}}/>
                 <Bar dataKey="ph" name="pH prom." fill={crop.color} radius={[4,4,0,0]}/>
                 <Bar dataKey="ce" name="CE prom." fill={crop.color+"88"} radius={[4,4,0,0]}/>
@@ -231,25 +574,43 @@ function Reportes({readings,onDelete}){
           )}
         </div>
       )}
+
+      {/* ── HISTORIAL ── */}
       {sub==="historial"&&(
         <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-              <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>{["","Fecha","Zona","pH","CE","Estado","Trabajador","Notas",""].map((h,i)=><th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11}}>{h}</th>)}</tr></thead>
-              <tbody>{[...cr].reverse().map((r,i)=>{const c=CROPS[r.crop];const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";return(
-                <tr key={r.id||i} style={{borderBottom:"1px solid #fafafa"}}>
-                  <td style={{padding:"8px 10px"}}>{r.photoURL&&<img src={r.photoURL} alt="" style={{width:30,height:30,borderRadius:5,objectFit:"cover"}}/>}</td>
-                  <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#999"}}>{r.date}</td>
-                  <td style={{padding:"8px 10px",color:"#888"}}>{r.zone}</td>
-                  <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[ps]}}>{r.ph}</td>
-                  <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</td>
-                  <td style={{padding:"8px 10px"}}><Badge status={s} small/></td>
-                  <td style={{padding:"8px 10px",color:"#888"}}>{r.worker}</td>
-                  <td style={{padding:"8px 10px",color:"#e67e22",fontSize:11}}>{r.notes||"—"}</td>
-                  <td style={{padding:"8px 10px"}}><button onClick={()=>{if(window.confirm("¿Eliminar?"))onDelete(r.id);}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button></td>
-                </tr>
-              );})}
-              </tbody>
+              <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>
+                {["","Fecha","Tipo","Inv.","Zona","pH","CE","Drenaje","Estado","Trabajador",""].map((h,i)=>(
+                  <th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11}}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>{[...cr].reverse().map((r,i)=>{
+                const c=CROPS[r.crop];
+                const rng=getRangos(r.crop,r.tipo||"entrada");
+                const ps=getStatus(r.ph,rng?rng.ph:c.ph);
+                const cs=getStatus(r.ce,rng?rng.ce:c.ce);
+                const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";
+                return(
+                  <tr key={r.id||i} style={{borderBottom:"1px solid #fafafa"}}>
+                    <td style={{padding:"8px 10px"}}>{r.photoURL&&<img src={r.photoURL} alt="" style={{width:28,height:28,borderRadius:4,objectFit:"cover"}}/>}</td>
+                    <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#999"}}>{r.date}</td>
+                    <td style={{padding:"8px 10px"}}>
+                      <span style={{background:r.tipo==="salida"?"#eaf4fb":"#eafaf1",color:r.tipo==="salida"?"#2980b9":"#27ae60",borderRadius:8,padding:"1px 6px",fontSize:10,fontWeight:600}}>
+                        {r.tipo==="salida"?"⬆ Sal":"⬇ Ent"}
+                      </span>
+                    </td>
+                    <td style={{padding:"8px 10px",fontSize:11,color:"#c0392b",fontWeight:600}}>{r.invernadero||"—"}</td>
+                    <td style={{padding:"8px 10px",color:"#888"}}>{r.zone}</td>
+                    <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[ps]}}>{r.ph}</td>
+                    <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</td>
+                    <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#2980b9"}}>{r.drenaje?`${r.drenaje}L`:"—"}</td>
+                    <td style={{padding:"8px 10px"}}><Badge status={s} small/></td>
+                    <td style={{padding:"8px 10px",color:"#888"}}>{r.worker}</td>
+                    <td style={{padding:"8px 10px"}}><button onClick={()=>{if(window.confirm("¿Eliminar?"))onDelete(r.id);}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button></td>
+                  </tr>
+                );
+              })}</tbody>
             </table>
           </div>
         </div>
@@ -257,6 +618,7 @@ function Reportes({readings,onDelete}){
     </div>
   );
 }
+
 
 // ─── DIAGNÓSTICO IA ───────────────────────────────────────────────────────────
 function DiagnosticoIA(){

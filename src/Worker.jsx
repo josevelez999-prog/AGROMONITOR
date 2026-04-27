@@ -5,10 +5,38 @@ import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "firebase/s
 import { signOut } from "firebase/auth";
 
 const CROPS = {
-  jitomate:  { name:"Jitomate",  emoji:"🍅", color:"#c0392b", ph:{min:5.5,max:6.5}, ce:{min:2.5,max:4.0} },
-  fresa:     { name:"Fresa",     emoji:"🍓", color:"#e74c3c", ph:{min:5.5,max:6.5}, ce:{min:1.0,max:2.0} },
-  arandano:  { name:"Arándano",  emoji:"🫐", color:"#2980b9", ph:{min:4.5,max:5.5}, ce:{min:1.0,max:2.0} },
-  zarzamora: { name:"Zarzamora", emoji:"🫐", color:"#8e44ad", ph:{min:5.5,max:6.5}, ce:{min:1.5,max:2.5} },
+  jitomate:  {
+    name:"Jitomate", emoji:"🍅", color:"#c0392b",
+    entrada: { ph:{min:5.5,max:6.2}, ce:{min:2.5,max:4.0} },
+    salida:  { ph:{min:5.8,max:6.5}, ce:{min:3.5,max:6.0} },
+    // backward compat
+    ph:{min:5.5,max:6.2}, ce:{min:2.5,max:4.0},
+    invernaderos: ["INV 2","INV 3","INV 5","INV 6"],
+  },
+  fresa: {
+    name:"Fresa", emoji:"🍓", color:"#e74c3c",
+    entrada: { ph:{min:5.5,max:6.5}, ce:{min:1.0,max:2.0} },
+    salida:  { ph:{min:5.8,max:6.8}, ce:{min:1.5,max:2.5} },
+    ph:{min:5.5,max:6.5}, ce:{min:1.0,max:2.0},
+    extraFields: [
+      { key:"ca",  label:"Calcio (Ca)",   unit:"mg/L", min:120, max:180, placeholder:"150" },
+      { key:"no3", label:"Nitratos (NO₃)",unit:"mg/L", min:150, max:200, placeholder:"175" },
+      { key:"k",   label:"Potasio (K)",   unit:"mg/L", min:200, max:300, placeholder:"250" },
+      { key:"fe",  label:"Hierro (Fe)",   unit:"mg/L", min:1.5, max:3.0, placeholder:"2.0" },
+    ],
+  },
+  arandano: {
+    name:"Arándano", emoji:"🫐", color:"#2980b9",
+    entrada: { ph:{min:4.5,max:5.5}, ce:{min:1.0,max:2.0} },
+    salida:  { ph:{min:4.8,max:5.8}, ce:{min:1.5,max:2.5} },
+    ph:{min:4.5,max:5.5}, ce:{min:1.0,max:2.0},
+  },
+  zarzamora: {
+    name:"Zarzamora", emoji:"🫐", color:"#8e44ad",
+    entrada: { ph:{min:5.5,max:6.5}, ce:{min:1.5,max:2.5} },
+    salida:  { ph:{min:5.8,max:6.8}, ce:{min:2.0,max:3.5} },
+    ph:{min:5.5,max:6.5}, ce:{min:1.5,max:2.5},
+  },
 };
 const SYMPTOMS = {
   jitomate: [
@@ -69,13 +97,19 @@ const LBL = {
 
 // ─── REGISTRO pH/CE ────────────────────────────────────────────────────────────
 function Registro({ worker }) {
-  const [form, setForm] = useState({ crop:"jitomate", zone:"", ph:"", ce:"", notes:"" });
+  const [form, setForm] = useState({
+    crop:"jitomate", zone:"", invernadero:"INV 2",
+    tipo:"entrada", // entrada | salida
+    ph:"", ce:"", drenaje:"", notes:"",
+    ca:"", no3:"", k:"", fe:"",
+  });
   const [imgFile, setImgFile] = useState(null);
   const [imgPreview, setImgPreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const fileRef = useRef();
   const crop = CROPS[form.crop];
+  const rangos = form.tipo === "entrada" ? crop.entrada : crop.salida;
 
   const handleImage = e => {
     const file = e.target.files[0]; if (!file) return;
@@ -109,53 +143,158 @@ function Registro({ worker }) {
         await uploadBytes(r,imgFile); photoURL = await getDownloadURL(r);
       }
       const now = new Date();
-      await addDoc(collection(db,"readings"),{
-        ...form,worker,ph:parseFloat(form.ph),ce:parseFloat(form.ce),
-        date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
-        createdAt:now.toISOString(),photoURL,
-      });
+      const data = {
+        ...form, worker,
+        ph:parseFloat(form.ph), ce:parseFloat(form.ce),
+        drenaje: form.drenaje ? parseFloat(form.drenaje) : null,
+        ca:  form.ca  ? parseFloat(form.ca)  : null,
+        no3: form.no3 ? parseFloat(form.no3) : null,
+        k:   form.k   ? parseFloat(form.k)   : null,
+        fe:  form.fe  ? parseFloat(form.fe)  : null,
+        date:now.toISOString().slice(0,10),
+        time:now.toTimeString().slice(0,5),
+        createdAt:now.toISOString(), photoURL,
+      };
+      // Remove empty optional fields
+      Object.keys(data).forEach(k => data[k] === null && delete data[k]);
+      await addDoc(collection(db,"readings"), data);
       setSaved(true);
-      setForm({crop:"jitomate",zone:"",ph:"",ce:"",notes:""});
-      setImgFile(null);setImgPreview(null);
+      setForm(p=>({...p, zone:"", ph:"", ce:"", drenaje:"", notes:"", ca:"", no3:"", k:"", fe:""}));
+      setImgFile(null); setImgPreview(null);
       setTimeout(()=>setSaved(false),4000);
     } catch { alert("Error al guardar."); }
     setSaving(false);
   };
 
+  const statusColor = (v, r) => {
+    if (!v) return "#ccc";
+    const val = parseFloat(v);
+    if (isNaN(val)) return "#ccc";
+    if (val < r.min || val > r.max) return "#e74c3c";
+    const m = (r.max-r.min)*0.15;
+    return (val < r.min+m || val > r.max-m) ? "#f39c12" : "#27ae60";
+  };
+  const statusText = (v, r) => {
+    if (!v) return null;
+    const val = parseFloat(v);
+    if (isNaN(val)) return null;
+    if (val < r.min || val > r.max) return "⚠ Fuera de rango";
+    const m = (r.max-r.min)*0.15;
+    return (val < r.min+m || val > r.max-m) ? "⚠ Cerca del límite" : "✓ Normal";
+  };
+
   return (
     <div>
       {saved&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:16,color:"#27ae60",fontWeight:600,textAlign:"center"}}>✓ Medición enviada</div>}
+
+      {/* Cultivo */}
       <div style={{marginBottom:14}}>
         <label style={LBL}>Cultivo</label>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {Object.entries(CROPS).map(([k,c])=>(
-            <button key={k} onClick={()=>setForm(p=>({...p,crop:k}))}
+            <button key={k} onClick={()=>setForm(p=>({...p,crop:k,invernadero:c.invernaderos?c.invernaderos[0]:""}))}
               style={{padding:"8px 14px",border:`1.5px solid ${form.crop===k?c.color:"#e0e0e0"}`,borderRadius:20,background:form.crop===k?c.color+"18":"transparent",color:form.crop===k?c.color:"#777",cursor:"pointer",fontSize:13,fontWeight:form.crop===k?700:400}}>
               {c.emoji} {c.name}
             </button>
           ))}
         </div>
       </div>
-      <div style={{background:"#f0faf5",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:12,color:"#555",border:`1px solid ${crop.color}33`}}>
-        pH ideal: <strong style={{color:crop.color}}>{crop.ph.min}–{crop.ph.max}</strong> · CE ideal: <strong style={{color:crop.color}}>{crop.ce.min}–{crop.ce.max} mS/cm</strong>
+
+      {/* Tipo: Entrada o Salida */}
+      <div style={{marginBottom:14}}>
+        <label style={LBL}>Tipo de medición</label>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {[["entrada","⬇ Entrada","#27ae60","Solución que entra al cultivo"],["salida","⬆ Salida / Drenaje","#2980b9","Solución que drena del cultivo"]].map(([val,label,color,desc])=>(
+            <button key={val} onClick={()=>setForm(p=>({...p,tipo:val}))}
+              style={{padding:"12px 10px",border:`2px solid ${form.tipo===val?color:"#ddd"}`,borderRadius:12,background:form.tipo===val?color+"15":"#fff",cursor:"pointer",textAlign:"left"}}>
+              <div style={{fontWeight:700,fontSize:14,color:form.tipo===val?color:"#333",marginBottom:2}}>{label}</div>
+              <div style={{fontSize:11,color:"#888"}}>{desc}</div>
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* Rangos óptimos */}
+      <div style={{background:"#f0faf5",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:12,color:"#555",border:`1px solid ${crop.color}33`}}>
+        <strong style={{color:crop.color}}>{crop.emoji} {crop.name} — {form.tipo==="entrada"?"Entrada":"Salida/Drenaje"}</strong>
+        <span style={{marginLeft:10}}>pH: <strong>{rangos.ph.min}–{rangos.ph.max}</strong></span>
+        <span style={{marginLeft:10}}>CE: <strong>{rangos.ce.min}–{rangos.ce.max} mS/cm</strong></span>
+      </div>
+
+      {/* Invernadero (solo jitomate) */}
+      {crop.invernaderos && (
+        <div style={{marginBottom:14}}>
+          <label style={LBL}>Invernadero</label>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {crop.invernaderos.map(inv=>(
+              <button key={inv} onClick={()=>setForm(p=>({...p,invernadero:inv}))}
+                style={{padding:"9px 16px",border:`2px solid ${form.invernadero===inv?crop.color:"#ddd"}`,borderRadius:10,background:form.invernadero===inv?crop.color+"18":"#fff",color:form.invernadero===inv?crop.color:"#555",cursor:"pointer",fontSize:14,fontWeight:form.invernadero===inv?700:500}}>
+                {inv}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-        <div style={{gridColumn:"1/-1"}}><label style={LBL}>Zona *</label><input value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} placeholder="Ej: Zona A" style={INP}/></div>
+        {/* Zona */}
+        <div style={{gridColumn:"1/-1"}}>
+          <label style={LBL}>Zona / Área *</label>
+          <input value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} placeholder="Ej: Zona A" style={INP}/>
+        </div>
+
+        {/* pH */}
         <div>
           <label style={LBL}>pH medido *</label>
-          <input type="number" step="0.1" min="0" max="14" value={form.ph} onChange={e=>setForm(p=>({...p,ph:e.target.value}))} placeholder="6.2"
-            style={{...INP,borderColor:form.ph?(getStatus(parseFloat(form.ph),crop.ph)==="danger"?"#e74c3c":getStatus(parseFloat(form.ph),crop.ph)==="warning"?"#f39c12":"#27ae60"):"#ccc"}}/>
-          {form.ph&&<div style={{fontSize:10,marginTop:3,color:getStatus(parseFloat(form.ph),crop.ph)==="danger"?"#e74c3c":getStatus(parseFloat(form.ph),crop.ph)==="warning"?"#f39c12":"#27ae60"}}>
-            {getStatus(parseFloat(form.ph),crop.ph)==="danger"?"⚠ Fuera de rango":getStatus(parseFloat(form.ph),crop.ph)==="warning"?"⚠ Cerca del límite":"✓ Normal"}
-          </div>}
+          <input type="number" step="0.1" min="0" max="14" value={form.ph}
+            onChange={e=>setForm(p=>({...p,ph:e.target.value}))} placeholder={`${rangos.ph.min}–${rangos.ph.max}`}
+            style={{...INP,borderColor:statusColor(form.ph,rangos.ph)}}/>
+          {form.ph&&<div style={{fontSize:10,marginTop:3,color:statusColor(form.ph,rangos.ph)}}>{statusText(form.ph,rangos.ph)}</div>}
         </div>
+
+        {/* CE */}
         <div>
           <label style={LBL}>CE mS/cm *</label>
-          <input type="number" step="0.1" min="0" max="10" value={form.ce} onChange={e=>setForm(p=>({...p,ce:e.target.value}))} placeholder="2.8"
-            style={{...INP,borderColor:form.ce?(getStatus(parseFloat(form.ce),crop.ce)==="danger"?"#e74c3c":getStatus(parseFloat(form.ce),crop.ce)==="warning"?"#f39c12":"#27ae60"):"#ccc"}}/>
+          <input type="number" step="0.1" min="0" max="15" value={form.ce}
+            onChange={e=>setForm(p=>({...p,ce:e.target.value}))} placeholder={`${rangos.ce.min}–${rangos.ce.max}`}
+            style={{...INP,borderColor:statusColor(form.ce,rangos.ce)}}/>
+          {form.ce&&<div style={{fontSize:10,marginTop:3,color:statusColor(form.ce,rangos.ce)}}>{statusText(form.ce,rangos.ce)}</div>}
         </div>
-        <div style={{gridColumn:"1/-1"}}><label style={LBL}>Observaciones</label><textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} placeholder="Hojas amarillas, planta decaída..." style={{...INP,minHeight:72,resize:"vertical"}}/></div>
+
+        {/* Drenaje — solo en salida */}
+        {form.tipo==="salida"&&(
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={LBL}>Volumen de drenaje (litros)</label>
+            <input type="number" step="0.1" min="0" value={form.drenaje}
+              onChange={e=>setForm(p=>({...p,drenaje:e.target.value}))} placeholder="Ej: 4.5 L"
+              style={INP}/>
+            <div style={{fontSize:10,color:"#888",marginTop:3}}>Cantidad de solución que drenó del cultivo</div>
+          </div>
+        )}
+
+        {/* Campos extra fresa */}
+        {crop.extraFields && crop.extraFields.map(f=>(
+          <div key={f.key}>
+            <label style={LBL}>{f.label} <span style={{color:"#bbb",fontWeight:400}}>(opcional)</span></label>
+            <input type="number" step="0.1" min="0" value={form[f.key]}
+              onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))}
+              placeholder={`${f.placeholder} ${f.unit}`}
+              style={{...INP,borderColor:form[f.key]?(parseFloat(form[f.key])<f.min||parseFloat(form[f.key])>f.max?"#f39c12":"#27ae60"):"#ccc"}}/>
+            {form[f.key]&&<div style={{fontSize:10,marginTop:3,color:parseFloat(form[f.key])<f.min||parseFloat(form[f.key])>f.max?"#f39c12":"#27ae60"}}>
+              Rango: {f.min}–{f.max} {f.unit}
+            </div>}
+          </div>
+        ))}
+
+        {/* Observaciones */}
+        <div style={{gridColumn:"1/-1"}}>
+          <label style={LBL}>Observaciones</label>
+          <textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))}
+            placeholder="Hojas amarillas, planta decaída..." style={{...INP,minHeight:72,resize:"vertical"}}/>
+        </div>
       </div>
+
+      {/* Foto */}
       <div style={{marginBottom:16}}>
         <label style={LBL}>Foto (opcional)</label>
         <div onClick={()=>fileRef.current.click()} style={{border:"2px dashed #d5e8d4",borderRadius:10,padding:imgPreview?"0":"1.5rem",textAlign:"center",cursor:"pointer",overflow:"hidden",background:"#f9fff9"}}>
@@ -165,7 +304,9 @@ function Registro({ worker }) {
           <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={handleImage}/>
         </div>
       </div>
-      <button onClick={submit} disabled={saving} style={{width:"100%",padding:14,background:saving?"#a8d5b5":"#27ae60",color:"#fff",border:"none",borderRadius:10,cursor:saving?"not-allowed":"pointer",fontSize:15,fontWeight:700}}>
+
+      <button onClick={submit} disabled={saving}
+        style={{width:"100%",padding:14,background:saving?"#a8d5b5":"#27ae60",color:"#fff",border:"none",borderRadius:10,cursor:saving?"not-allowed":"pointer",fontSize:15,fontWeight:700}}>
         {saving?"Guardando...":"✓ Enviar medición"}
       </button>
     </div>
