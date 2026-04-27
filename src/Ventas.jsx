@@ -522,8 +522,11 @@ function ReportesVentas() {
   const totalIngresos = ventasFilt.reduce((s,v)=>s+v.totalVenta,0);
   const totalKgVendidos = ventasFilt.reduce((s,v)=>s+v.kgVendidos,0);
   const totalKgCosechados = cosechasFilt.reduce((s,c)=>s+c.kgCosechados,0);
+  const totalMerma = filtrarPeriodo(mermasData).filter(m=>filterCrop==="all"||m.crop===filterCrop).reduce((s,m)=>s+(m.kgMerma||0),0);
   const precioPromedio = totalKgVendidos > 0 ? totalIngresos/totalKgVendidos : 0;
   const eficiencia = totalKgCosechados > 0 ? Math.min((totalKgVendidos/totalKgCosechados)*100, 100) : 0;
+  const kgStock = Math.max(0, totalKgCosechados - totalKgVendidos - totalMerma);
+  const pctStock = totalKgCosechados > 0 ? (kgStock/totalKgCosechados)*100 : 0;
 
   // ── Por cultivo — ventas ──
   const porCultivoV = useMemo(() => {
@@ -667,6 +670,7 @@ function ReportesVentas() {
           {icon:"📊",label:"Precio promedio/kg",v:`$${fmt(precioPromedio)}`,c:"#e67e22"},
           {icon:"🎯",label:"Eficiencia venta",v:`${eficiencia.toFixed(1)}%`,c:eficiencia>=80?"#27ae60":eficiencia>=60?"#f39c12":"#e74c3c"},
           {icon:"🏷️",label:"Transacciones",v:ventasFilt.length,c:"#7f8c8d"},
+          {icon:"⚠️",label:"Kg merma",v:`${fmt(totalMerma)} kg`,c:totalMerma>0?"#f39c12":"#aaa"},
         ].map(k=>(
           <div key={k.label} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 16px"}}>
             <div style={{fontSize:20}}>{k.icon}</div>
@@ -675,6 +679,92 @@ function ReportesVentas() {
           </div>
         ))}
       </div>
+
+      {/* ── DIFERENCIAL STOCK ── */}
+      {totalKgCosechados > 0 && (
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:14,letterSpacing:0.3}}>📦 DIFERENCIAL — COSECHA vs VENTA (Stock actual)</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:16}}>
+            <div style={{background:"#f0faf5",borderRadius:10,padding:"14px",textAlign:"center",border:"1px solid #a9dfbf"}}>
+              <div style={{fontSize:28,marginBottom:4}}>🧺</div>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#8e44ad"}}>{fmt(totalKgCosechados)}</div>
+              <div style={{fontSize:11,color:"#888",marginTop:2}}>kg cosechados</div>
+            </div>
+            <div style={{background:"#eaf4fb",borderRadius:10,padding:"14px",textAlign:"center",border:"1px solid #b5d4f4"}}>
+              <div style={{fontSize:28,marginBottom:4}}>💰</div>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#2980b9"}}>{fmt(totalKgVendidos)}</div>
+              <div style={{fontSize:11,color:"#888",marginTop:2}}>kg vendidos</div>
+            </div>
+            {totalMerma>0&&(
+              <div style={{background:"#fef9e7",borderRadius:10,padding:"14px",textAlign:"center",border:"1px solid #f39c1244"}}>
+                <div style={{fontSize:28,marginBottom:4}}>⚠️</div>
+                <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#f39c12"}}>{fmt(totalMerma)}</div>
+                <div style={{fontSize:11,color:"#888",marginTop:2}}>kg merma</div>
+              </div>
+            )}
+            <div style={{background:kgStock>0?"#fff3cd":"#eafaf1",borderRadius:10,padding:"14px",textAlign:"center",border:`2px solid ${kgStock>0?"#f39c12":"#27ae60"}`,boxShadow:kgStock>0?"0 2px 8px #f39c1222":"none"}}>
+              <div style={{fontSize:28,marginBottom:4}}>{kgStock>0?"📬":"✅"}</div>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:28,fontWeight:700,color:kgStock>0?"#f39c12":"#27ae60"}}>{fmt(kgStock)}</div>
+              <div style={{fontSize:11,color:kgStock>0?"#856404":"#27ae60",marginTop:2,fontWeight:600}}>{kgStock>0?"kg por vender":"Todo vendido"}</div>
+            </div>
+          </div>
+          {/* Barra de progreso */}
+          <div style={{marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#888",marginBottom:4}}>
+              <span>Progreso de comercialización</span>
+              <span style={{fontWeight:700,color:eficiencia>=80?"#27ae60":eficiencia>=60?"#f39c12":"#e74c3c"}}>{eficiencia.toFixed(1)}%</span>
+            </div>
+            <div style={{background:"#e0e0e0",borderRadius:6,height:12,overflow:"hidden"}}>
+              <div style={{display:"flex",height:"100%"}}>
+                <div style={{width:`${Math.min(eficiencia,100)}%`,background:"#27ae60",transition:"width 0.5s",borderRadius:"6px 0 0 6px"}}/>
+                {totalMerma>0&&<div style={{width:`${Math.min((totalMerma/totalKgCosechados)*100,100-eficiencia)}%`,background:"#f39c12"}}/>}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:12,marginTop:6,fontSize:10,color:"#888",flexWrap:"wrap"}}>
+              <span><span style={{display:"inline-block",width:8,height:8,background:"#27ae60",borderRadius:2,marginRight:3}}/>Vendido {eficiencia.toFixed(1)}%</span>
+              {totalMerma>0&&<span><span style={{display:"inline-block",width:8,height:8,background:"#f39c12",borderRadius:2,marginRight:3}}/>Merma {totalKgCosechados>0?((totalMerma/totalKgCosechados)*100).toFixed(1):0}%</span>}
+              <span><span style={{display:"inline-block",width:8,height:8,background:"#e0e0e0",borderRadius:2,marginRight:3}}/>Stock {pctStock.toFixed(1)}%</span>
+            </div>
+          </div>
+          {/* Desglose por cultivo */}
+          {comparativo.length>0&&(
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:"#aaa",marginBottom:8,letterSpacing:0.3}}>POR CULTIVO</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
+                {comparativo.map(d=>{
+                  const mermaCrop = filtrarPeriodo(mermasData).filter(m=>m.crop===Object.keys(CROPS).find(k=>CROPS[k].name===d.name)).reduce((s,m)=>s+(m.kgMerma||0),0);
+                  const stockCrop = Math.max(0, d.cosechado - d.vendido - mermaCrop);
+                  const pctV = d.cosechado>0?Math.min((d.vendido/d.cosechado)*100,100):0;
+                  return(
+                    <div key={d.name} style={{background:"#f9f9f9",borderRadius:10,padding:"10px 12px",borderLeft:`4px solid ${d.color}`}}>
+                      <div style={{fontWeight:700,color:d.color,fontSize:13,marginBottom:6}}>{d.emoji} {d.name}</div>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}>
+                        <span style={{color:"#888"}}>Cosechado</span>
+                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:600}}>{d.cosechado} kg</span>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}>
+                        <span style={{color:"#888"}}>Vendido</span>
+                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:600,color:"#2980b9"}}>{d.vendido} kg</span>
+                      </div>
+                      {mermaCrop>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}>
+                        <span style={{color:"#888"}}>Merma</span>
+                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:600,color:"#f39c12"}}>{mermaCrop.toFixed(1)} kg</span>
+                      </div>}
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginTop:4,paddingTop:4,borderTop:"1px solid #e0e0e0"}}>
+                        <span style={{fontWeight:700,color:stockCrop>0?"#f39c12":"#27ae60"}}>📦 Por vender</span>
+                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,fontSize:14,color:stockCrop>0?"#f39c12":"#27ae60"}}>{stockCrop.toFixed(1)} kg</span>
+                      </div>
+                      <div style={{background:"#e0e0e0",borderRadius:3,height:4,overflow:"hidden",marginTop:6}}>
+                        <div style={{width:`${pctV}%`,height:"100%",background:d.color,borderRadius:3}}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── GRÁFICA TENDENCIA ── */}
       {tendencia.length >= 2 && (
