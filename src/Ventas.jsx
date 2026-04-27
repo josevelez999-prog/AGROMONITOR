@@ -192,7 +192,7 @@ function GestionLotes() {
   useEffect(()=>{
     const u1 = onSnapshot(query(collection(db,"ventas")), s=>setVentas(s.docs.map(d=>({id:d.id,...d.data()}))));
     const u2 = onSnapshot(query(collection(db,"cosechas_trabajador")), s=>setCosechas(s.docs.map(d=>({id:d.id,...d.data()}))));
-    const u3 = onSnapshot(query(collection(db,"mermas")), s=>setMermas(s.docs.map(d=>({id:d.id,...d.data()}))));
+    const u3 = onSnapshot(query(collection(db,"mermas")), s=>setMermasLote(s.docs.map(d=>({id:d.id,...d.data()}))));
     return()=>{u1();u2();u3();};
   },[]);
 
@@ -295,9 +295,9 @@ function GestionLotes() {
                   <span style={{fontSize:12,color:"#888"}}>📅 {lote.fechaCosecha}</span>
                 </div>
                 {(()=>{
-                  const kgVendido = ventas.filter(v=>v.loteId===lote.id).reduce((s,v)=>s+(v.kgVendidos||0),0);
-                  const kgCosechado = cosechas.filter(c=>c.loteId===lote.id).reduce((s,c)=>s+(c.kgCosechados||0),0) || lote.kgCosechados || 0;
-                  const kgMerma = mermas.filter(m=>m.loteId===lote.id).reduce((s,m)=>s+(m.kgMerma||0),0);
+                  const kgVendido = Number((ventas||[]).filter(v=>v.loteId===lote.id).reduce((s,v)=>s+(parseFloat(v.kgVendidos)||0),0));
+                  const kgCosechado = Number((cosechas||[]).filter(c=>c.loteId===lote.id).reduce((s,c)=>s+(parseFloat(c.kgCosechados)||0),0) || parseFloat(lote.kgCosechados) || 0);
+                  const kgMerma = Number((mermasLote||[]).filter(m=>m.loteId===lote.id).reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0));
                   const kgDisp = Math.max(0, kgCosechado - kgVendido - kgMerma);
                   const pct = kgCosechado>0 ? Math.min((kgVendido/kgCosechado)*100,100) : 0;
                   return (
