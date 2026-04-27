@@ -230,8 +230,9 @@ function Reportes({readings,onDelete}){
     if(!window.confirm("Última confirmación — esta acción NO se puede deshacer. ¿Confirmar borrado total?")) return;
     setResetting(true);
     try {
-      const snap = await import("firebase/firestore").then(({getDocs,collection:col})=>getDocs(col(db,"readings")));
-      for(const d of snap.docs) await import("firebase/firestore").then(({deleteDoc:del,doc:dc})=>del(dc(db,"readings",d.id)));
+      const {getDocs} = await import("firebase/firestore");
+      const snap = await getDocs(query(collection(db,"readings")));
+      for(const d of snap.docs) await deleteDoc(doc(db,"readings",d.id));
       setShowReset(false);
     } catch(e){ alert("Error: "+e.message); }
     setResetting(false);

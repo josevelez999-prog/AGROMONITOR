@@ -1243,23 +1243,6 @@ export default function Ventas({ readOnly=false }) {
   const [tab, setTab] = useState("reportes");
   return (
     <div className="ventas-module">
-      {/* Force light mode on all inputs in this module */}
-      <style>{`
-        .ventas-module input,
-        .ventas-module select,
-        .ventas-module textarea {
-          color: #111 !important;
-          background-color: #ffffff !important;
-          -webkit-text-fill-color: #111 !important;
-          color-scheme: light !important;
-          border-color: #ccc !important;
-        }
-        .ventas-module input::placeholder,
-        .ventas-module textarea::placeholder {
-          color: #aaa !important;
-          -webkit-text-fill-color: #aaa !important;
-        }
-      `}</style>
       {readOnly&&<div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"8px 14px",marginBottom:10,fontSize:12,color:"#1a5276"}}>👁️ Modo observador — solo lectura</div>}
       <div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#2e7d5a"}}>
         📱 Los trabajadores registran ventas y cosechas desde su app · Tú ves los reportes aquí
