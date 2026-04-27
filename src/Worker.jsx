@@ -529,7 +529,8 @@ function RegistroCosecha({ worker }) {
 
 
       {/* ── COSECHA ── */}
-      {subtab==="cosecha"&&<div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px",marginBottom:20}}>
+      {subtab==="cosecha"&&(
+      <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px",marginBottom:20}}>
         <div style={{fontSize:12,fontWeight:700,color:"#27ae60",marginBottom:14,letterSpacing:0.3,display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontSize:16}}>🧺</span> REGISTRO DE COSECHA
         </div>
@@ -556,9 +557,9 @@ function RegistroCosecha({ worker }) {
             </button>
           </>
         )}
-      </div>}
+      </div>
+      )}
 
-      {/* Divisor */}
       {subtab==="venta"&&<div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
         <div style={{flex:1,height:1,background:"#e0e0e0"}}/>
         <span style={{fontSize:11,color:"#aaa",fontWeight:600,letterSpacing:0.5}}>REGISTRAR VENTA</span>
@@ -644,7 +645,8 @@ function RegistroCosecha({ worker }) {
             style={{width:"100%",padding:15,background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
             {saving?"Guardando...":"💰 Registrar venta"}
           </button>
-        </div>}
+        </div>
+      )}
 
       {/* ── VALIDACIÓN DE TRATAMIENTO ── */}
       {subtab==="validacion"&&(
