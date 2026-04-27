@@ -283,51 +283,47 @@ function GestionLotes() {
       {lotes.map(lote => {
         const crop = CROPS[lote.crop];
         const trat = TRATAMIENTOS.find(t=>t.id===lote.tratamiento);
+        const kgVendido = Number((ventas||[]).filter(v=>v.loteId===lote.id).reduce((s,v)=>s+(parseFloat(v.kgVendidos)||0),0));
+        const kgCosechado = Number((cosechas||[]).filter(c=>c.loteId===lote.id).reduce((s,c)=>s+(parseFloat(c.kgCosechados)||0),0) || parseFloat(lote.kgCosechados) || 0);
+        const kgMerma = Number((mermasLote||[]).filter(m=>m.loteId===lote.id).reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0));
+        const kgDisp = Math.max(0, kgCosechado - kgVendido - kgMerma);
+        const pct = kgCosechado > 0 ? Math.min((kgVendido/kgCosechado)*100, 100) : 0;
         return (
-          <div key={lote.id} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderTop:`3px solid ${crop?.color}`,borderRadius:12,padding:"14px 18px",marginBottom:10}}>
+          <div key={lote.id} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderTop:`3px solid ${crop?.color||"#27ae60"}`,borderRadius:12,padding:"14px 18px",marginBottom:10}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
               <span style={{fontSize:24}}>{crop?.emoji}</span>
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,fontSize:14,marginBottom:3}}>{lote.nombre}</div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:4}}>
-                  <span style={{background:trat?.color+"18",color:trat?.color,border:`1px solid ${trat?.color}44`,borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:600}}>{trat?.icon} {trat?.label}</span>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+                  <span style={{background:(trat?.color||"#888")+"18",color:trat?.color||"#888",border:`1px solid ${trat?.color||"#888"}44`,borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:600}}>{trat?.icon} {trat?.label}</span>
                   <span style={{fontSize:12,color:"#888"}}>📍 {lote.zona}</span>
                   <span style={{fontSize:12,color:"#888"}}>📅 {lote.fechaCosecha}</span>
                 </div>
-                {(()=>{
-                  const kgVendido = Number((ventas||[]).filter(v=>v.loteId===lote.id).reduce((s,v)=>s+(parseFloat(v.kgVendidos)||0),0));
-                  const kgCosechado = Number((cosechas||[]).filter(c=>c.loteId===lote.id).reduce((s,c)=>s+(parseFloat(c.kgCosechados)||0),0) || parseFloat(lote.kgCosechados) || 0);
-                  const kgMerma = Number((mermasLote||[]).filter(m=>m.loteId===lote.id).reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0));
-                  const kgDisp = Math.max(0, kgCosechado - kgVendido - kgMerma);
-                  const pct = kgCosechado>0 ? Math.min((kgVendido/kgCosechado)*100,100) : 0;
-                  return (
-                    <>
-                      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:8}}>
-                        <div style={{textAlign:"center",background:"#f0faf5",borderRadius:8,padding:"6px 12px"}}>
-                          <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#27ae60"}}>{kgCosechado.toFixed(1)} kg</div>
-                          <div style={{fontSize:9,color:"#aaa"}}>Cosechados</div>
-                        </div>
-                        <div style={{textAlign:"center",background:"#eaf4fb",borderRadius:8,padding:"6px 12px"}}>
-                          <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#2980b9"}}>{kgVendido.toFixed(1)} kg</div>
-                          <div style={{fontSize:9,color:"#aaa"}}>Vendidos</div>
-                        </div>
-                        {kgMerma>0&&<div style={{textAlign:"center",background:"#fef9e7",borderRadius:8,padding:"6px 12px"}}>
-                          <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#f39c12"}}>{kgMerma.toFixed(1)} kg</div>
-                          <div style={{fontSize:9,color:"#aaa"}}>Merma</div>
-                        </div>}
-                        <div style={{textAlign:"center",background:kgDisp>0?"#fff3cd":"#eafaf1",border:`2px solid ${kgDisp>0?"#f39c12":"#a9dfbf"}`,borderRadius:8,padding:"6px 12px"}}>
-                          <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:kgDisp>0?"#f39c12":"#27ae60"}}>{kgDisp.toFixed(1)} kg</div>
-                          <div style={{fontSize:9,color:"#888",fontWeight:600}}>Por vender</div>
-                        </div>
-                      </div>
-                      <div style={{background:"#e0e0e0",borderRadius:4,height:6,overflow:"hidden",marginBottom:4}}>
-                        <div style={{width:`${pct}%`,height:"100%",background:crop?.color||"#27ae60",borderRadius:4,transition:"width 0.5s"}}/>
-                      </div>
-                      <div style={{fontSize:10,color:"#aaa"}}>{pct.toFixed(1)}% comercializado</div>
-                    </>
-                  );
-                })()}
-                {lote.notas&&<div style={{fontSize:11,color:"#aaa",marginTop:4}}>📝 {lote.notas}</div>}
+                <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:8}}>
+                  <div style={{textAlign:"center",background:"#f0faf5",borderRadius:8,padding:"6px 12px"}}>
+                    <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#27ae60"}}>{kgCosechado.toFixed(1)} kg</div>
+                    <div style={{fontSize:9,color:"#aaa"}}>Cosechados</div>
+                  </div>
+                  <div style={{textAlign:"center",background:"#eaf4fb",borderRadius:8,padding:"6px 12px"}}>
+                    <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#2980b9"}}>{kgVendido.toFixed(1)} kg</div>
+                    <div style={{fontSize:9,color:"#aaa"}}>Vendidos</div>
+                  </div>
+                  {kgMerma>0&&(
+                    <div style={{textAlign:"center",background:"#fef9e7",borderRadius:8,padding:"6px 12px"}}>
+                      <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#f39c12"}}>{kgMerma.toFixed(1)} kg</div>
+                      <div style={{fontSize:9,color:"#aaa"}}>Merma</div>
+                    </div>
+                  )}
+                  <div style={{textAlign:"center",background:kgDisp>0?"#fff3cd":"#eafaf1",border:`2px solid ${kgDisp>0?"#f39c12":"#a9dfbf"}`,borderRadius:8,padding:"6px 12px"}}>
+                    <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:kgDisp>0?"#f39c12":"#27ae60"}}>{kgDisp.toFixed(1)} kg</div>
+                    <div style={{fontSize:9,color:"#888",fontWeight:600}}>Por vender</div>
+                  </div>
+                </div>
+                <div style={{background:"#e0e0e0",borderRadius:4,height:6,overflow:"hidden",marginBottom:3}}>
+                  <div style={{width:`${pct}%`,height:"100%",background:crop?.color||"#27ae60",borderRadius:4}}/>
+                </div>
+                <div style={{fontSize:10,color:"#aaa",marginBottom:4}}>{pct.toFixed(1)}% comercializado</div>
+                {lote.notas&&<div style={{fontSize:11,color:"#aaa"}}>📝 {lote.notas}</div>}
               </div>
               <div style={{display:"flex",gap:6}}>
                 <button onClick={()=>{setForm({...lote});setEditing(lote.id);setShowForm(true);}} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12,color:"#2980b9"}}>✎ Editar</button>
