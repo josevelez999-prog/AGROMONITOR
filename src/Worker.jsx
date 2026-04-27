@@ -565,11 +565,6 @@ function RegistroCosecha({ worker }) {
         <span style={{fontSize:11,color:"#aaa",fontWeight:600,letterSpacing:0.5}}>REGISTRAR VENTA</span>
         <div style={{flex:1,height:1,background:"#e0e0e0"}}/>
       </div>}
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
-        <div style={{flex:1,height:1,background:"#e0e0e0"}}/>
-        <span style={{fontSize:11,color:"#aaa",fontWeight:600,letterSpacing:0.5}}>REGISTRO DE VENTA</span>
-        <div style={{flex:1,height:1,background:"#e0e0e0"}}/>
-      </div>
 
       {/* ── VENTA ── */}
       <div>
