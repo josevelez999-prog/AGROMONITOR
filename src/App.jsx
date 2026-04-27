@@ -153,11 +153,17 @@ function Resumen({readings,onDelete}){
 // ─── ALERTAS ──────────────────────────────────────────────────────────────────
 function Alertas({readings,onDelete}){
   const [filter,setFilter]=useState("all");
-  const all=readings.map(r=>{const c=CROPS[r.crop];if(!c)return null;const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":null;return s?{...r,status:s,phStatus:ps,ceStatus:cs}:null;}).filter(Boolean).sort((a,b)=>({danger:0,warning:1}[a.status]-({danger:0,warning:1}[b.status])||b.date.localeCompare(a.date)));
+  const all=readings.map(r=>{const c=CROPS[r.crop];if(!c)return null;const rng=getRangos(r.crop,r.tipo||"entrada");const ph=rng?rng.ph:c.ph;const ce=rng?rng.ce:c.ce;const ps=getStatus(r.ph,ph),cs=getStatus(r.ce,ce);const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":null;return s?{...r,status:s,phStatus:ps,ceStatus:cs}:null;}).filter(Boolean).sort((a,b)=>({danger:0,warning:1}[a.status]-({danger:0,warning:1}[b.status])||b.date.localeCompare(a.date)));
   const filtered=filter==="all"?all:all.filter(r=>r.status===filter);
+
+  const resolverTodas = async () => {
+    if(!window.confirm(`¿Eliminar las ${filtered.length} alertas mostradas?`)) return;
+    for(const r of filtered) await deleteDoc(doc(db,"readings",r.id)).catch(()=>{});
+  };
+
   return(
     <div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {[["all","Todas","#555"],["danger","Críticas","#e74c3c"],["warning","Advertencias","#f39c12"]].map(([v,l,c])=>(
             <button key={v} onClick={()=>setFilter(v)} style={{padding:"7px 16px",border:`1px solid ${filter===v?c:"#e0e0e0"}`,borderRadius:20,background:filter===v?c+"18":"transparent",color:filter===v?c:"#666",cursor:"pointer",fontSize:12,fontWeight:500}}>
@@ -167,6 +173,22 @@ function Alertas({readings,onDelete}){
         </div>
         {all.length>0&&<button onClick={()=>exportCSV(readings)} style={{padding:"7px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>}
       </div>
+      {filtered.length>0&&(
+        <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+          <button onClick={resolverTodas}
+            style={{padding:"7px 16px",border:"1px solid #e74c3c44",borderRadius:8,background:"#fdedec",color:"#c0392b",cursor:"pointer",fontSize:12,fontWeight:600}}>
+            ✕ Eliminar mostradas ({filtered.length})
+          </button>
+          <button onClick={async()=>{if(!window.confirm(`¿Eliminar las ${all.length} alertas en total?`))return;for(const r of all)await deleteDoc(doc(db,"readings",r.id)).catch(()=>{});}}
+            style={{padding:"7px 16px",border:"1px solid #e74c3c",borderRadius:8,background:"#e74c3c",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:600}}>
+            🗑 Eliminar TODAS ({all.length})
+          </button>
+          <button onClick={async()=>{if(!window.confirm(`¿Marcar como resueltas las ${filtered.length} alertas mostradas?`))return;for(const r of filtered)await deleteDoc(doc(db,"readings",r.id)).catch(()=>{});}}
+            style={{padding:"7px 16px",border:"1px solid #27ae60",borderRadius:8,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>
+            ✓ Resolver mostradas
+          </button>
+        </div>
+      )}
       {!filtered.length&&<div style={{background:"#fff",borderRadius:12,padding:"3rem",textAlign:"center",color:"#aaa"}}><div style={{fontSize:40,marginBottom:8}}>✅</div><div>Sin alertas</div></div>}
       {filtered.map(r=>{const c=CROPS[r.crop];return(
         <div key={r.id} style={{background:"#fff",border:`1px solid ${SC[r.status]}33`,borderLeft:`4px solid ${SC[r.status]}`,borderRadius:12,padding:"14px 18px",marginBottom:10}}>
@@ -200,6 +222,21 @@ function Alertas({readings,onDelete}){
 
 // ─── REPORTES ─────────────────────────────────────────────────────────────────
 function Reportes({readings,onDelete}){
+  const [showReset,setShowReset]=useState(false);
+  const [resetting,setResetting]=useState(false);
+
+  const resetReadings = async () => {
+    if(!window.confirm("⚠️ Esto eliminará PERMANENTEMENTE todas las mediciones de Firebase. ¿Estás seguro?")) return;
+    if(!window.confirm("Última confirmación — esta acción NO se puede deshacer. ¿Confirmar borrado total?")) return;
+    setResetting(true);
+    try {
+      const snap = await import("firebase/firestore").then(({getDocs,collection:col})=>getDocs(col(db,"readings")));
+      for(const d of snap.docs) await import("firebase/firestore").then(({deleteDoc:del,doc:dc})=>del(dc(db,"readings",d.id)));
+      setShowReset(false);
+    } catch(e){ alert("Error: "+e.message); }
+    setResetting(false);
+  };
+
   const [cropFilter,setCropFilter]=useState("jitomate");
   const [tipoFilter,setTipoFilter]=useState("all"); // all | entrada | salida
   const [invFilter,setInvFilter]=useState("all");
@@ -338,8 +375,27 @@ function Reportes({readings,onDelete}){
             ))}
           </div>
         )}
-        <button onClick={()=>exportCSV(cr)} style={{marginLeft:"auto",padding:"7px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
+        <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+          <button onClick={()=>exportCSV(cr)} style={{padding:"7px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
+          <button onClick={()=>setShowReset(s=>!s)} style={{padding:"7px 14px",border:"1px solid #e74c3c44",borderRadius:20,background:"#fdedec",color:"#c0392b",cursor:"pointer",fontSize:12,fontWeight:600}}>🔄 Reset</button>
+        </div>
       </div>
+      {showReset&&(
+        <div style={{background:"#fdedec",border:"2px solid #e74c3c",borderRadius:12,padding:"14px 18px",marginBottom:14}}>
+          <div style={{fontWeight:700,color:"#c0392b",marginBottom:6}}>⚠️ Zona de peligro — Reset de mediciones</div>
+          <div style={{fontSize:13,color:"#555",marginBottom:12}}>Esto eliminará <strong>permanentemente</strong> todas las mediciones de pH y CE de Firebase. Los datos de ventas, cosechas y mermas NO se borran.</div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={resetReadings} disabled={resetting}
+              style={{padding:"9px 20px",background:resetting?"#aaa":"#e74c3c",color:"#fff",border:"none",borderRadius:8,cursor:resetting?"not-allowed":"pointer",fontWeight:700,fontSize:13}}>
+              {resetting?"Borrando...":"🗑 Confirmar reset total"}
+            </button>
+            <button onClick={()=>setShowReset(false)}
+              style={{padding:"9px 16px",border:"1px solid #e0e0e0",borderRadius:8,background:"#fff",color:"#888",cursor:"pointer",fontSize:13}}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* KPIs */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:16}}>

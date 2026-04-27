@@ -189,6 +189,13 @@ function GestionLotes() {
     return () => unsub();
   }, []);
 
+  useEffect(()=>{
+    const u1 = onSnapshot(query(collection(db,"ventas")), s=>setVentas(s.docs.map(d=>({id:d.id,...d.data()}))));
+    const u2 = onSnapshot(query(collection(db,"cosechas_trabajador")), s=>setCosechas(s.docs.map(d=>({id:d.id,...d.data()}))));
+    const u3 = onSnapshot(query(collection(db,"mermas")), s=>setMermas(s.docs.map(d=>({id:d.id,...d.data()}))));
+    return()=>{u1();u2();u3();};
+  },[]);
+
   const save = async () => {
     if (!form.nombre || !form.zona) { alert("Llena nombre y zona"); return; }
     const data = { ...form, kgCosechados:parseFloat(form.kgCosechados)||0, kgEstimados:parseFloat(form.kgEstimados)||0, createdAt:new Date().toISOString() };
@@ -276,7 +283,6 @@ function GestionLotes() {
       {lotes.map(lote => {
         const crop = CROPS[lote.crop];
         const trat = TRATAMIENTOS.find(t=>t.id===lote.tratamiento);
-        const eficiencia = lote.kgEstimados > 0 ? n(lote.kgCosechados/lote.kgEstimados*100, 1) : null;
         return (
           <div key={lote.id} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderTop:`3px solid ${crop?.color}`,borderRadius:12,padding:"14px 18px",marginBottom:10}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
@@ -288,11 +294,39 @@ function GestionLotes() {
                   <span style={{fontSize:12,color:"#888"}}>📍 {lote.zona}</span>
                   <span style={{fontSize:12,color:"#888"}}>📅 {lote.fechaCosecha}</span>
                 </div>
-                <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-                  <span style={{fontFamily:"'Courier New',monospace",fontSize:13,color:"#27ae60",fontWeight:700}}>{lote.kgCosechados} kg cosechados</span>
-                  {lote.kgEstimados>0&&<span style={{fontFamily:"'Courier New',monospace",fontSize:12,color:"#aaa"}}>{lote.kgEstimados} kg estimados</span>}
-                  {eficiencia&&<span style={{fontFamily:"'Courier New',monospace",fontSize:12,color:eficiencia>=90?"#27ae60":eficiencia>=70?"#f39c12":"#e74c3c",fontWeight:600}}>{eficiencia}% eficiencia</span>}
-                </div>
+                {(()=>{
+                  const kgVendido = ventas.filter(v=>v.loteId===lote.id).reduce((s,v)=>s+(v.kgVendidos||0),0);
+                  const kgCosechado = cosechas.filter(c=>c.loteId===lote.id).reduce((s,c)=>s+(c.kgCosechados||0),0) || lote.kgCosechados || 0;
+                  const kgMerma = mermas.filter(m=>m.loteId===lote.id).reduce((s,m)=>s+(m.kgMerma||0),0);
+                  const kgDisp = Math.max(0, kgCosechado - kgVendido - kgMerma);
+                  const pct = kgCosechado>0 ? Math.min((kgVendido/kgCosechado)*100,100) : 0;
+                  return (
+                    <>
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:8}}>
+                        <div style={{textAlign:"center",background:"#f0faf5",borderRadius:8,padding:"6px 12px"}}>
+                          <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#27ae60"}}>{kgCosechado.toFixed(1)} kg</div>
+                          <div style={{fontSize:9,color:"#aaa"}}>Cosechados</div>
+                        </div>
+                        <div style={{textAlign:"center",background:"#eaf4fb",borderRadius:8,padding:"6px 12px"}}>
+                          <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#2980b9"}}>{kgVendido.toFixed(1)} kg</div>
+                          <div style={{fontSize:9,color:"#aaa"}}>Vendidos</div>
+                        </div>
+                        {kgMerma>0&&<div style={{textAlign:"center",background:"#fef9e7",borderRadius:8,padding:"6px 12px"}}>
+                          <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:"#f39c12"}}>{kgMerma.toFixed(1)} kg</div>
+                          <div style={{fontSize:9,color:"#aaa"}}>Merma</div>
+                        </div>}
+                        <div style={{textAlign:"center",background:kgDisp>0?"#fff3cd":"#eafaf1",border:`2px solid ${kgDisp>0?"#f39c12":"#a9dfbf"}`,borderRadius:8,padding:"6px 12px"}}>
+                          <div style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:kgDisp>0?"#f39c12":"#27ae60"}}>{kgDisp.toFixed(1)} kg</div>
+                          <div style={{fontSize:9,color:"#888",fontWeight:600}}>Por vender</div>
+                        </div>
+                      </div>
+                      <div style={{background:"#e0e0e0",borderRadius:4,height:6,overflow:"hidden",marginBottom:4}}>
+                        <div style={{width:`${pct}%`,height:"100%",background:crop?.color||"#27ae60",borderRadius:4,transition:"width 0.5s"}}/>
+                      </div>
+                      <div style={{fontSize:10,color:"#aaa"}}>{pct.toFixed(1)}% comercializado</div>
+                    </>
+                  );
+                })()}
                 {lote.notas&&<div style={{fontSize:11,color:"#aaa",marginTop:4}}>📝 {lote.notas}</div>}
               </div>
               <div style={{display:"flex",gap:6}}>
@@ -329,6 +363,13 @@ function RegistroVentas() {
     const unsub = onSnapshot(q, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return () => unsub();
   }, []);
+
+  useEffect(()=>{
+    const u1 = onSnapshot(query(collection(db,"ventas")), s=>setVentas(s.docs.map(d=>({id:d.id,...d.data()}))));
+    const u2 = onSnapshot(query(collection(db,"cosechas_trabajador")), s=>setCosechas(s.docs.map(d=>({id:d.id,...d.data()}))));
+    const u3 = onSnapshot(query(collection(db,"mermas")), s=>setMermas(s.docs.map(d=>({id:d.id,...d.data()}))));
+    return()=>{u1();u2();u3();};
+  },[]);
 
   const save = async () => {
     if (!form.comprador || !form.kgVendidos || !form.precioKg) { alert("Llena comprador, kg y precio"); return; }
@@ -521,6 +562,7 @@ function ReportesVentas() {
   const [ventas, setVentas] = useState([]);
   const [cosechas, setCosechas] = useState([]);
   const [lotes, setLotes] = useState([]);
+  const [mermasData, setMermasData] = useState([]);
   const [filterCrop, setFilterCrop] = useState("all");
   const [filterPeriodo, setFilterPeriodo] = useState("todo");
 
@@ -531,7 +573,9 @@ function ReportesVentas() {
     const unsub2 = onSnapshot(q2, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
     const q3 = query(collection(db,"cosechas_trabajador"), orderBy("createdAt","desc"));
     const unsub3 = onSnapshot(q3, snap => setCosechas(snap.docs.map(d=>({id:d.id,...d.data()}))));
-    return () => { unsub1(); unsub2(); unsub3(); };
+    const q4 = query(collection(db,"mermas"), orderBy("createdAt","desc"));
+    const unsub4 = onSnapshot(q4, snap => setMermasData(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, []);
 
   // Filtro por periodo
@@ -646,14 +690,23 @@ function ReportesVentas() {
   }, [ventasFilt]);
 
   const exportCSV = () => {
-    const h = ["Fecha","Cultivo","Lote","Tratamiento","Comprador","Canal","Calidad","Kg","$/kg","Total","Folio"];
-    const rows = ventasFilt.map(v => {
+    const lines = [];
+    // Header ventas
+    lines.push(["TIPO","Fecha","Cultivo","Lote","Tratamiento","Comprador/Causa","Canal","Calidad","Kg","$/kg","Total","Folio/Notas"].join(","));
+    // Ventas
+    ventasFilt.forEach(v => {
       const trat = TRATAMIENTOS.find(t=>t.id===v.tratamiento);
       const cal = CALIDADES.find(c=>c.id===v.calidad);
-      return [v.fecha,v.cropName||"",v.loteName||"",trat?.label||"",v.comprador,v.canal,cal?.label||"",v.kgVendidos,v.precioKg,v.totalVenta,v.factura||""].map(x=>`"${x}"`).join(",");
+      lines.push(["VENTA",v.fecha,v.cropName||"",v.loteName||"",trat?.label||"",v.comprador||"",v.canal||"",cal?.label||"",v.kgVendidos||0,v.precioKg||0,v.totalVenta||0,v.factura||""].map(x=>`"${x}"`).join(","));
     });
-    const blob = new Blob(["\uFEFF",[h.join(","),...rows].join("\n")],{type:"text/csv;charset=utf-8;"});
-    const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`ventas_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    // Mermas del mismo filtro de cultivo
+    const mermasFilt = mermasData.filter(m => filterCrop==="all" || m.crop===filterCrop);
+    mermasFilt.forEach(m => {
+      const crop = CROPS[m.crop];
+      lines.push(["MERMA",m.date||"",crop?.name||m.crop||"",m.loteName||"",m.tratamiento||"",m.causa||"","","","",m.kgMerma||0,"",m.notas||""].map(x=>`"${x}"`).join(","));
+    });
+    const blob = new Blob(["\uFEFF",lines.join("\n")],{type:"text/csv;charset=utf-8;"});
+    const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`ventas_mermas_${new Date().toISOString().slice(0,10)}.csv`; a.click();
   };
 
   const fmt = v => Number(v||0).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -672,7 +725,9 @@ function ReportesVentas() {
           <option value="30d">Últimos 30 días</option>
           <option value="90d">Últimos 90 días</option>
         </select>
-        <button onClick={exportCSV} style={{marginLeft:"auto",padding:"8px 16px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
+        <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+          <button onClick={exportCSV} style={{padding:"8px 16px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV Ventas+Mermas</button>
+        </div>
       </div>
 
       {/* ── KPIs GLOBALES ── */}
