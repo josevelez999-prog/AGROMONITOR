@@ -328,6 +328,138 @@ function DrenajeDashboard({readings, cropFilter, crop}) {
 }
 
 
+
+// ─── HISTORIAL TABLE ─────────────────────────────────────────────────────────
+function HistorialTable({cr, onDelete}) {
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = (r) => {
+    setEditId(r.id);
+    setEditForm({
+      ph: r.ph, ce: r.ce,
+      volumenEntrada: r.volumenEntrada||"",
+      drenaje: r.drenaje||"",
+      notes: r.notes||"",
+      zone: r.zone||"",
+      bandeja: r.bandeja||"",
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editId) return;
+    setSaving(true);
+    try {
+      await updateDoc(doc(db,"readings",editId),{
+        ph: parseFloat(editForm.ph)||0,
+        ce: parseFloat(editForm.ce)||0,
+        volumenEntrada: editForm.volumenEntrada ? parseFloat(editForm.volumenEntrada) : null,
+        drenaje: editForm.drenaje ? parseFloat(editForm.drenaje) : null,
+        notes: editForm.notes||"",
+        zone: editForm.zone||"",
+        bandeja: editForm.bandeja||"",
+      });
+      setEditId(null);
+    } catch(e) { alert("Error: "+e.message); }
+    setSaving(false);
+  };
+
+  const inp = {padding:"4px 6px",border:"1px solid #ccc",borderRadius:6,fontSize:12,
+    width:"100%",background:"#fff",color:"#111",WebkitTextFillColor:"#111",colorScheme:"light"};
+
+  return (
+    <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+      {editId&&(
+        <div style={{background:"#fff3cd",border:"1px solid #ffc10744",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#856404",display:"flex",alignItems:"center",gap:10}}>
+          <span>✎ Editando registro — corrige los valores y guarda</span>
+          <button onClick={()=>setEditId(null)} style={{marginLeft:"auto",background:"transparent",border:"none",cursor:"pointer",color:"#aaa",fontSize:14}}>✕</button>
+        </div>
+      )}
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>
+            {["","Fecha","Tipo","Inv.","Zona","Bandeja","pH","CE","Vol.Ent(L)","Drenaje(L)","Estado","Trabajador",""].map((h,i)=>(
+              <th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>{[...cr].reverse().map((r,i)=>{
+            const c=CROPS[r.crop];
+            const rng=getRangos(r.crop,r.tipo||"entrada");
+            const ps=getStatus(r.ph,rng?rng.ph:c.ph);
+            const cs=getStatus(r.ce,rng?rng.ce:c.ce);
+            const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";
+            const isEditing = editId===r.id;
+            return(
+              <tr key={r.id||i} style={{borderBottom:`1px solid ${isEditing?"#ffc10744":"#fafafa"}`,background:isEditing?"#fffdf0":"transparent"}}>
+                <td style={{padding:"6px 8px"}}>{r.photoURL&&<img src={r.photoURL} alt="" style={{width:26,height:26,borderRadius:4,objectFit:"cover"}}/>}</td>
+                <td style={{padding:"6px 8px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#999",whiteSpace:"nowrap"}}>{r.date}</td>
+                <td style={{padding:"6px 8px"}}>
+                  <span style={{background:r.tipo==="salida"?"#eaf4fb":"#eafaf1",color:r.tipo==="salida"?"#2980b9":"#27ae60",borderRadius:8,padding:"1px 6px",fontSize:10,fontWeight:600}}>
+                    {r.tipo==="salida"?"⬆ Sal":"⬇ Ent"}
+                  </span>
+                </td>
+                <td style={{padding:"6px 8px",fontSize:11,color:"#c0392b",fontWeight:600,whiteSpace:"nowrap"}}>{r.invernadero||"—"}</td>
+                <td style={{padding:"6px 8px",color:"#888",minWidth:60}}>
+                  {isEditing
+                    ? <input value={editForm.zone} onChange={e=>setEditForm(p=>({...p,zone:e.target.value}))} style={{...inp,width:65}}/>
+                    : r.zone}
+                </td>
+                <td style={{padding:"6px 8px",fontSize:11,color:"#888",minWidth:70}}>
+                  {isEditing
+                    ? <input value={editForm.bandeja} onChange={e=>setEditForm(p=>({...p,bandeja:e.target.value}))} style={{...inp,width:70}}/>
+                    : r.bandeja||"—"}
+                </td>
+                <td style={{padding:"6px 8px",minWidth:60}}>
+                  {isEditing
+                    ? <input type="number" step="0.01" value={editForm.ph} onChange={e=>setEditForm(p=>({...p,ph:e.target.value}))} style={{...inp,width:55,fontFamily:"'Courier New',monospace",fontWeight:700}}/>
+                    : <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[ps]}}>{r.ph}</span>}
+                </td>
+                <td style={{padding:"6px 8px",minWidth:60}}>
+                  {isEditing
+                    ? <input type="number" step="0.01" value={editForm.ce} onChange={e=>setEditForm(p=>({...p,ce:e.target.value}))} style={{...inp,width:55,fontFamily:"'Courier New',monospace",fontWeight:700}}/>
+                    : <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</span>}
+                </td>
+                <td style={{padding:"6px 8px",minWidth:70}}>
+                  {isEditing
+                    ? <input type="number" step="0.1" value={editForm.volumenEntrada} onChange={e=>setEditForm(p=>({...p,volumenEntrada:e.target.value}))} style={{...inp,width:65,fontFamily:"'Courier New',monospace"}} placeholder="L"/>
+                    : <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#27ae60"}}>{r.volumenEntrada?`${r.volumenEntrada}L`:"—"}</span>}
+                </td>
+                <td style={{padding:"6px 8px",minWidth:70}}>
+                  {isEditing
+                    ? <input type="number" step="0.1" value={editForm.drenaje} onChange={e=>setEditForm(p=>({...p,drenaje:e.target.value}))} style={{...inp,width:65,fontFamily:"'Courier New',monospace"}} placeholder="L"/>
+                    : <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#2980b9"}}>{r.drenaje?`${r.drenaje}L`:"—"}</span>}
+                </td>
+                <td style={{padding:"6px 8px"}}><Badge status={s} small/></td>
+                <td style={{padding:"6px 8px",color:"#888",whiteSpace:"nowrap"}}>{r.worker}</td>
+                <td style={{padding:"6px 8px"}}>
+                  {isEditing
+                    ? <div style={{display:"flex",gap:4}}>
+                        <button onClick={saveEdit} disabled={saving}
+                          style={{background:"#27ae60",color:"#fff",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                          {saving?"...":"✓ Guardar"}
+                        </button>
+                        <button onClick={()=>setEditId(null)}
+                          style={{background:"#f0f0f0",color:"#666",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕</button>
+                      </div>
+                    : <div style={{display:"flex",gap:4}}>
+                        <button onClick={()=>startEdit(r)}
+                          style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button>
+                        <button onClick={()=>{if(window.confirm("¿Eliminar?"))onDelete(r.id);}}
+                          style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>
+                      </div>
+                  }
+                </td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
 function Reportes({readings,onDelete}){
   const [showReset,setShowReset]=useState(false);
   const [resetting,setResetting]=useState(false);
@@ -733,47 +865,7 @@ function Reportes({readings,onDelete}){
       )}
 
       {/* ── HISTORIAL ── */}
-      {sub==="historial"&&(
-        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-              <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>
-                {["","Fecha","Tipo","Inv.","Zona","Bandeja","pH","CE","Vol.Ent","Drenaje","Estado","Trabajador",""].map((h,i)=>(
-                  <th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11}}>{h}</th>
-                ))}
-              </tr></thead>
-              <tbody>{[...cr].reverse().map((r,i)=>{
-                const c=CROPS[r.crop];
-                const rng=getRangos(r.crop,r.tipo||"entrada");
-                const ps=getStatus(r.ph,rng?rng.ph:c.ph);
-                const cs=getStatus(r.ce,rng?rng.ce:c.ce);
-                const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";
-                return(
-                  <tr key={r.id||i} style={{borderBottom:"1px solid #fafafa"}}>
-                    <td style={{padding:"8px 10px"}}>{r.photoURL&&<img src={r.photoURL} alt="" style={{width:28,height:28,borderRadius:4,objectFit:"cover"}}/>}</td>
-                    <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#999"}}>{r.date}</td>
-                    <td style={{padding:"8px 10px"}}>
-                      <span style={{background:r.tipo==="salida"?"#eaf4fb":"#eafaf1",color:r.tipo==="salida"?"#2980b9":"#27ae60",borderRadius:8,padding:"1px 6px",fontSize:10,fontWeight:600}}>
-                        {r.tipo==="salida"?"⬆ Sal":"⬇ Ent"}
-                      </span>
-                    </td>
-                    <td style={{padding:"8px 10px",fontSize:11,color:"#c0392b",fontWeight:600}}>{r.invernadero||"—"}</td>
-                    <td style={{padding:"8px 10px",color:"#888"}}>{r.zone}</td>
-                    <td style={{padding:"8px 10px",fontSize:11,color:"#888"}}>{r.bandeja||"—"}</td>
-                    <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[ps]}}>{r.ph}</td>
-                    <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</td>
-                    <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#27ae60"}}>{r.volumenEntrada?`${r.volumenEntrada}L`:"—"}</td>
-                    <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#2980b9"}}>{r.drenaje?`${r.drenaje}L`:"—"}</td>
-                    <td style={{padding:"8px 10px"}}><Badge status={s} small/></td>
-                    <td style={{padding:"8px 10px",color:"#888"}}>{r.worker}</td>
-                    <td style={{padding:"8px 10px"}}><button onClick={()=>{if(window.confirm("¿Eliminar?"))onDelete(r.id);}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button></td>
-                  </tr>
-                );
-              })}</tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {sub==="historial"&&<HistorialTable cr={cr} onDelete={onDelete}/>}
     </div>
   );
 }
