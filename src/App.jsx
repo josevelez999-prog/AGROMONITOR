@@ -559,23 +559,106 @@ function Reportes({readings,onDelete}){
       )}
 
       {/* ── DRENAJE ── */}
-      {sub==="drenaje"&&(
-        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:20,marginBottom:12}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:4}}>VOLUMEN DE DRENAJE (L) — {crop.emoji} {crop.name}</div>
-          <div style={{fontSize:11,color:"#888",marginBottom:12}}>Promedio diario de solución drenada. Rango recomendado: 20–35% del volumen de riego</div>
-          {drenajeData.length<1?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos de drenaje aún. Los trabajadores deben seleccionar tipo "Salida" y registrar el volumen de drenaje.</div>:(
-            <ResponsiveContainer width="100%" height={230}>
-              <BarChart data={drenajeData} margin={{top:5,right:20,left:0,bottom:0}}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-                <XAxis dataKey="date" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
-                <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={40} unit=" L"/>
-                <Tooltip formatter={v=>[`${v} L`,"Drenaje"]} contentStyle={{fontSize:11,borderRadius:8}}/>
-                <Bar dataKey="drenaje" name="Drenaje (L)" fill="#2980b9" radius={[4,4,0,0]}/>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      )}
+      {sub==="drenaje"&&(()=>{
+        const drenajeReadings = readings.filter(r=>r.crop===cropFilter&&(r.tipo||"entrada")==="salida"&&r.drenaje>0);
+        const drenajeVals = drenajeReadings.map(r=>r.drenaje);
+        const drAvg = drenajeVals.length ? n(drenajeVals.reduce((s,v)=>s+v,0)/drenajeVals.length) : null;
+        const drMin = drenajeVals.length ? n(Math.min(...drenajeVals)) : null;
+        const drMax = drenajeVals.length ? n(Math.max(...drenajeVals)) : null;
+        const drTotal = n(drenajeVals.reduce((s,v)=>s+v,0));
+
+        // Volumen entrada stats
+        const entReadings = readings.filter(r=>r.crop===cropFilter&&(r.tipo||"entrada")==="entrada"&&r.volumenEntrada>0);
+        const entVals = entReadings.map(r=>r.volumenEntrada);
+        const entAvg = entVals.length ? n(entVals.reduce((s,v)=>s+v,0)/entVals.length) : null;
+        const entTotal = n(entVals.reduce((s,v)=>s+v,0));
+
+        // Drenaje por fecha
+        const drByDate = {};
+        drenajeReadings.forEach(r=>{
+          const d=r.date.slice(5);
+          if(!drByDate[d])drByDate[d]={date:d,drenaje:0,entrada:0,count:0};
+          drByDate[d].drenaje+=r.drenaje;
+          drByDate[d].count++;
+        });
+        entReadings.forEach(r=>{
+          const d=r.date.slice(5);
+          if(!drByDate[d])drByDate[d]={date:d,drenaje:0,entrada:0,count:0};
+          drByDate[d].entrada+=(r.volumenEntrada||0);
+        });
+        const drChartData = Object.values(drByDate).sort((a,b)=>a.date.localeCompare(b.date)).slice(-14).map(d=>({
+          ...d,
+          drenaje:n(d.drenaje),
+          entrada:n(d.entrada),
+          pct: d.entrada>0 ? n((d.drenaje/d.entrada)*100,1) : null,
+        }));
+
+        return (
+          <div>
+            {/* KPIs drenaje */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:14}}>
+              {[
+                {l:"Promedio drenaje",v:drAvg!==null?`${drAvg} L`:"—",c:"#2980b9"},
+                {l:"Mínimo",v:drMin!==null?`${drMin} L`:"—",c:"#27ae60"},
+                {l:"Máximo",v:drMax!==null?`${drMax} L`:"—",c:"#e74c3c"},
+                {l:"Total acumulado",v:`${drTotal} L`,c:"#8e44ad"},
+                {l:"Promedio entrada",v:entAvg!==null?`${entAvg} L`:"—",c:"#27ae60"},
+                {l:"Total entrada",v:`${entTotal} L`,c:"#27ae60"},
+                {l:"Registros",v:drenajeReadings.length,c:"#7f8c8d"},
+              ].map(k=>(
+                <div key={k.l} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+                  <div style={{fontSize:18,fontWeight:700,color:k.c,fontFamily:"'Courier New',monospace"}}>{k.v}</div>
+                  <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{k.l}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Gráfica drenaje */}
+            <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px",marginBottom:12}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:4}}>💧 DRENAJE vs ENTRADA (L) — {crop.emoji} {crop.name}</div>
+              <div style={{fontSize:11,color:"#888",marginBottom:12}}>Rango recomendado de drenaje: 20–35% del volumen de entrada</div>
+              {drChartData.length<1
+                ?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos aún. Los trabajadores deben seleccionar tipo "Salida" y registrar el volumen de drenaje.</div>
+                :(
+                  <ResponsiveContainer width="100%" height={230}>
+                    <BarChart data={drChartData} margin={{top:5,right:20,left:0,bottom:0}}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                      <XAxis dataKey="date" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+                      <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={45} unit="L"/>
+                      <Tooltip formatter={(v,name)=>[`${v} L`,name]} contentStyle={{fontSize:11,borderRadius:8}}/>
+                      <Legend wrapperStyle={{fontSize:11}}/>
+                      <Bar dataKey="entrada" name="Entrada (L)" fill="#27ae6066" radius={[4,4,0,0]}/>
+                      <Bar dataKey="drenaje" name="Drenaje (L)" fill="#2980b9" radius={[4,4,0,0]}/>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )
+              }
+            </div>
+
+            {/* % de drenaje */}
+            {drChartData.some(d=>d.pct!==null)&&(
+              <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>📊 % DRENAJE / ENTRADA POR DÍA</div>
+                <ResponsiveContainer width="100%" height={160}>
+                  <BarChart data={drChartData.filter(d=>d.pct!==null)} margin={{top:5,right:20,left:0,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                    <XAxis dataKey="date" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={35} unit="%"/>
+                    <Tooltip formatter={v=>[`${v}%`,"% drenaje"]} contentStyle={{fontSize:11,borderRadius:8}}/>
+                    <ReferenceLine y={20} stroke="#27ae60" strokeDasharray="4 2" label={{value:"20%",fill:"#27ae60",fontSize:9,position:"right"}}/>
+                    <ReferenceLine y={35} stroke="#f39c12" strokeDasharray="4 2" label={{value:"35%",fill:"#f39c12",fontSize:9,position:"right"}}/>
+                    <Bar dataKey="pct" name="% drenaje" radius={[4,4,0,0]}>
+                      {drChartData.filter(d=>d.pct!==null).map((d,i)=>(
+                        <Cell key={i} fill={d.pct<20||d.pct>35?"#e74c3c":d.pct>=20&&d.pct<=35?"#27ae60":"#f39c12"}/>
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── NUTRIENTES FRESA ── */}
       {sub==="nutrientes"&&cropFilter==="fresa"&&(
