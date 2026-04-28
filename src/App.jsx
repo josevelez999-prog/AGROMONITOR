@@ -241,6 +241,7 @@ function Reportes({readings,onDelete}){
   const [cropFilter,setCropFilter]=useState("jitomate");
   const [tipoFilter,setTipoFilter]=useState("all"); // all | entrada | salida
   const [invFilter,setInvFilter]=useState("all");
+  const [zonaFilter,setZonaFilter]=useState("all");
   const [metric,setMetric]=useState("ph");
   const [sub,setSub]=useState("tendencia");
   const crop=CROPS[cropFilter];
@@ -250,8 +251,9 @@ function Reportes({readings,onDelete}){
     let r=readings.filter(x=>x.crop===cropFilter);
     if(tipoFilter!=="all") r=r.filter(x=>(x.tipo||"entrada")===tipoFilter);
     if(invFilter!=="all"&&crop.invernaderos) r=r.filter(x=>x.invernadero===invFilter);
+    if(zonaFilter!=="all") r=r.filter(x=>x.zone===zonaFilter);
     return r;
-  },[readings,cropFilter,tipoFilter,invFilter]);
+  },[readings,cropFilter,tipoFilter,invFilter,zonaFilter]);
 
   // Stats using tipo-aware ranges
   const stats=useMemo(()=>{
@@ -376,6 +378,14 @@ function Reportes({readings,onDelete}){
             ))}
           </div>
         )}
+        {/* Zona filter */}
+        <div style={{display:"flex",gap:4,background:"#f0f0f0",borderRadius:20,padding:3}}>
+          {["all","Zona 1","Zona 2","Zona 3","Zona 4"].map(z=>(
+            <button key={z} onClick={()=>setZonaFilter(z)} style={{padding:"5px 10px",border:"none",borderRadius:16,background:zonaFilter===z?"#fff":"transparent",color:zonaFilter===z?"#333":"#888",cursor:"pointer",fontSize:11,fontWeight:zonaFilter===z?700:400,boxShadow:zonaFilter===z?"0 1px 4px #0001":"none"}}>
+              {z==="all"?"Todas zonas":z}
+            </button>
+          ))}
+        </div>
         <div style={{marginLeft:"auto",display:"flex",gap:8}}>
           <button onClick={()=>exportCSV(cr)} style={{padding:"7px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
           <button onClick={()=>setShowReset(s=>!s)} style={{padding:"7px 14px",border:"1px solid #e74c3c44",borderRadius:20,background:"#fdedec",color:"#c0392b",cursor:"pointer",fontSize:12,fontWeight:600}}>🔄 Reset</button>
@@ -414,7 +424,7 @@ function Reportes({readings,onDelete}){
           ["tendencia","📈 Tendencia"],
           ["ent_sal","⇅ Entrada vs Salida"],
           ...(crop.invernaderos?[["invernaderos","🏠 Invernaderos"]]:[]),
-          ...(drenajeData.length>0?[["drenaje","💧 Drenaje"]]:[]),
+          ["drenaje","💧 Drenaje"],
           ...(cropFilter==="fresa"?[["nutrientes","🔬 Nutrientes"]]:[]),
           ["semanas","📊 Semanas"],
           ["historial","📋 Historial"],
@@ -439,7 +449,7 @@ function Reportes({readings,onDelete}){
             TENDENCIA — {crop.emoji} {crop.name}
             {tipoFilter!=="all"&&<span style={{marginLeft:8,fontSize:11,color:tipoFilter==="entrada"?"#27ae60":"#2980b9",fontWeight:600}}>{tipoFilter==="entrada"?"⬇ Entrada":"⬆ Salida"}</span>}
           </div>
-          {chartData.length<2?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Necesitas al menos 2 registros</div>:(
+          {chartData.length<1?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin registros aún para este filtro</div>:(
             <ResponsiveContainer width="100%" height={230}>
               <LineChart data={chartData} margin={{top:5,right:20,left:0,bottom:0}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
@@ -460,7 +470,7 @@ function Reportes({readings,onDelete}){
         <div>
           <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:20,marginBottom:12}}>
             <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>COMPARATIVO ENTRADA vs SALIDA — {metric==="ph"?"pH":"CE"}</div>
-            {entSalData.length<2?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Necesitas registros de entrada y salida para comparar</div>:(
+            {entSalData.length<1?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin registros de entrada y salida aún</div>:(
               <ResponsiveContainer width="100%" height={230}>
                 <LineChart data={entSalData} margin={{top:5,right:20,left:0,bottom:0}}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
@@ -553,7 +563,7 @@ function Reportes({readings,onDelete}){
         <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:20,marginBottom:12}}>
           <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:4}}>VOLUMEN DE DRENAJE (L) — {crop.emoji} {crop.name}</div>
           <div style={{fontSize:11,color:"#888",marginBottom:12}}>Promedio diario de solución drenada. Rango recomendado: 20–35% del volumen de riego</div>
-          {drenajeData.length<2?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos de drenaje. Registra mediciones de Salida con volumen de drenaje.</div>:(
+          {drenajeData.length<1?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos de drenaje aún. Los trabajadores deben seleccionar tipo "Salida" y registrar el volumen de drenaje.</div>:(
             <ResponsiveContainer width="100%" height={230}>
               <BarChart data={drenajeData} margin={{top:5,right:20,left:0,bottom:0}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
@@ -572,7 +582,7 @@ function Reportes({readings,onDelete}){
         <div>
           <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:20,marginBottom:12}}>
             <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>NUTRIENTES FRESA (mg/L)</div>
-            {nutData.length<1?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos de nutrientes. Los trabajadores deben registrar Ca, NO₃, K, Fe en la app.</div>:(
+            {nutData.length<1?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos de nutrientes aún. Los trabajadores los registran al hacer mediciones de fresa.</div>:(
               <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={nutData} margin={{top:5,right:20,left:0,bottom:0}}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
@@ -615,7 +625,7 @@ function Reportes({readings,onDelete}){
       {sub==="semanas"&&(
         <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:20,marginBottom:12}}>
           <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>COMPARAR SEMANAS</div>
-          {compareData.length<2?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Necesitas registros de al menos 2 semanas</div>:(
+          {compareData.length<1?<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos de semanas aún</div>:(
             <ResponsiveContainer width="100%" height={230}>
               <BarChart data={compareData} margin={{top:5,right:20,left:0,bottom:0}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
@@ -637,7 +647,7 @@ function Reportes({readings,onDelete}){
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>
-                {["","Fecha","Tipo","Inv.","Zona","pH","CE","Drenaje","Estado","Trabajador",""].map((h,i)=>(
+                {["","Fecha","Tipo","Inv.","Zona","Bandeja","pH","CE","Vol.Ent","Drenaje","Estado","Trabajador",""].map((h,i)=>(
                   <th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11}}>{h}</th>
                 ))}
               </tr></thead>
@@ -658,8 +668,10 @@ function Reportes({readings,onDelete}){
                     </td>
                     <td style={{padding:"8px 10px",fontSize:11,color:"#c0392b",fontWeight:600}}>{r.invernadero||"—"}</td>
                     <td style={{padding:"8px 10px",color:"#888"}}>{r.zone}</td>
+                    <td style={{padding:"8px 10px",fontSize:11,color:"#888"}}>{r.bandeja||"—"}</td>
                     <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[ps]}}>{r.ph}</td>
                     <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</td>
+                    <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#27ae60"}}>{r.volumenEntrada?`${r.volumenEntrada}L`:"—"}</td>
                     <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#2980b9"}}>{r.drenaje?`${r.drenaje}L`:"—"}</td>
                     <td style={{padding:"8px 10px"}}><Badge status={s} small/></td>
                     <td style={{padding:"8px 10px",color:"#888"}}>{r.worker}</td>

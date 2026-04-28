@@ -104,8 +104,8 @@ const LBL = {
 // ─── REGISTRO pH/CE ────────────────────────────────────────────────────────────
 function Registro({ worker }) {
   const [form, setForm] = useState({
-    crop:"jitomate", zone:"", invernadero:"INV 2",
-    tipo:"entrada",
+    crop:"jitomate", zone:"Zona 1", invernadero:"INV 2",
+    tipo:"entrada", bandeja:"Bandeja 1",
     ph:"", ce:"", drenaje:"", volumenEntrada:"", notes:"",
     ca:"", no3:"", k:"", fe:"",
   });
@@ -151,6 +151,7 @@ function Registro({ worker }) {
       const data = {
         ...form, worker,
         ph:parseFloat(form.ph), ce:parseFloat(form.ce),
+        bandeja: form.bandeja||"",
         drenaje: form.drenaje ? parseFloat(form.drenaje) : null,
         volumenEntrada: form.volumenEntrada ? parseFloat(form.volumenEntrada) : null,
         ca:  form.ca  ? parseFloat(form.ca)  : null,
@@ -163,7 +164,7 @@ function Registro({ worker }) {
       Object.keys(data).forEach(k => data[k] === null && delete data[k]);
       await addDoc(collection(db,"readings"), data);
       setSaved(true);
-      setForm(p=>({...p,zone:"",ph:"",ce:"",drenaje:"",volumenEntrada:"",notes:"",ca:"",no3:"",k:"",fe:""}));
+      setForm(p=>({...p,zone:"Zona 1",bandeja:"Bandeja 1",ph:"",ce:"",drenaje:"",volumenEntrada:"",notes:"",ca:"",no3:"",k:"",fe:""}));
       setImgFile(null); setImgPreview(null);
       setTimeout(()=>setSaved(false),4000);
     } catch { alert("Error al guardar."); }
@@ -235,9 +236,17 @@ function Registro({ worker }) {
       )}
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-        <div style={{gridColumn:"1/-1"}}>
-          <label style={LBL}>Zona / Área *</label>
-          <input value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} placeholder="Ej: Zona A" style={INP}/>
+        <div>
+          <label style={LBL}>Zona *</label>
+          <select value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} style={INP}>
+            {["Zona 1","Zona 2","Zona 3","Zona 4"].map(z=><option key={z} value={z}>{z}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={LBL}>Bandeja *</label>
+          <select value={form.bandeja} onChange={e=>setForm(p=>({...p,bandeja:e.target.value}))} style={INP}>
+            {Array.from({length:14},(_,i)=>`Bandeja ${i+1}`).map(b=><option key={b} value={b}>{b}</option>)}
+          </select>
         </div>
 
         {form.tipo==="entrada"&&(
@@ -768,7 +777,7 @@ function GuiaSintomas() {
 
 // ─── INCIDENCIAS ───────────────────────────────────────────────────────────────
 function Incidencias({ worker }) {
-  const [form,setForm]=useState({type:"plaga",zone:"",description:"",crop:"jitomate"});
+  const [form,setForm]=useState({type:"plaga",zone:"Zona 1",description:"",crop:"jitomate"});
   const [imgFile,setImgFile]=useState(null);
   const [imgPreview,setImgPreview]=useState(null);
   const [saving,setSaving]=useState(false);
@@ -798,7 +807,11 @@ function Incidencias({ worker }) {
         </div>
       </div>
       <div style={{marginBottom:12}}><label style={LBL}>Cultivo afectado</label><select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={INP}>{Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}</select></div>
-      <div style={{marginBottom:12}}><label style={LBL}>Zona *</label><input value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} placeholder="Zona A" style={INP}/></div>
+      <div style={{marginBottom:12}}><label style={LBL}>Zona *</label>
+          <select value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} style={INP}>
+            <option value="">Selecciona zona</option>
+            {["Zona 1","Zona 2","Zona 3","Zona 4"].map(z=><option key={z} value={z}>{z}</option>)}
+          </select></div>
       <div style={{marginBottom:14}}><label style={LBL}>Descripción *</label><textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} placeholder="Describe lo que ves..." style={{...INP,minHeight:90,resize:"vertical"}}/></div>
       <div style={{marginBottom:16}}>
         <label style={LBL}>Foto</label>
