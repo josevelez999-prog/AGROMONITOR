@@ -380,7 +380,7 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
 
   // Build alerts from readings - exclude already resolved/dismissed
   const all = readings
-    .filter(r => !r.resolved && !r.dismissed)
+    .filter(r => !r.resolved && !r.dismissed && (r.tipo||"entrada")==="entrada")
     .map(r => {
       const c = CROPS[r.crop]; if(!c) return null;
       const rng = getRangos(r.crop, r.tipo||"entrada", r.invernadero, weeklyRangos);
@@ -1286,7 +1286,7 @@ export default function App(){
   },[]);
 
   const handleDelete=async id=>{try{await deleteDoc(doc(db,"readings",id));}catch{alert("Error al eliminar.");}};
-  const alerts=readings.filter(r=>{if(r.resolved||r.dismissed)return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero,weeklyRangos);const ph=rng?rng.ph:c.ph;const ce=rng?rng.ce:c.ce;return getStatus(r.ph,ph)==="danger"||getStatus(r.ce,ce)==="danger";});
+  const alerts=readings.filter(r=>{if(r.resolved||r.dismissed)return false;if((r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero,weeklyRangos);const ph=rng?rng.ph:c.ph;const ce=rng?rng.ce:c.ce;return getStatus(r.ph,ph)==="danger"||getStatus(r.ce,ce)==="danger";});
 
   // Auth loading
   if(authLoading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(160deg,#0f1e2e,#1a3a2a)"}}><div style={{textAlign:"center",color:"#fff"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#4ecb8d",marginTop:4}}>Cargando...</div></div></div>;
