@@ -251,9 +251,9 @@ function Registro({ worker }) {
 
         {form.tipo==="entrada"&&(
           <div style={{gridColumn:"1/-1"}}>
-            <label style={LBL}>Volumen de entrada (litros)</label>
+            <label style={LBL}>Volumen de entrada (mL)</label>
             <input type="number" step="0.1" min="0" value={form.volumenEntrada}
-              onChange={e=>setForm(p=>({...p,volumenEntrada:e.target.value}))} placeholder="Ej: 12.5 L" style={INP}/>
+              onChange={e=>setForm(p=>({...p,volumenEntrada:e.target.value}))} placeholder="Ej: 1500 mL" style={INP}/>
           </div>
         )}
 
@@ -275,9 +275,9 @@ function Registro({ worker }) {
 
         {form.tipo==="salida"&&!crop.noDrenaje&&(
           <div style={{gridColumn:"1/-1"}}>
-            <label style={LBL}>Volumen de drenaje (litros)</label>
+            <label style={LBL}>Volumen de drenaje (mL)</label>
             <input type="number" step="0.1" min="0" value={form.drenaje}
-              onChange={e=>setForm(p=>({...p,drenaje:e.target.value}))} placeholder="Ej: 4.5 L" style={INP}/>
+              onChange={e=>setForm(p=>({...p,drenaje:e.target.value}))} placeholder="Ej: 450 mL" style={INP}/>
           </div>
         )}
 

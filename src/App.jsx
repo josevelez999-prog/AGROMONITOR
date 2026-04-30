@@ -5,7 +5,7 @@ import LoginScreen from "./Auth";
 import UsuariosAdmin from "./UsuariosAdmin";
 import { db, auth } from "./firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where, getDoc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where, getDoc, setDoc } from "firebase/firestore";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend, Cell } from "recharts";
 import AnalisisSuelo from "./SueloAnalisis";
 
@@ -59,7 +59,18 @@ const FERTS_INIT = [
 
 const n=(v,d=2)=>Number(parseFloat(v||0).toFixed(d));
 const getStatus=(v,r)=>{if(v<r.min||v>r.max)return"danger";const m=(r.max-r.min)*0.15;return(v<r.min+m||v>r.max-m)?"warning":"ok";};
-const getRangos=(crop,tipo)=>{ const c=CROPS[crop]; if(!c) return null; return tipo==="salida"?c.salida:c.entrada; };
+const getRangos=(crop,tipo,invernadero,weeklyRangos)=>{
+  const c=CROPS[crop]; if(!c) return null;
+  if(weeklyRangos){
+    const inv=invernadero?invernadero.replace(" ",""):"";
+    const key=inv?`${crop}_${inv}_${tipo}`:`${crop}_${tipo}`;
+    const wr=weeklyRangos[key];
+    if(wr&&wr.phMin&&wr.phMax&&wr.ceMin&&wr.ceMax){
+      return {ph:{min:wr.phMin,max:wr.phMax},ce:{min:wr.ceMin,max:wr.ceMax}};
+    }
+  }
+  return tipo==="salida"?c.salida:c.entrada;
+};
 const getStatusR=(v,crop,tipo,campo)=>{ const r=getRangos(crop,tipo); if(!r) return getStatus(v,CROPS[crop]?.[campo]||{min:0,max:14}); return getStatus(v,r[campo]); };
 const SC={ok:"#27ae60",warning:"#f39c12",danger:"#e74c3c"};
 const SB={ok:"#eafaf1",warning:"#fef9e7",danger:"#fdedec"};
@@ -80,6 +91,141 @@ function exportCSV(readings){
 }
 
 // ─── RESUMEN ──────────────────────────────────────────────────────────────────
+// ─── RANGOS SEMANALES ─────────────────────────────────────────────────────────
+function RangosSemanales() {
+  const [rangos, setRangos] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(()=>{
+    const unsub = onSnapshot(doc(db,"config","rangos_semanales"), snap=>{
+      if(snap.exists()) setRangos(snap.data());
+    });
+    return()=>unsub();
+  },[]);
+
+  // Build all combinations
+  const filas = [];
+  Object.entries(CROPS).forEach(([cropKey, crop])=>{
+    const tipos = cropKey==="zarzamora" ? ["entrada"] : ["entrada","salida"];
+    const invernaderos = crop.invernaderos || [null];
+    invernaderos.forEach(inv=>{
+      tipos.forEach(tipo=>{
+        const key = inv ? `${cropKey}_${inv.replace(" ","")}_${tipo}` : `${cropKey}_${tipo}`;
+        const defRng = tipo==="entrada" ? crop.entrada : crop.salida;
+        filas.push({ cropKey, crop, inv, tipo, key, defRng });
+      });
+    });
+  });
+
+  const get = (key, field) => rangos[key]?.[field] ?? "";
+  const set = (key, field, val) => setRangos(p=>({...p, [key]:{...(p[key]||{}), [field]:parseFloat(val)||0}}));
+
+  const guardar = async () => {
+    setSaving(true);
+    try {
+      await setDoc(doc(db,"config","rangos_semanales"), rangos);
+      setSaved(true);
+      setTimeout(()=>setSaved(false), 3000);
+    } catch(e){ alert("Error: "+e.message); }
+    setSaving(false);
+  };
+
+  const resetDefaults = async () => {
+    if(!window.confirm("¿Resetear todos los rangos a los valores de literatura?")) return;
+    const defaults = {};
+    filas.forEach(({key, defRng})=>{
+      defaults[key] = { phMin: defRng.ph.min, phMax: defRng.ph.max, ceMin: defRng.ce.min, ceMax: defRng.ce.max };
+    });
+    setRangos(defaults);
+    await setDoc(doc(db,"config","rangos_semanales"), defaults);
+  };
+
+  const INP_S = {
+    width:60, padding:"5px 6px", border:"1.5px solid #ddd", borderRadius:6,
+    fontSize:12, textAlign:"center", background:"#fff", color:"#111",
+    WebkitTextFillColor:"#111", colorScheme:"light", fontFamily:"'Courier New',monospace",
+  };
+
+  return (
+    <div>
+      {saved&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:"10px 14px",marginBottom:14,color:"#27ae60",fontWeight:600,fontSize:13}}>✓ Rangos guardados — se aplican en alertas y reportes inmediatamente</div>}
+      <div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#1a5276"}}>
+        📋 Configura los rangos de pH y CE que aplican <strong>esta semana</strong> para cada cultivo, invernadero y tipo de medición. Si no configuras un rango, se usarán los valores de literatura.
+      </div>
+
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:650}}>
+          <thead>
+            <tr style={{background:"#f9f9f9",borderBottom:"2px solid #e0e0e0"}}>
+              <th style={{padding:"10px 12px",textAlign:"left",color:"#555",fontWeight:600,fontSize:11}}>Cultivo</th>
+              <th style={{padding:"10px 12px",textAlign:"left",color:"#555",fontWeight:600,fontSize:11}}>Invernadero</th>
+              <th style={{padding:"10px 12px",textAlign:"left",color:"#555",fontWeight:600,fontSize:11}}>Tipo</th>
+              <th style={{padding:"10px 12px",textAlign:"center",color:"#27ae60",fontWeight:600,fontSize:11}} colSpan={2}>pH</th>
+              <th style={{padding:"10px 12px",textAlign:"center",color:"#2980b9",fontWeight:600,fontSize:11}} colSpan={2}>CE (mS/cm)</th>
+              <th style={{padding:"10px 12px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11}}>Ref. literatura</th>
+            </tr>
+            <tr style={{background:"#f9f9f9",borderBottom:"1px solid #e0e0e0"}}>
+              <th colSpan={3}/>
+              <th style={{padding:"4px 12px",textAlign:"center",color:"#aaa",fontWeight:500,fontSize:10}}>Min</th>
+              <th style={{padding:"4px 12px",textAlign:"center",color:"#aaa",fontWeight:500,fontSize:10}}>Max</th>
+              <th style={{padding:"4px 12px",textAlign:"center",color:"#aaa",fontWeight:500,fontSize:10}}>Min</th>
+              <th style={{padding:"4px 12px",textAlign:"center",color:"#aaa",fontWeight:500,fontSize:10}}>Max</th>
+              <th/>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map(({cropKey, crop, inv, tipo, key, defRng})=>(
+              <tr key={key} style={{borderBottom:"1px solid #f5f5f5"}}>
+                <td style={{padding:"8px 12px"}}>
+                  <span style={{color:crop.color,fontWeight:600}}>{crop.emoji} {crop.name}</span>
+                </td>
+                <td style={{padding:"8px 12px",color:"#c0392b",fontWeight:600,fontSize:12}}>{inv||"—"}</td>
+                <td style={{padding:"8px 12px"}}>
+                  <span style={{background:tipo==="entrada"?"#eafaf1":"#eaf4fb",color:tipo==="entrada"?"#27ae60":"#2980b9",borderRadius:8,padding:"2px 8px",fontSize:11,fontWeight:600}}>
+                    {tipo==="entrada"?"⬇ Entrada":"⬆ Salida"}
+                  </span>
+                </td>
+                <td style={{padding:"6px 10px",textAlign:"center"}}>
+                  <input type="number" step="0.1" value={get(key,"phMin")} onChange={e=>set(key,"phMin",e.target.value)}
+                    placeholder={defRng.ph.min} style={{...INP_S,borderColor:"#27ae6044"}}/>
+                </td>
+                <td style={{padding:"6px 10px",textAlign:"center"}}>
+                  <input type="number" step="0.1" value={get(key,"phMax")} onChange={e=>set(key,"phMax",e.target.value)}
+                    placeholder={defRng.ph.max} style={{...INP_S,borderColor:"#27ae6044"}}/>
+                </td>
+                <td style={{padding:"6px 10px",textAlign:"center"}}>
+                  <input type="number" step="0.1" value={get(key,"ceMin")} onChange={e=>set(key,"ceMin",e.target.value)}
+                    placeholder={defRng.ce.min} style={{...INP_S,borderColor:"#2980b944"}}/>
+                </td>
+                <td style={{padding:"6px 10px",textAlign:"center"}}>
+                  <input type="number" step="0.1" value={get(key,"ceMax")} onChange={e=>set(key,"ceMax",e.target.value)}
+                    placeholder={defRng.ce.max} style={{...INP_S,borderColor:"#2980b944"}}/>
+                </td>
+                <td style={{padding:"8px 12px",fontSize:11,color:"#aaa"}}>
+                  pH {defRng.ph.min}–{defRng.ph.max} · CE {defRng.ce.min}–{defRng.ce.max}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
+        <button onClick={guardar} disabled={saving}
+          style={{padding:"10px 28px",background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:saving?"not-allowed":"pointer",fontWeight:700,fontSize:13}}>
+          {saving?"Guardando...":"💾 Guardar rangos semanales"}
+        </button>
+        <button onClick={resetDefaults}
+          style={{padding:"10px 18px",border:"1px solid #e0e0e0",borderRadius:8,background:"#fff",color:"#888",cursor:"pointer",fontSize:13}}>
+          🔄 Resetear a literatura
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 function Resumen({readings,onDelete}){
   const alerts=readings.filter(r=>{const c=CROPS[r.crop];return c&&(getStatus(r.ph,c.ph)==="danger"||getStatus(r.ce,c.ce)==="danger");});
   const warn=readings.filter(r=>{const c=CROPS[r.crop];if(!c)return false;const p=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return(p==="warning"||cs==="warning")&&p!=="danger"&&cs!=="danger";});
@@ -151,9 +297,9 @@ function Resumen({readings,onDelete}){
 }
 
 // ─── ALERTAS ──────────────────────────────────────────────────────────────────
-function Alertas({readings,onDelete}){
+function Alertas({readings,onDelete,weeklyRangos={}}){
   const [filter,setFilter]=useState("all");
-  const all=readings.map(r=>{const c=CROPS[r.crop];if(!c)return null;const rng=getRangos(r.crop,r.tipo||"entrada");const ph=rng?rng.ph:c.ph;const ce=rng?rng.ce:c.ce;const ps=getStatus(r.ph,ph),cs=getStatus(r.ce,ce);const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":null;return s?{...r,status:s,phStatus:ps,ceStatus:cs}:null;}).filter(Boolean).sort((a,b)=>({danger:0,warning:1}[a.status]-({danger:0,warning:1}[b.status])||b.date.localeCompare(a.date)));
+  const all=readings.map(r=>{const c=CROPS[r.crop];if(!c)return null;const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero,weeklyRangos);const ph=rng?rng.ph:c.ph;const ce=rng?rng.ce:c.ce;const ps=getStatus(r.ph,ph),cs=getStatus(r.ce,ce);const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":null;return s?{...r,status:s,phStatus:ps,ceStatus:cs}:null;}).filter(Boolean).sort((a,b)=>({danger:0,warning:1}[a.status]-({danger:0,warning:1}[b.status])||b.date.localeCompare(a.date)));
   const filtered=filter==="all"?all:all.filter(r=>r.status===filter);
 
   const resolverTodas = async () => {
@@ -254,12 +400,12 @@ function DrenajeDashboard({readings, cropFilter, crop}) {
     .map(d=>({...d, pct: d.entrada>0 ? n((d.drenaje/d.entrada)*100,1) : null}));
 
   const kpis = [
-    {l:"Promedio drenaje", v:drAvg!==null?`${drAvg} L`:"—", c:"#2980b9"},
-    {l:"Mínimo drenaje",   v:drMin!==null?`${drMin} L`:"—", c:"#27ae60"},
-    {l:"Máximo drenaje",   v:drMax!==null?`${drMax} L`:"—", c:"#e74c3c"},
-    {l:"Total drenaje",    v:`${drTotal} L`,                 c:"#8e44ad"},
-    {l:"Promedio entrada", v:entAvg!==null?`${entAvg} L`:"—",c:"#27ae60"},
-    {l:"Total entrada",    v:`${entTotal} L`,                c:"#27ae60"},
+    {l:"Promedio drenaje", v:drAvg!==null?`${drAvg} mL`:"—", c:"#2980b9"},
+    {l:"Mínimo drenaje",   v:drMin!==null?`${drMin} mL`:"—", c:"#27ae60"},
+    {l:"Máximo drenaje",   v:drMax!==null?`${drMax} mL`:"—", c:"#e74c3c"},
+    {l:"Total drenaje",    v:`${drTotal} mL`,                 c:"#8e44ad"},
+    {l:"Promedio entrada", v:entAvg!==null?`${entAvg} mL`:"—",c:"#27ae60"},
+    {l:"Total entrada",    v:`${entTotal} mL`,                c:"#27ae60"},
     {l:"Registros",        v:drenajeReadings.length,         c:"#7f8c8d"},
   ];
 
@@ -379,13 +525,13 @@ function HistorialTable({cr, onDelete}) {
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
           <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>
-            {["","Fecha","Tipo","Inv.","Zona","Bandeja","pH","CE","Vol.Ent(L)","Drenaje(L)","Estado","Trabajador",""].map((h,i)=>(
+            {["","Fecha","Tipo","Inv.","Zona","Bandeja","pH","CE","Vol.Ent(mL)","Drenaje(mL)","Estado","Trabajador",""].map((h,i)=>(
               <th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
             ))}
           </tr></thead>
           <tbody>{[...cr].reverse().map((r,i)=>{
             const c=CROPS[r.crop];
-            const rng=getRangos(r.crop,r.tipo||"entrada");
+            const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero,weeklyRangos);
             const ps=getStatus(r.ph,rng?rng.ph:c.ph);
             const cs=getStatus(r.ce,rng?rng.ce:c.ce);
             const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";
@@ -423,12 +569,12 @@ function HistorialTable({cr, onDelete}) {
                 <td style={{padding:"6px 8px",minWidth:70}}>
                   {isEditing
                     ? <input type="number" step="0.1" value={editForm.volumenEntrada} onChange={e=>setEditForm(p=>({...p,volumenEntrada:e.target.value}))} style={{...inp,width:65,fontFamily:"'Courier New',monospace"}} placeholder="L"/>
-                    : <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#27ae60"}}>{r.volumenEntrada?`${r.volumenEntrada}L`:"—"}</span>}
+                    : <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#27ae60"}}>{r.volumenEntrada?`${r.volumenEntrada}mL`:"—"}</span>}
                 </td>
                 <td style={{padding:"6px 8px",minWidth:70}}>
                   {isEditing
                     ? <input type="number" step="0.1" value={editForm.drenaje} onChange={e=>setEditForm(p=>({...p,drenaje:e.target.value}))} style={{...inp,width:65,fontFamily:"'Courier New',monospace"}} placeholder="L"/>
-                    : <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#2980b9"}}>{r.drenaje?`${r.drenaje}L`:"—"}</span>}
+                    : <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#2980b9"}}>{r.drenaje?`${r.drenaje}mL`:"—"}</span>}
                 </td>
                 <td style={{padding:"6px 8px"}}><Badge status={s} small/></td>
                 <td style={{padding:"6px 8px",color:"#888",whiteSpace:"nowrap"}}>{r.worker}</td>
@@ -460,7 +606,7 @@ function HistorialTable({cr, onDelete}) {
 }
 
 
-function Reportes({readings,onDelete}){
+function Reportes({readings,onDelete,weeklyRangos={}}){
   const [showReset,setShowReset]=useState(false);
   const [resetting,setResetting]=useState(false);
 
@@ -498,7 +644,7 @@ function Reportes({readings,onDelete}){
   const stats=useMemo(()=>{
     const vals=cr.map(r=>r[metric]);
     if(!vals.length)return{avg:"—",min:"—",max:"—",out:0,total:0};
-    const getRng=(r)=>{const rng=getRangos(r.crop,r.tipo||"entrada");return rng?rng[metric]:crop[metric];};
+    const getRng=(r)=>{const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero,weeklyRangos);return rng?rng[metric]:crop[metric];};
     return{
       avg:n(vals.reduce((s,v)=>s+v,0)/vals.length),
       min:n(Math.min(...vals)),max:n(Math.max(...vals)),
@@ -1509,9 +1655,10 @@ const NAV=[
   {id:"trabajadores",label:"Equipo",icon:"◎"},
   {id:"suelo", label:"Análisis de Suelo", icon:"🌍"},
   {id:"ventas", label:"Ventas", icon:"💰"},
+  {id:"rangos", label:"Rangos", icon:"🎯"},
   {id:"usuarios", label:"Usuarios", icon:"👥"},
 ];
-const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas",usuarios:"Gestión de usuarios"};
+const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas",rangos:"Rangos semanales pH/CE",usuarios:"Gestión de usuarios"};
 
 export default function App(){
   const [page,setPage]=useState("resumen");
@@ -1520,6 +1667,7 @@ export default function App(){
   const [authLoading,setAuthLoading]=useState(true);
   const [currentUser,setCurrentUser]=useState(null);
   const [userRole,setUserRole]=useState(null);
+  const [weeklyRangos,setWeeklyRangos]=useState({});
 
   useEffect(()=>{
     const unsub = onAuthStateChanged(auth, async user => {
@@ -1549,7 +1697,8 @@ export default function App(){
   useEffect(()=>{
     const q=query(collection(db,"readings"),orderBy("createdAt","desc"));
     const unsub=onSnapshot(q,snap=>{setReadings(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);},()=>setLoading(false));
-    return()=>unsub();
+    const rangosUnsub=onSnapshot(doc(db,"config","rangos_semanales"),snap=>{if(snap.exists())setWeeklyRangos(snap.data());});
+    return()=>{unsub();rangosUnsub();};
   },[]);
 
   const handleDelete=async id=>{try{await deleteDoc(doc(db,"readings",id));}catch{alert("Error al eliminar.");}};
@@ -1581,9 +1730,9 @@ export default function App(){
   const SECTION={
     suelo:    <AnalisisSuelo/>,
     resumen:  <Resumen readings={readings} onDelete={esObservador?()=>{}:handleDelete}/>,
-    alertas:  <Alertas readings={readings} onDelete={esObservador?()=>{}:handleDelete}/>,
+    alertas:  <Alertas readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
     ia:       <DiagnosticoIA/>,
-    reportes: <Reportes readings={readings} onDelete={esObservador?()=>{}:handleDelete}/>,
+    reportes: <Reportes readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
     formulador: <Formulador readOnly={esObservador}/>,
     incidencias: esObservador ? <IncidenciasAdmin readOnly/> : <IncidenciasAdmin/>,
     tareas:   esObservador ? <Bloqueado nombre="las tareas"/> : <TareasAdmin/>,
@@ -1591,6 +1740,7 @@ export default function App(){
     inventario: esObservador ? <Inventario readOnly/> : <Inventario/>,
     trabajadores: <Trabajadores readings={readings}/>,
     ventas:   <Ventas readOnly={esObservador}/>,
+    rangos:   esObservador ? <Bloqueado nombre="los rangos"/> : <RangosSemanales/>,
     usuarios: esObservador ? <Bloqueado nombre="los usuarios"/> : <UsuariosAdmin/>,
   };
 
