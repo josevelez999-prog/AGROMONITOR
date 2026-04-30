@@ -5,9 +5,10 @@ import LoginScreen from "./Auth";
 import UsuariosAdmin from "./UsuariosAdmin";
 import { auth } from "./firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend, Cell } from "recharts";
+import { doc, getDoc } from "firebase/firestore";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from "recharts";
 import { db } from "./firebase";
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where, getDoc, setDoc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where } from "firebase/firestore";
 import AnalisisSuelo from "./SueloAnalisis";
 
 const CROPS = {
@@ -43,7 +44,6 @@ const FERTS_INIT = [
 
 const n=(v,d=2)=>Number(parseFloat(v||0).toFixed(d));
 const getStatus=(v,r)=>{if(v<r.min||v>r.max)return"danger";const m=(r.max-r.min)*0.15;return(v<r.min+m||v>r.max-m)?"warning":"ok";};
-const getRangos=(crop,tipo,inv,wr)=>{const c=CROPS[crop];if(!c)return null;if(wr){const k=(inv?inv.replace(" ","")+"_":"")+crop+"_"+tipo;const w=wr[k]||(wr[crop+"_"+tipo]);if(w&&w.phMin)return{ph:{min:w.phMin,max:w.phMax},ce:{min:w.ceMin,max:w.ceMax}};}return tipo==="salida"?c.salida:c.entrada;};
 const SC={ok:"#27ae60",warning:"#f39c12",danger:"#e74c3c"};
 const SB={ok:"#eafaf1",warning:"#fef9e7",danger:"#fdedec"};
 const SL={ok:"OK",warning:"Alerta",danger:"Crítico"};
@@ -54,257 +54,7 @@ function exportCSV(readings){const h=["Fecha","Hora","Cultivo","Zona","pH","CE",
 
 // ─── RESUMEN ──────────────────────────────────────────────────────────────────
 function Resumen({readings,onDelete}){
-  const alerts=readings.filter(r=>{if(r.resolved)return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero,weeklyRangos);const ph=rng?rng.ph:c.ph,ce=rng?rng.ce:c.ce;return getStatus(r.ph,ph)==="danger"||getStatus(r.ce,ce)==="danger";});
-  const warn=readings.filter(r=>{const c=CROPS[r.crop];if(!c)return false;const p=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return(p==="warning"||cs==="warning")&&p!=="danger"&&cs!=="danger";});
-  const latest=Object.keys(CROPS).map(k=>{const recs=readings.filter(r=>r.crop===k).sort((a,b)=>b.date.localeCompare(a.date));return{key:k,...recs[0]};}).filter(r=>r.ph);
-  const byW={};readings.forEach(r=>{byW[r.worker]=(byW[r.worker]||0)+1;});
-  return(
-    <div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:20}}>
-        {[{l:"Mediciones",v:readings.length,c:"#27ae60",i:"📊"},{l:"Alertas críticas",v:alerts.length,c:"#e74c3c",i:"🚨"},{l:"Advertencias",v:warn.length,c:"#f39c12",i:"⚠️"},{l:"Trabajadores",v:Object.keys(byW).length,c:"#2980b9",i:"👤"}].map(k=>(
-          <div key={k.l} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px"}}>
-            <div style={{fontSize:22}}>{k.i}</div>
-            <div style={{fontSize:28,fontWeight:700,color:k.c,fontFamily:"'Courier New',monospace",lineHeight:1.1,marginTop:4}}>{k.v}</div>
-            <div style={{fontSize:11,color:"#888",marginTop:2}}>{k.l}</div>
-          </div>
-        ))}
-      </div>
-      {!readings.length&&<div style={{background:"#fff",borderRadius:12,padding:"3rem",textAlign:"center",color:"#aaa",border:"0.5px solid #e0e0e0"}}><div style={{fontSize:40,marginBottom:8}}>🌿</div><div style={{fontWeight:500,marginBottom:6}}>Sin registros aún</div><div style={{fontSize:12}}>Comparte la URL con tus trabajadores</div></div>}
-      {alerts.length>0&&(
-        <div style={{background:"#fff",border:"1px solid #f5c6c6",borderLeft:"4px solid #e74c3c",borderRadius:12,padding:"14px 18px",marginBottom:16}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#c0392b",marginBottom:10,letterSpacing:0.5}}>🚨 ALERTAS CRÍTICAS</div>
-          {alerts.slice(0,5).map(r=>{const c=CROPS[r.crop];return(
-            <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #fdecea",flexWrap:"wrap"}}>
-              <span style={{fontSize:18}}>{c.emoji}</span>
-              <div style={{flex:1}}><span style={{fontWeight:600,color:c.color}}>{c.name}</span><span style={{color:"#888",fontSize:12,marginLeft:6}}>{r.zone} · {r.worker} · {r.date}</span></div>
-              <span style={{fontFamily:"'Courier New',monospace",fontSize:12,color:"#e74c3c"}}>pH {r.ph} · CE {r.ce}</span>
-              <Badge status="danger" small/>
-              <button onClick={()=>onDelete(r.id)} style={{background:"#fdedec",border:"1px solid #f5c6c6",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b",fontWeight:600}}>✕ Resolver</button>
-            </div>
-          );})}
-        </div>
-      )}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:16}}>
-        {latest.map(r=>{const c=CROPS[r.key];const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);const ov=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";const hist=readings.filter(x=>x.crop===r.key).sort((a,b)=>a.date.localeCompare(b.date)).map(x=>x.ph);return(
-          <div key={r.key} style={{background:"#fff",border:`1px solid ${SC[ov]}33`,borderTop:`3px solid ${c.color}`,borderRadius:12,padding:"14px 16px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-              <div><div style={{fontWeight:700,color:c.color,fontSize:14}}>{c.emoji} {c.name}</div><div style={{fontSize:10,color:"#999",marginTop:1}}>{r.zone||"—"} · {r.date||"—"}</div></div>
-              <Badge status={ov} small/>
-            </div>
-            <div style={{display:"flex",gap:12,marginBottom:8}}>
-              <div style={{textAlign:"center",flex:1}}><div style={{fontSize:10,color:"#aaa",fontFamily:"'Courier New',monospace"}}>pH</div><div style={{fontSize:22,fontWeight:700,color:SC[ps],fontFamily:"'Courier New',monospace",lineHeight:1}}>{r.ph}</div></div>
-              <div style={{textAlign:"center",flex:1}}><div style={{fontSize:10,color:"#aaa",fontFamily:"'Courier New',monospace"}}>CE</div><div style={{fontSize:22,fontWeight:700,color:SC[cs],fontFamily:"'Courier New',monospace",lineHeight:1}}>{r.ce}</div></div>
-              {hist.length>1&&<div style={{display:"flex",alignItems:"center"}}><Sparkline data={hist} color={c.color}/></div>}
-            </div>
-            {r.photoURL&&<img src={r.photoURL} alt="" style={{width:"100%",height:70,objectFit:"cover",borderRadius:6,marginBottom:6}}/>}
-            <div style={{fontSize:10,color:"#bbb",fontFamily:"'Courier New',monospace"}}>Registró: {r.worker||"—"}</div>
-          </div>
-        );})}
-      </div>
-      {readings.length>0&&(
-        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#444"}}>ACTIVIDAD RECIENTE</div>
-            <button onClick={()=>exportCSV(readings)} style={{padding:"6px 14px",border:"1px solid #27ae60",borderRadius:8,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ Descargar CSV</button>
-          </div>
-          {[...readings].slice(0,8).map(r=>{const c=CROPS[r.crop];if(!c)return null;const s=getStatus(r.ph,c.ph)==="danger"||getStatus(r.ce,c.ce)==="danger"?"danger":getStatus(r.ph,c.ph)==="warning"||getStatus(r.ce,c.ce)==="warning"?"warning":"ok";return(
-            <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #f5f5f5",flexWrap:"wrap"}}>
-              <span style={{fontSize:16}}>{c.emoji}</span>
-              {r.photoURL&&<img src={r.photoURL} alt="" style={{width:30,height:30,borderRadius:5,objectFit:"cover",flexShrink:0}}/>}
-              <div style={{flex:1,minWidth:100}}><span style={{fontSize:12,fontWeight:600}}>{r.worker}</span><span style={{fontSize:11,color:"#999",marginLeft:6}}>{c.name} · {r.zone}</span></div>
-              <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#666"}}>pH {r.ph} · CE {r.ce}</span>
-              <span style={{fontSize:11,color:"#bbb"}}>{r.date}</span>
-              <Badge status={s} small/>
-            </div>
-          );})}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── ALERTAS ──────────────────────────────────────────────────────────────────
-import React, { useState, useMemo, useEffect } from "react";
-import Worker from "./Worker";
-import Ventas from "./Ventas";
-import LoginScreen from "./Auth";
-import UsuariosAdmin from "./UsuariosAdmin";
-import { auth } from "./firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend, Cell } from "recharts";
-import { db } from "./firebase";
-import AnalisisSuelo from "./SueloAnalisis";
-
-const CROPS = {
-  jitomate:  { name:"Jitomate",  emoji:"🍅", color:"#c0392b", ph:{min:5.5,max:6.5}, ce:{min:2.5,max:4.0} },
-  fresa:     { name:"Fresa",     emoji:"🍓", color:"#e74c3c", ph:{min:5.5,max:6.5}, ce:{min:1.0,max:2.0} },
-  arandano:  { name:"Arándano",  emoji:"🫐", color:"#2980b9", ph:{min:4.5,max:5.5}, ce:{min:1.0,max:2.0} },
-  zarzamora: { name:"Zarzamora", emoji:"🫐", color:"#8e44ad", ph:{min:5.5,max:6.5}, ce:{min:1.5,max:2.5} },
-};
-const ETAPAS = ["Vegetativo","Floración","Fructificación","Post-cosecha"];
-const ANIONS  = ["NO3","H2PO4","SO4","HCO3","Cl"];
-const CATIONS = ["NH4","K","Ca","Mg","Na"];
-const ALL_IONS = [...ANIONS,...CATIONS];
-const ION_LABELS = {NO3:"NO₃⁻",H2PO4:"H₂PO₄⁻",SO4:"SO₄²⁻",HCO3:"HCO₃⁻",Cl:"Cl⁻",NH4:"NH₄⁺",K:"K⁺",Ca:"Ca²⁺",Mg:"Mg²⁺",Na:"Na⁺"};
-const CROP_NUT = {
-  jitomate: {NO3:11,H2PO4:1.5,SO4:8,HCO3:0,Cl:0,NH4:1,K:8.5,Ca:9,Mg:5,Na:0},
-  fresa:    {NO3:7,H2PO4:1.5,SO4:3,HCO3:0,Cl:0,NH4:0.5,K:4.5,Ca:4,Mg:2,Na:0},
-  arandano: {NO3:5,H2PO4:1,SO4:2,HCO3:0,Cl:0,NH4:0.5,K:3,Ca:2,Mg:1,Na:0},
-  zarzamora:{NO3:7,H2PO4:1,SO4:3.5,HCO3:0,Cl:0,NH4:0.5,K:4,Ca:4,Mg:2,Na:0},
-};
-const DEF_WATER = {NO3:0,H2PO4:0,SO4:1.55,HCO3:2.25,Cl:0.5,NH4:0,K:0.2,Ca:1,Mg:1.23,Na:1.58};
-const FERTS_INIT = [
-  {id:"ca_no3",name:"Ca(NO₃)₂·4H₂O",ions:{NO3:1,Ca:1,NH4:0.074},Peq:118,type:"solid",meq:8,active:true,precio:0},
-  {id:"kno3",name:"KNO₃",ions:{NO3:1,K:1},Peq:101,type:"solid",meq:3,active:true,precio:0},
-  {id:"k2so4",name:"K₂SO₄",ions:{SO4:1,K:1},Peq:87,type:"solid",meq:3.8,active:true,precio:0},
-  {id:"mgso4",name:"MgSO₄·7H₂O",ions:{SO4:1,Mg:1},Peq:123,type:"solid",meq:3.8,active:true,precio:0},
-  {id:"kh2po4",name:"KH₂PO₄",ions:{H2PO4:1,K:1},Peq:136,type:"solid",meq:1.5,active:true,precio:0},
-  {id:"h2so4",name:"H₂SO₄ (98%)",ions:{SO4:1},Peq:49,type:"liquid",meq:1.7,active:true,precio:0,density:1.85,richness:98},
-  {id:"hno3",name:"HNO₃ (70%)",ions:{NO3:1},Peq:63,type:"liquid",meq:0,active:false,precio:0,density:1.42,richness:70},
-  {id:"nh4no3",name:"NH₄NO₃",ions:{NO3:1,NH4:1},Peq:80,type:"solid",meq:0,active:false,precio:0},
-  {id:"mgno3",name:"Mg(NO₃)₂·6H₂O",ions:{NO3:1,Mg:1},Peq:128,type:"solid",meq:0,active:false,precio:0},
-  {id:"kcl",name:"KCl",ions:{K:1,Cl:1},Peq:74.56,type:"solid",meq:0,active:false,precio:0},
-];
-
-const n=(v,d=2)=>Number(parseFloat(v||0).toFixed(d));
-const getStatus=(v,r)=>{if(v<r.min||v>r.max)return"danger";const m=(r.max-r.min)*0.15;return(v<r.min+m||v>r.max-m)?"warning":"ok";};
-const getRangos=(crop,tipo,inv,wr)=>{const c=CROPS[crop];if(!c)return null;if(wr){const k=(inv?inv.replace(" ","")+"_":"")+crop+"_"+tipo;const w=wr[k]||(wr[crop+"_"+tipo]);if(w&&w.phMin)return{ph:{min:w.phMin,max:w.phMax},ce:{min:w.ceMin,max:w.ceMax}};}return tipo==="salida"?c.salida:c.entrada;};
-const SC={ok:"#27ae60",warning:"#f39c12",danger:"#e74c3c"};
-const SB={ok:"#eafaf1",warning:"#fef9e7",danger:"#fdedec"};
-const SL={ok:"OK",warning:"Alerta",danger:"Crítico"};
-
-function Badge({status,small}){return <span style={{background:SB[status],color:SC[status],border:`1px solid ${SC[status]}44`,borderRadius:20,padding:small?"1px 7px":"3px 10px",fontSize:small?10:11,fontWeight:600,whiteSpace:"nowrap",fontFamily:"'Courier New',monospace"}}>{status==="danger"?"✗":status==="warning"?"⚠":"✓"} {SL[status]}</span>;}
-function Sparkline({data,color}){if(!data||data.length<2)return null;const min=Math.min(...data),max=Math.max(...data),range=max-min||1,w=80,h=28;const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-((v-min)/range)*h}`).join(" ");return <svg width={w} height={h} style={{overflow:"visible"}}><polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round"/><circle cx={w} cy={h-((data[data.length-1]-min)/range)*h} r={2.5} fill={color}/></svg>;}
-function exportCSV(readings){const h=["Fecha","Hora","Cultivo","Zona","pH","CE","Estado pH","Estado CE","Trabajador","Notas","Foto"];const rows=readings.map(r=>{const c=CROPS[r.crop];if(!c)return null;const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return[r.date,r.time||"",c.name,r.zone,r.ph,r.ce,SL[ps],SL[cs],r.worker,r.notes||"",r.photoURL||""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");}).filter(Boolean);const blob=new Blob(["\uFEFF",[h.join(","),...rows].join("\n")],{type:"text/csv;charset=utf-8;"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`greenlog_${new Date().toISOString().slice(0,10)}.csv`;a.click();}
-
-// ─── RESUMEN ──────────────────────────────────────────────────────────────────
-function Resumen({readings,onDelete}){
-  const alerts=readings.filter(r=>{if(r.resolved)return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero,weeklyRangos);const ph=rng?rng.ph:c.ph,ce=rng?rng.ce:c.ce;return getStatus(r.ph,ph)==="danger"||getStatus(r.ce,ce)==="danger";});
-  const warn=readings.filter(r=>{const c=CROPS[r.crop];if(!c)return false;const p=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return(p==="warning"||cs==="warning")&&p!=="danger"&&cs!=="danger";});
-  const latest=Object.keys(CROPS).map(k=>{const recs=readings.filter(r=>r.crop===k).sort((a,b)=>b.date.localeCompare(a.date));return{key:k,...recs[0]};}).filter(r=>r.ph);
-  const byW={};readings.forEach(r=>{byW[r.worker]=(byW[r.worker]||0)+1;});
-  return(
-    <div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:20}}>
-        {[{l:"Mediciones",v:readings.length,c:"#27ae60",i:"📊"},{l:"Alertas críticas",v:alerts.length,c:"#e74c3c",i:"🚨"},{l:"Advertencias",v:warn.length,c:"#f39c12",i:"⚠️"},{l:"Trabajadores",v:Object.keys(byW).length,c:"#2980b9",i:"👤"}].map(k=>(
-          <div key={k.l} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px"}}>
-            <div style={{fontSize:22}}>{k.i}</div>
-            <div style={{fontSize:28,fontWeight:700,color:k.c,fontFamily:"'Courier New',monospace",lineHeight:1.1,marginTop:4}}>{k.v}</div>
-            <div style={{fontSize:11,color:"#888",marginTop:2}}>{k.l}</div>
-          </div>
-        ))}
-      </div>
-      {!readings.length&&<div style={{background:"#fff",borderRadius:12,padding:"3rem",textAlign:"center",color:"#aaa",border:"0.5px solid #e0e0e0"}}><div style={{fontSize:40,marginBottom:8}}>🌿</div><div style={{fontWeight:500,marginBottom:6}}>Sin registros aún</div><div style={{fontSize:12}}>Comparte la URL con tus trabajadores</div></div>}
-      {alerts.length>0&&(
-        <div style={{background:"#fff",border:"1px solid #f5c6c6",borderLeft:"4px solid #e74c3c",borderRadius:12,padding:"14px 18px",marginBottom:16}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#c0392b",marginBottom:10,letterSpacing:0.5}}>🚨 ALERTAS CRÍTICAS</div>
-          {alerts.slice(0,5).map(r=>{const c=CROPS[r.crop];return(
-            <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #fdecea",flexWrap:"wrap"}}>
-              <span style={{fontSize:18}}>{c.emoji}</span>
-              <div style={{flex:1}}><span style={{fontWeight:600,color:c.color}}>{c.name}</span><span style={{color:"#888",fontSize:12,marginLeft:6}}>{r.zone} · {r.worker} · {r.date}</span></div>
-              <span style={{fontFamily:"'Courier New',monospace",fontSize:12,color:"#e74c3c"}}>pH {r.ph} · CE {r.ce}</span>
-              <Badge status="danger" small/>
-              <button onClick={()=>onDelete(r.id)} style={{background:"#fdedec",border:"1px solid #f5c6c6",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b",fontWeight:600}}>✕ Resolver</button>
-            </div>
-          );})}
-        </div>
-      )}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:16}}>
-        {latest.map(r=>{const c=CROPS[r.key];const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);const ov=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";const hist=readings.filter(x=>x.crop===r.key).sort((a,b)=>a.date.localeCompare(b.date)).map(x=>x.ph);return(
-          <div key={r.key} style={{background:"#fff",border:`1px solid ${SC[ov]}33`,borderTop:`3px solid ${c.color}`,borderRadius:12,padding:"14px 16px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-              <div><div style={{fontWeight:700,color:c.color,fontSize:14}}>{c.emoji} {c.name}</div><div style={{fontSize:10,color:"#999",marginTop:1}}>{r.zone||"—"} · {r.date||"—"}</div></div>
-              <Badge status={ov} small/>
-            </div>
-            <div style={{display:"flex",gap:12,marginBottom:8}}>
-              <div style={{textAlign:"center",flex:1}}><div style={{fontSize:10,color:"#aaa",fontFamily:"'Courier New',monospace"}}>pH</div><div style={{fontSize:22,fontWeight:700,color:SC[ps],fontFamily:"'Courier New',monospace",lineHeight:1}}>{r.ph}</div></div>
-              <div style={{textAlign:"center",flex:1}}><div style={{fontSize:10,color:"#aaa",fontFamily:"'Courier New',monospace"}}>CE</div><div style={{fontSize:22,fontWeight:700,color:SC[cs],fontFamily:"'Courier New',monospace",lineHeight:1}}>{r.ce}</div></div>
-              {hist.length>1&&<div style={{display:"flex",alignItems:"center"}}><Sparkline data={hist} color={c.color}/></div>}
-            </div>
-            {r.photoURL&&<img src={r.photoURL} alt="" style={{width:"100%",height:70,objectFit:"cover",borderRadius:6,marginBottom:6}}/>}
-            <div style={{fontSize:10,color:"#bbb",fontFamily:"'Courier New',monospace"}}>Registró: {r.worker||"—"}</div>
-          </div>
-        );})}
-      </div>
-      {readings.length>0&&(
-        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#444"}}>ACTIVIDAD RECIENTE</div>
-            <button onClick={()=>exportCSV(readings)} style={{padding:"6px 14px",border:"1px solid #27ae60",borderRadius:8,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ Descargar CSV</button>
-          </div>
-          {[...readings].slice(0,8).map(r=>{const c=CROPS[r.crop];if(!c)return null;const s=getStatus(r.ph,c.ph)==="danger"||getStatus(r.ce,c.ce)==="danger"?"danger":getStatus(r.ph,c.ph)==="warning"||getStatus(r.ce,c.ce)==="warning"?"warning":"ok";return(
-            <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #f5f5f5",flexWrap:"wrap"}}>
-              <span style={{fontSize:16}}>{c.emoji}</span>
-              {r.photoURL&&<img src={r.photoURL} alt="" style={{width:30,height:30,borderRadius:5,objectFit:"cover",flexShrink:0}}/>}
-              <div style={{flex:1,minWidth:100}}><span style={{fontSize:12,fontWeight:600}}>{r.worker}</span><span style={{fontSize:11,color:"#999",marginLeft:6}}>{c.name} · {r.zone}</span></div>
-              <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#666"}}>pH {r.ph} · CE {r.ce}</span>
-              <span style={{fontSize:11,color:"#bbb"}}>{r.date}</span>
-              <Badge status={s} small/>
-            </div>
-          );})}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── ALERTAS ──────────────────────────────────────────────────────────────────
-import React, { useState, useMemo, useEffect } from "react";
-import Worker from "./Worker";
-import Ventas from "./Ventas";
-import LoginScreen from "./Auth";
-import UsuariosAdmin from "./UsuariosAdmin";
-import { auth } from "./firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend, Cell } from "recharts";
-import { db } from "./firebase";
-import AnalisisSuelo from "./SueloAnalisis";
-
-const CROPS = {
-  jitomate:  { name:"Jitomate",  emoji:"🍅", color:"#c0392b", ph:{min:5.5,max:6.5}, ce:{min:2.5,max:4.0} },
-  fresa:     { name:"Fresa",     emoji:"🍓", color:"#e74c3c", ph:{min:5.5,max:6.5}, ce:{min:1.0,max:2.0} },
-  arandano:  { name:"Arándano",  emoji:"🫐", color:"#2980b9", ph:{min:4.5,max:5.5}, ce:{min:1.0,max:2.0} },
-  zarzamora: { name:"Zarzamora", emoji:"🫐", color:"#8e44ad", ph:{min:5.5,max:6.5}, ce:{min:1.5,max:2.5} },
-};
-const ETAPAS = ["Vegetativo","Floración","Fructificación","Post-cosecha"];
-const ANIONS  = ["NO3","H2PO4","SO4","HCO3","Cl"];
-const CATIONS = ["NH4","K","Ca","Mg","Na"];
-const ALL_IONS = [...ANIONS,...CATIONS];
-const ION_LABELS = {NO3:"NO₃⁻",H2PO4:"H₂PO₄⁻",SO4:"SO₄²⁻",HCO3:"HCO₃⁻",Cl:"Cl⁻",NH4:"NH₄⁺",K:"K⁺",Ca:"Ca²⁺",Mg:"Mg²⁺",Na:"Na⁺"};
-const CROP_NUT = {
-  jitomate: {NO3:11,H2PO4:1.5,SO4:8,HCO3:0,Cl:0,NH4:1,K:8.5,Ca:9,Mg:5,Na:0},
-  fresa:    {NO3:7,H2PO4:1.5,SO4:3,HCO3:0,Cl:0,NH4:0.5,K:4.5,Ca:4,Mg:2,Na:0},
-  arandano: {NO3:5,H2PO4:1,SO4:2,HCO3:0,Cl:0,NH4:0.5,K:3,Ca:2,Mg:1,Na:0},
-  zarzamora:{NO3:7,H2PO4:1,SO4:3.5,HCO3:0,Cl:0,NH4:0.5,K:4,Ca:4,Mg:2,Na:0},
-};
-const DEF_WATER = {NO3:0,H2PO4:0,SO4:1.55,HCO3:2.25,Cl:0.5,NH4:0,K:0.2,Ca:1,Mg:1.23,Na:1.58};
-const FERTS_INIT = [
-  {id:"ca_no3",name:"Ca(NO₃)₂·4H₂O",ions:{NO3:1,Ca:1,NH4:0.074},Peq:118,type:"solid",meq:8,active:true,precio:0},
-  {id:"kno3",name:"KNO₃",ions:{NO3:1,K:1},Peq:101,type:"solid",meq:3,active:true,precio:0},
-  {id:"k2so4",name:"K₂SO₄",ions:{SO4:1,K:1},Peq:87,type:"solid",meq:3.8,active:true,precio:0},
-  {id:"mgso4",name:"MgSO₄·7H₂O",ions:{SO4:1,Mg:1},Peq:123,type:"solid",meq:3.8,active:true,precio:0},
-  {id:"kh2po4",name:"KH₂PO₄",ions:{H2PO4:1,K:1},Peq:136,type:"solid",meq:1.5,active:true,precio:0},
-  {id:"h2so4",name:"H₂SO₄ (98%)",ions:{SO4:1},Peq:49,type:"liquid",meq:1.7,active:true,precio:0,density:1.85,richness:98},
-  {id:"hno3",name:"HNO₃ (70%)",ions:{NO3:1},Peq:63,type:"liquid",meq:0,active:false,precio:0,density:1.42,richness:70},
-  {id:"nh4no3",name:"NH₄NO₃",ions:{NO3:1,NH4:1},Peq:80,type:"solid",meq:0,active:false,precio:0},
-  {id:"mgno3",name:"Mg(NO₃)₂·6H₂O",ions:{NO3:1,Mg:1},Peq:128,type:"solid",meq:0,active:false,precio:0},
-  {id:"kcl",name:"KCl",ions:{K:1,Cl:1},Peq:74.56,type:"solid",meq:0,active:false,precio:0},
-];
-
-const n=(v,d=2)=>Number(parseFloat(v||0).toFixed(d));
-const getStatus=(v,r)=>{if(v<r.min||v>r.max)return"danger";const m=(r.max-r.min)*0.15;return(v<r.min+m||v>r.max-m)?"warning":"ok";};
-const getRangos=(crop,tipo,inv,wr)=>{const c=CROPS[crop];if(!c)return null;if(wr){const k=(inv?inv.replace(" ","")+"_":"")+crop+"_"+tipo;const w=wr[k]||(wr[crop+"_"+tipo]);if(w&&w.phMin)return{ph:{min:w.phMin,max:w.phMax},ce:{min:w.ceMin,max:w.ceMax}};}return tipo==="salida"?c.salida:c.entrada;};
-const SC={ok:"#27ae60",warning:"#f39c12",danger:"#e74c3c"};
-const SB={ok:"#eafaf1",warning:"#fef9e7",danger:"#fdedec"};
-const SL={ok:"OK",warning:"Alerta",danger:"Crítico"};
-
-function Badge({status,small}){return <span style={{background:SB[status],color:SC[status],border:`1px solid ${SC[status]}44`,borderRadius:20,padding:small?"1px 7px":"3px 10px",fontSize:small?10:11,fontWeight:600,whiteSpace:"nowrap",fontFamily:"'Courier New',monospace"}}>{status==="danger"?"✗":status==="warning"?"⚠":"✓"} {SL[status]}</span>;}
-function Sparkline({data,color}){if(!data||data.length<2)return null;const min=Math.min(...data),max=Math.max(...data),range=max-min||1,w=80,h=28;const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-((v-min)/range)*h}`).join(" ");return <svg width={w} height={h} style={{overflow:"visible"}}><polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round"/><circle cx={w} cy={h-((data[data.length-1]-min)/range)*h} r={2.5} fill={color}/></svg>;}
-function exportCSV(readings){const h=["Fecha","Hora","Cultivo","Zona","pH","CE","Estado pH","Estado CE","Trabajador","Notas","Foto"];const rows=readings.map(r=>{const c=CROPS[r.crop];if(!c)return null;const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return[r.date,r.time||"",c.name,r.zone,r.ph,r.ce,SL[ps],SL[cs],r.worker,r.notes||"",r.photoURL||""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");}).filter(Boolean);const blob=new Blob(["\uFEFF",[h.join(","),...rows].join("\n")],{type:"text/csv;charset=utf-8;"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`greenlog_${new Date().toISOString().slice(0,10)}.csv`;a.click();}
-
-// ─── RESUMEN ──────────────────────────────────────────────────────────────────
-function Resumen({readings,onDelete}){
-  const alerts=readings.filter(r=>{if(r.resolved)return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero,weeklyRangos);const ph=rng?rng.ph:c.ph,ce=rng?rng.ce:c.ce;return getStatus(r.ph,ph)==="danger"||getStatus(r.ce,ce)==="danger";});
+  const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,weeklyRangos);const ph=rng?rng.ph:c.ph;const ce=rng?rng.ce:c.ce;return getStatus(r.ph,ph)==="danger"||getStatus(r.ce,ce)==="danger";});
   const warn=readings.filter(r=>{const c=CROPS[r.crop];if(!c)return false;const p=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return(p==="warning"||cs==="warning")&&p!=="danger"&&cs!=="danger";});
   const latest=Object.keys(CROPS).map(k=>{const recs=readings.filter(r=>r.crop===k).sort((a,b)=>b.date.localeCompare(a.date));return{key:k,...recs[0]};}).filter(r=>r.ph);
   const byW={};readings.forEach(r=>{byW[r.worker]=(byW[r.worker]||0)+1;});
@@ -378,12 +128,11 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
   const [filter, setFilter] = useState("all");
   const [working, setWorking] = useState(false);
 
-  // Build alerts from readings - exclude already resolved/dismissed
   const all = readings
     .filter(r => !r.resolved && !r.dismissed && (r.tipo||"entrada")==="entrada")
     .map(r => {
       const c = CROPS[r.crop]; if(!c) return null;
-      const rng = getRangos(r.crop, r.tipo||"entrada", r.invernadero, weeklyRangos);
+      const rng = getRangos(r.crop, "entrada", r.invernadero, weeklyRangos);
       const ph = rng ? rng.ph : c.ph;
       const ce = rng ? rng.ce : c.ce;
       const ps = getStatus(r.ph, ph);
@@ -392,40 +141,31 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
       return s ? {...r, status:s, phStatus:ps, ceStatus:cs} : null;
     })
     .filter(Boolean)
-    .sort((a,b) => ({danger:0,warning:1}[a.status] - ({danger:0,warning:1}[b.status]) || b.date?.localeCompare(a.date)));
+    .sort((a,b) => ({danger:0,warning:1}[a.status]-({danger:0,warning:1}[b.status]) || b.date?.localeCompare(a.date)));
 
-  const filtered = filter==="all" ? all : all.filter(r => r.status===filter);
+  const filtered = filter==="all" ? all : all.filter(r=>r.status===filter);
 
-  // RESOLVE = mark resolved:true, data stays in readings for graphs
-  const resolver = async (id) => {
-    await updateDoc(doc(db,"readings",id), {resolved:true, resolvedAt: new Date().toISOString()});
-  };
-
-  // DISMISS = mark dismissed:true, data stays in readings for graphs
-  const dismiss = async (id) => {
-    await updateDoc(doc(db,"readings",id), {dismissed:true});
-  };
+  const resolverOne = async id => updateDoc(doc(db,"readings",id),{resolved:true,resolvedAt:new Date().toISOString()});
+  const dismissOne  = async id => updateDoc(doc(db,"readings",id),{dismissed:true});
 
   const resolverTodas = async () => {
-    if(!window.confirm(`¿Marcar ${filtered.length} alertas como resueltas? Los datos de medición se conservan.`)) return;
+    if(!window.confirm(`¿Marcar ${filtered.length} alertas como resueltas? Los datos se conservan para reportes.`)) return;
     setWorking(true);
-    for(const r of filtered) await updateDoc(doc(db,"readings",r.id), {resolved:true, resolvedAt:new Date().toISOString()}).catch(()=>{});
+    for(const r of filtered) await resolverOne(r.id).catch(()=>{});
     setWorking(false);
   };
-
   const descartarTodas = async () => {
-    if(!window.confirm(`¿Descartar todas las ${all.length} alertas? Los datos de medición se conservan.`)) return;
+    if(!window.confirm(`¿Descartar todas las ${all.length} alertas? Los datos se conservan.`)) return;
     setWorking(true);
-    for(const r of all) await updateDoc(doc(db,"readings",r.id), {dismissed:true}).catch(()=>{});
+    for(const r of all) await dismissOne(r.id).catch(()=>{});
     setWorking(false);
   };
 
   return (
     <div>
       <div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1a5276"}}>
-        💡 <strong>Resolver</strong> una alerta la marca como atendida — el dato de medición se conserva en Reportes y gráficas. Para borrar datos usa el botón Reset en Reportes.
+        💡 <strong>Resolver</strong> oculta la alerta pero conserva el dato en Reportes y gráficas. Solo las mediciones de <strong>Entrada</strong> generan alertas.
       </div>
-
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {[["all","Todas","#555"],["danger","Críticas","#e74c3c"],["warning","Advertencias","#f39c12"]].map(([v,l,c])=>(
@@ -437,7 +177,6 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
         </div>
         <button onClick={()=>exportCSV(readings)} style={{padding:"7px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
       </div>
-
       {filtered.length>0&&(
         <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
           <button onClick={resolverTodas} disabled={working}
@@ -450,27 +189,24 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
           </button>
         </div>
       )}
-
       {!filtered.length&&(
         <div style={{background:"#fff",borderRadius:12,padding:"3rem",textAlign:"center",color:"#aaa",border:"0.5px solid #e0e0e0"}}>
           <div style={{fontSize:40,marginBottom:8}}>✅</div>
           <div style={{fontWeight:500,marginBottom:4}}>Sin alertas activas</div>
-          <div style={{fontSize:12}}>Todas las mediciones están dentro de rango</div>
+          <div style={{fontSize:12}}>Todas las mediciones de entrada están dentro de rango</div>
         </div>
       )}
-
       {filtered.map(r=>{
-        const c = CROPS[r.crop]; if(!c) return null;
-        const rng = getRangos(r.crop, r.tipo||"entrada", r.invernadero, weeklyRangos);
-        const ph = rng ? rng.ph : c.ph;
-        const ce = rng ? rng.ce : c.ce;
-        return (
+        const c=CROPS[r.crop]; if(!c) return null;
+        const rng=getRangos(r.crop,"entrada",r.invernadero,weeklyRangos);
+        const ph=rng?rng.ph:c.ph; const ce=rng?rng.ce:c.ce;
+        return(
           <div key={r.id} style={{background:"#fff",border:`1px solid ${SC[r.status]}33`,borderLeft:`4px solid ${SC[r.status]}`,borderRadius:10,padding:"12px 16px",marginBottom:8}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
               <span style={{fontSize:20,marginTop:2}}>{c.emoji}</span>
               <div style={{flex:1}}>
                 <div style={{fontWeight:600,fontSize:13,color:c.color,marginBottom:2}}>
-                  {c.name} {r.invernadero&&`— ${r.invernadero}`} · {r.zone} {r.bandeja&&`· ${r.bandeja}`}
+                  {c.name}{r.invernadero?` — ${r.invernadero}`:""} · {r.zone}{r.bandeja?` · ${r.bandeja}`:""}
                 </div>
                 <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>{r.date} {r.time} · {r.worker}</div>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
@@ -480,20 +216,17 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
                   </div>
                   <div style={{background:SB[r.ceStatus],borderRadius:8,padding:"4px 10px",textAlign:"center"}}>
                     <div style={{fontFamily:"'Courier New',monospace",fontWeight:700,fontSize:14,color:SC[r.ceStatus]}}>CE {r.ce}</div>
-                    <div style={{fontSize:9,color:SC[r.ceStatus]}}>Rango: {rng?.ce.min||ce.min}–{rng?.ce.max||ce.max}</div>
+                    <div style={{fontSize:9,color:SC[r.ceStatus]}}>Rango: {ce.min}–{ce.max}</div>
                   </div>
-                  <span style={{background:r.tipo==="salida"?"#eaf4fb":"#eafaf1",color:r.tipo==="salida"?"#2980b9":"#27ae60",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:600,display:"flex",alignItems:"center"}}>
-                    {r.tipo==="salida"?"⬆ Salida":"⬇ Entrada"}
-                  </span>
                 </div>
                 {r.notes&&<div style={{fontSize:12,color:"#e67e22",marginTop:6}}>📝 {r.notes}</div>}
               </div>
               <div style={{display:"flex",gap:6,flexShrink:0}}>
-                <button onClick={()=>resolver(r.id)}
+                <button onClick={()=>resolverOne(r.id)}
                   style={{padding:"6px 12px",background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:8,color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>
                   ✓ Resolver
                 </button>
-                <button onClick={()=>dismiss(r.id)}
+                <button onClick={()=>dismissOne(r.id)}
                   style={{padding:"6px 10px",background:"#f5f5f5",border:"none",borderRadius:8,color:"#aaa",cursor:"pointer",fontSize:12}}>
                   ✕
                 </button>
@@ -506,8 +239,7 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
   );
 }
 
-
-function Reportes({readings,onDelete,weeklyRangos={}}){
+function Reportes({readings,onDelete}){
   const [cropFilter,setCropFilter]=useState("jitomate");
   const [metric,setMetric]=useState("ph");
   const [sub,setSub]=useState("tendencia");
@@ -568,7 +300,29 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
           )}
         </div>
       )}
-      {sub==="historial"&&<HistorialTable cr={cr} onDelete={onDelete} weeklyRangos={weeklyRangos}/>}
+      {sub==="historial"&&(
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>{["","Fecha","Zona","pH","CE","Estado","Trabajador","Notas",""].map((h,i)=><th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11}}>{h}</th>)}</tr></thead>
+              <tbody>{[...cr].reverse().map((r,i)=>{const c=CROPS[r.crop];const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";return(
+                <tr key={r.id||i} style={{borderBottom:"1px solid #fafafa"}}>
+                  <td style={{padding:"8px 10px"}}>{r.photoURL&&<img src={r.photoURL} alt="" style={{width:30,height:30,borderRadius:5,objectFit:"cover"}}/>}</td>
+                  <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#999"}}>{r.date}</td>
+                  <td style={{padding:"8px 10px",color:"#888"}}>{r.zone}</td>
+                  <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[ps]}}>{r.ph}</td>
+                  <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</td>
+                  <td style={{padding:"8px 10px"}}><Badge status={s} small/></td>
+                  <td style={{padding:"8px 10px",color:"#888"}}>{r.worker}</td>
+                  <td style={{padding:"8px 10px",color:"#e67e22",fontSize:11}}>{r.notes||"—"}</td>
+                  <td style={{padding:"8px 10px"}}><button onClick={()=>{if(window.confirm("¿Eliminar?"))onDelete(r.id);}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button></td>
+                </tr>
+              );})}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1251,7 +1005,6 @@ export default function App(){
   const [authLoading,setAuthLoading]=useState(true);
   const [currentUser,setCurrentUser]=useState(null);
   const [userRole,setUserRole]=useState(null);
-  const [weeklyRangos,setWeeklyRangos]=useState({});
 
   useEffect(()=>{
     const unsub = onAuthStateChanged(auth, async user => {
@@ -1281,12 +1034,11 @@ export default function App(){
   useEffect(()=>{
     const q=query(collection(db,"readings"),orderBy("createdAt","desc"));
     const unsub=onSnapshot(q,snap=>{setReadings(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);},()=>setLoading(false));
-    const rangosUnsub=onSnapshot(doc(db,"config","rangos_semanales"),snap=>{if(snap.exists())setWeeklyRangos(snap.data());});
-    return()=>{unsub();rangosUnsub();};
+    return()=>unsub();
   },[]);
 
   const handleDelete=async id=>{try{await deleteDoc(doc(db,"readings",id));}catch{alert("Error al eliminar.");}};
-  const alerts=readings.filter(r=>{if(r.resolved||r.dismissed)return false;if((r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero,weeklyRangos);const ph=rng?rng.ph:c.ph;const ce=rng?rng.ce:c.ce;return getStatus(r.ph,ph)==="danger"||getStatus(r.ce,ce)==="danger";});
+  const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,weeklyRangos);const ph=rng?rng.ph:c.ph;const ce=rng?rng.ce:c.ce;return getStatus(r.ph,ph)==="danger"||getStatus(r.ce,ce)==="danger";});
 
   // Auth loading
   if(authLoading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(160deg,#0f1e2e,#1a3a2a)"}}><div style={{textAlign:"center",color:"#fff"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#4ecb8d",marginTop:4}}>Cargando...</div></div></div>;
