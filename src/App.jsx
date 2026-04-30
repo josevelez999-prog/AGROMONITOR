@@ -476,12 +476,12 @@ function DrenajeDashboard({readings, cropFilter, crop}) {
 
 
 // ─── HISTORIAL TABLE ─────────────────────────────────────────────────────────
-function HistorialTable({cr, onDelete}) {
+function HistorialTable({cr, onDelete, weeklyRangos={}}) {
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
 
-  const startEdit = (r) => {
+  const startEdit = r => {
     setEditId(r.id);
     setEditForm({
       ph: r.ph, ce: r.ce,
@@ -494,7 +494,6 @@ function HistorialTable({cr, onDelete}) {
   };
 
   const saveEdit = async () => {
-    if (!editId) return;
     setSaving(true);
     try {
       await updateDoc(doc(db,"readings",editId),{
@@ -511,8 +510,11 @@ function HistorialTable({cr, onDelete}) {
     setSaving(false);
   };
 
-  const inp = {padding:"4px 6px",border:"1px solid #ccc",borderRadius:6,fontSize:12,
-    width:"100%",background:"#fff",color:"#111",WebkitTextFillColor:"#111",colorScheme:"light"};
+  const INP_S = {
+    padding:"4px 6px", border:"1px solid #ccc", borderRadius:6, fontSize:12,
+    background:"#fff", color:"#111", WebkitTextFillColor:"#111", colorScheme:"light",
+    fontFamily:"'Courier New',monospace",
+  };
 
   return (
     <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
@@ -524,81 +526,94 @@ function HistorialTable({cr, onDelete}) {
       )}
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-          <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>
-            {["","Fecha","Tipo","Inv.","Zona","Bandeja","pH","CE","Vol.Ent(mL)","Drenaje(mL)","Estado","Trabajador",""].map((h,i)=>(
-              <th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
-            ))}
-          </tr></thead>
-          <tbody>{[...cr].reverse().map((r,i)=>{
-            const c=CROPS[r.crop];
-            const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero,weeklyRangos);
-            const ps=getStatus(r.ph,rng?rng.ph:c.ph);
-            const cs=getStatus(r.ce,rng?rng.ce:c.ce);
-            const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";
-            const isEditing = editId===r.id;
-            return(
-              <tr key={r.id||i} style={{borderBottom:`1px solid ${isEditing?"#ffc10744":"#fafafa"}`,background:isEditing?"#fffdf0":"transparent"}}>
-                <td style={{padding:"6px 8px"}}>{r.photoURL&&<img src={r.photoURL} alt="" style={{width:26,height:26,borderRadius:4,objectFit:"cover"}}/>}</td>
-                <td style={{padding:"6px 8px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#999",whiteSpace:"nowrap"}}>{r.date}</td>
-                <td style={{padding:"6px 8px"}}>
-                  <span style={{background:r.tipo==="salida"?"#eaf4fb":"#eafaf1",color:r.tipo==="salida"?"#2980b9":"#27ae60",borderRadius:8,padding:"1px 6px",fontSize:10,fontWeight:600}}>
-                    {r.tipo==="salida"?"⬆ Sal":"⬇ Ent"}
-                  </span>
-                </td>
-                <td style={{padding:"6px 8px",fontSize:11,color:"#c0392b",fontWeight:600,whiteSpace:"nowrap"}}>{r.invernadero||"—"}</td>
-                <td style={{padding:"6px 8px",color:"#888",minWidth:60}}>
-                  {isEditing
-                    ? <input value={editForm.zone} onChange={e=>setEditForm(p=>({...p,zone:e.target.value}))} style={{...inp,width:65}}/>
-                    : r.zone}
-                </td>
-                <td style={{padding:"6px 8px",fontSize:11,color:"#888",minWidth:70}}>
-                  {isEditing
-                    ? <input value={editForm.bandeja} onChange={e=>setEditForm(p=>({...p,bandeja:e.target.value}))} style={{...inp,width:70}}/>
-                    : r.bandeja||"—"}
-                </td>
-                <td style={{padding:"6px 8px",minWidth:60}}>
-                  {isEditing
-                    ? <input type="number" step="0.01" value={editForm.ph} onChange={e=>setEditForm(p=>({...p,ph:e.target.value}))} style={{...inp,width:55,fontFamily:"'Courier New',monospace",fontWeight:700}}/>
-                    : <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[ps]}}>{r.ph}</span>}
-                </td>
-                <td style={{padding:"6px 8px",minWidth:60}}>
-                  {isEditing
-                    ? <input type="number" step="0.01" value={editForm.ce} onChange={e=>setEditForm(p=>({...p,ce:e.target.value}))} style={{...inp,width:55,fontFamily:"'Courier New',monospace",fontWeight:700}}/>
-                    : <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</span>}
-                </td>
-                <td style={{padding:"6px 8px",minWidth:70}}>
-                  {isEditing
-                    ? <input type="number" step="0.1" value={editForm.volumenEntrada} onChange={e=>setEditForm(p=>({...p,volumenEntrada:e.target.value}))} style={{...inp,width:65,fontFamily:"'Courier New',monospace"}} placeholder="L"/>
-                    : <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#27ae60"}}>{r.volumenEntrada?`${r.volumenEntrada}mL`:"—"}</span>}
-                </td>
-                <td style={{padding:"6px 8px",minWidth:70}}>
-                  {isEditing
-                    ? <input type="number" step="0.1" value={editForm.drenaje} onChange={e=>setEditForm(p=>({...p,drenaje:e.target.value}))} style={{...inp,width:65,fontFamily:"'Courier New',monospace"}} placeholder="L"/>
-                    : <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#2980b9"}}>{r.drenaje?`${r.drenaje}mL`:"—"}</span>}
-                </td>
-                <td style={{padding:"6px 8px"}}><Badge status={s} small/></td>
-                <td style={{padding:"6px 8px",color:"#888",whiteSpace:"nowrap"}}>{r.worker}</td>
-                <td style={{padding:"6px 8px"}}>
-                  {isEditing
-                    ? <div style={{display:"flex",gap:4}}>
-                        <button onClick={saveEdit} disabled={saving}
-                          style={{background:"#27ae60",color:"#fff",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
-                          {saving?"...":"✓ Guardar"}
-                        </button>
-                        <button onClick={()=>setEditId(null)}
-                          style={{background:"#f0f0f0",color:"#666",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕</button>
-                      </div>
-                    : <div style={{display:"flex",gap:4}}>
-                        <button onClick={()=>startEdit(r)}
-                          style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button>
-                        <button onClick={()=>{if(window.confirm("¿Eliminar?"))onDelete(r.id);}}
-                          style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>
-                      </div>
-                  }
-                </td>
-              </tr>
-            );
-          })}</tbody>
+          <thead>
+            <tr style={{borderBottom:"1px solid #f0f0f0"}}>
+              {["","Fecha","Tipo","Inv.","Zona","Bandeja","pH","CE","Vol.Ent","Drenaje","Estado","Trabajador",""].map((h,i)=>(
+                <th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {[...cr].reverse().map((r,i)=>{
+              const c = CROPS[r.crop];
+              if(!c) return null;
+              const rng = getRangos(r.crop, r.tipo||"entrada", r.invernadero, weeklyRangos);
+              const ps = getStatus(r.ph, rng?rng.ph:c.ph);
+              const cs = getStatus(r.ce, rng?rng.ce:c.ce);
+              const s = ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";
+              const isEditing = editId===r.id;
+              return (
+                <tr key={r.id||i} style={{borderBottom:`1px solid ${isEditing?"#ffc10744":"#fafafa"}`,background:isEditing?"#fffdf0":"transparent"}}>
+                  <td style={{padding:"6px 8px"}}>
+                    {r.photoURL&&<img src={r.photoURL} alt="" style={{width:26,height:26,borderRadius:4,objectFit:"cover"}}/>}
+                  </td>
+                  <td style={{padding:"6px 8px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#999",whiteSpace:"nowrap"}}>{r.date}</td>
+                  <td style={{padding:"6px 8px"}}>
+                    <span style={{background:r.tipo==="salida"?"#eaf4fb":"#eafaf1",color:r.tipo==="salida"?"#2980b9":"#27ae60",borderRadius:8,padding:"1px 6px",fontSize:10,fontWeight:600}}>
+                      {r.tipo==="salida"?"⬆ Sal":"⬇ Ent"}
+                    </span>
+                  </td>
+                  <td style={{padding:"6px 8px",fontSize:11,color:"#c0392b",fontWeight:600}}>{r.invernadero||"—"}</td>
+                  <td style={{padding:"6px 8px",color:"#888",minWidth:60}}>
+                    {isEditing
+                      ? <input value={editForm.zone} onChange={e=>setEditForm(p=>({...p,zone:e.target.value}))} style={{...INP_S,width:65}}/>
+                      : r.zone}
+                  </td>
+                  <td style={{padding:"6px 8px",fontSize:11,color:"#888",minWidth:70}}>
+                    {isEditing
+                      ? <input value={editForm.bandeja} onChange={e=>setEditForm(p=>({...p,bandeja:e.target.value}))} style={{...INP_S,width:70}}/>
+                      : r.bandeja||"—"}
+                  </td>
+                  <td style={{padding:"6px 8px",minWidth:55}}>
+                    {isEditing
+                      ? <input type="number" step="0.01" value={editForm.ph} onChange={e=>setEditForm(p=>({...p,ph:e.target.value}))} style={{...INP_S,width:55,fontWeight:700}}/>
+                      : <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[ps]}}>{r.ph}</span>}
+                  </td>
+                  <td style={{padding:"6px 8px",minWidth:55}}>
+                    {isEditing
+                      ? <input type="number" step="0.01" value={editForm.ce} onChange={e=>setEditForm(p=>({...p,ce:e.target.value}))} style={{...INP_S,width:55,fontWeight:700}}/>
+                      : <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</span>}
+                  </td>
+                  <td style={{padding:"6px 8px",minWidth:70}}>
+                    {isEditing
+                      ? <input type="number" step="1" value={editForm.volumenEntrada} onChange={e=>setEditForm(p=>({...p,volumenEntrada:e.target.value}))} style={{...INP_S,width:65}} placeholder="mL"/>
+                      : <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#27ae60"}}>{r.volumenEntrada?`${r.volumenEntrada}mL`:"—"}</span>}
+                  </td>
+                  <td style={{padding:"6px 8px",minWidth:70}}>
+                    {isEditing
+                      ? <input type="number" step="1" value={editForm.drenaje} onChange={e=>setEditForm(p=>({...p,drenaje:e.target.value}))} style={{...INP_S,width:65}} placeholder="mL"/>
+                      : <span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#2980b9"}}>{r.drenaje?`${r.drenaje}mL`:"—"}</span>}
+                  </td>
+                  <td style={{padding:"6px 8px"}}><Badge status={s} small/></td>
+                  <td style={{padding:"6px 8px",color:"#888",whiteSpace:"nowrap"}}>{r.worker}</td>
+                  <td style={{padding:"6px 8px"}}>
+                    {isEditing
+                      ? <div style={{display:"flex",gap:4}}>
+                          <button onClick={saveEdit} disabled={saving}
+                            style={{background:"#27ae60",color:"#fff",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                            {saving?"...":"✓ Guardar"}
+                          </button>
+                          <button onClick={()=>setEditId(null)}
+                            style={{background:"#f0f0f0",color:"#666",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>
+                            ✕
+                          </button>
+                        </div>
+                      : <div style={{display:"flex",gap:4}}>
+                          <button onClick={()=>startEdit(r)}
+                            style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>
+                            ✎
+                          </button>
+                          <button onClick={()=>{if(window.confirm("¿Eliminar?"))onDelete(r.id);}}
+                            style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>
+                            ✕
+                          </button>
+                        </div>
+                    }
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
         </table>
       </div>
     </div>
@@ -1011,7 +1026,7 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
       )}
 
       {/* ── HISTORIAL ── */}
-      {sub==="historial"&&<HistorialTable cr={cr} onDelete={onDelete}/>}
+      {sub==="historial"&&<HistorialTable cr={cr} onDelete={onDelete} weeklyRangos={weeklyRangos}/>}
     </div>
   );
 }
