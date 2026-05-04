@@ -85,6 +85,8 @@ const getRangos=(crop,tipo,invernadero,weeklyRangos)=>{
   return c.entrada||{ph:c.ph,ce:c.ce};
 };
 const SC={ok:"#27ae60",warning:"#f39c12",danger:"#e74c3c"};
+const LBL={fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase",letterSpacing:0.3};
+const INP_ADMIN={padding:"8px 10px",border:"1px solid #ddd",borderRadius:8,fontSize:13,width:"100%",background:"#fff",color:"#111",WebkitTextFillColor:"#111",colorScheme:"light"};
 const SB={ok:"#eafaf1",warning:"#fef9e7",danger:"#fdedec"};
 const SL={ok:"OK",warning:"Alerta",danger:"Crítico"};
 
@@ -93,13 +95,18 @@ function Sparkline({data,color}){if(!data||data.length<2)return null;const min=M
 function exportCSV(readings){const h=["Fecha","Hora","Cultivo","Zona","pH","CE","Estado pH","Estado CE","Trabajador","Notas","Foto"];const rows=readings.map(r=>{const c=CROPS[r.crop];if(!c)return null;const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return[r.date,r.time||"",c.name,r.zone,r.ph,r.ce,SL[ps],SL[cs],r.worker,r.notes||"",r.photoURL||""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");}).filter(Boolean);const blob=new Blob(["\uFEFF",[h.join(","),...rows].join("\n")],{type:"text/csv;charset=utf-8;"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`greenlog_${new Date().toISOString().slice(0,10)}.csv`;a.click();}
 
 // ─── RESUMEN ──────────────────────────────────────────────────────────────────
-function Resumen({readings,onDelete}){
+function Resumen({readings,onDelete,weeklyRangos={}}){
   const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,{});return getStatus(r.ph,rng.ph)==="danger"||getStatus(r.ce,rng.ce)==="danger";});
   const warn=readings.filter(r=>{const c=CROPS[r.crop];if(!c)return false;const p=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return(p==="warning"||cs==="warning")&&p!=="danger"&&cs!=="danger";});
   const latest=Object.keys(CROPS).map(k=>{const recs=readings.filter(r=>r.crop===k).sort((a,b)=>b.date.localeCompare(a.date));return{key:k,...recs[0]};}).filter(r=>r.ph);
   const byW={};readings.forEach(r=>{byW[r.worker]=(byW[r.worker]||0)+1;});
+  const rangosSnap = Object.keys(weeklyRangos||{}).length;
   return(
     <div>
+      {rangosSnap>0&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:"8px 14px",marginBottom:14,fontSize:12,color:"#27ae60",display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:14}}>🎯</span>
+        <span><strong>Rangos semanales activos</strong> — {rangosSnap} combinaciones configuradas. Los semáforos usan estos rangos.</span>
+      </div>}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:20}}>
         {[{l:"Mediciones",v:readings.length,c:"#27ae60",i:"📊"},{l:"Alertas críticas",v:alerts.length,c:"#e74c3c",i:"🚨"},{l:"Advertencias",v:warn.length,c:"#f39c12",i:"⚠️"},{l:"Trabajadores",v:Object.keys(byW).length,c:"#2980b9",i:"👤"}].map(k=>(
           <div key={k.l} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px"}}>
@@ -340,11 +347,11 @@ function HistorialTable({cr, onDelete, weeklyRangos={}}) {
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
-  const startEdit = r => { setEditId(r.id); setEditForm({ph:r.ph,ce:r.ce,volumenEntrada:r.volumenEntrada||"",drenaje:r.drenaje||"",notes:r.notes||"",zone:r.zone||"",bandeja:r.bandeja||""}); };
+  const startEdit = r => { setEditId(r.id); setEditForm({ph:r.ph,ce:r.ce,volumenEntrada:r.volumenEntrada||"",drenaje:r.drenaje||"",notes:r.notes||"",zone:r.zone||"",bandeja:r.bandeja||"",ca:r.ca||"",no3:r.no3||"",k:r.k||"",fe:r.fe||""}); };
   const saveEdit = async()=>{
     setSaving(true);
     try{
-      await updateDoc(doc(db,"readings",editId),{ph:parseFloat(editForm.ph)||0,ce:parseFloat(editForm.ce)||0,volumenEntrada:editForm.volumenEntrada?parseFloat(editForm.volumenEntrada):null,drenaje:editForm.drenaje?parseFloat(editForm.drenaje):null,notes:editForm.notes||"",zone:editForm.zone||"",bandeja:editForm.bandeja||""});
+      await updateDoc(doc(db,"readings",editId),{ph:parseFloat(editForm.ph)||0,ce:parseFloat(editForm.ce)||0,volumenEntrada:editForm.volumenEntrada?parseFloat(editForm.volumenEntrada):null,drenaje:editForm.drenaje?parseFloat(editForm.drenaje):null,notes:editForm.notes||"",zone:editForm.zone||"",bandeja:editForm.bandeja||"",ca:editForm.ca?parseFloat(editForm.ca):null,no3:editForm.no3?parseFloat(editForm.no3):null,k:editForm.k?parseFloat(editForm.k):null,fe:editForm.fe?parseFloat(editForm.fe):null});
       setEditId(null);
     }catch(e){alert("Error: "+e.message);}
     setSaving(false);
@@ -356,12 +363,12 @@ function HistorialTable({cr, onDelete, weeklyRangos={}}) {
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
           <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>
-            {["","Fecha","Tipo","Inv.","Zona","Bandeja","pH","CE","Vol.Ent","Drenaje","Estado","Trabajador",""].map((h,i)=>(
+            {["","Fecha","Tipo","Inv.","Zona","Bandeja","pH","CE","Vol.Ent","Drenaje","Ca","NO₃","K","Fe","Estado","Trabajador",""].map((h,i)=>(
               <th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
             ))}
           </tr></thead>
           <tbody>
-            {[...cr].reverse().map((r,i)=>{
+            {(cr.length>100?[...cr].slice(-100).reverse():[...cr].reverse()).map((r,i)=>{
               const c=CROPS[r.crop]; if(!c)return null;
               const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero||"",weeklyRangos||{});
               const ps=getStatus(r.ph,rng?rng.ph:c.ph); const cs=getStatus(r.ce,rng?rng.ce:c.ce);
@@ -379,6 +386,12 @@ function HistorialTable({cr, onDelete, weeklyRangos={}}) {
                   <td style={{padding:"6px 8px",minWidth:55}}>{isE?<input type="number" step="0.01" value={editForm.ce} onChange={e=>setEditForm(p=>({...p,ce:e.target.value}))} style={{...IS,width:55,fontWeight:700}}/>:<span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</span>}</td>
                   <td style={{padding:"6px 8px",minWidth:70}}>{isE?<input type="number" step="1" value={editForm.volumenEntrada} onChange={e=>setEditForm(p=>({...p,volumenEntrada:e.target.value}))} style={{...IS,width:65}} placeholder="mL"/>:<span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#27ae60"}}>{r.volumenEntrada?`${r.volumenEntrada}mL`:"—"}</span>}</td>
                   <td style={{padding:"6px 8px",minWidth:70}}>{isE?<input type="number" step="1" value={editForm.drenaje} onChange={e=>setEditForm(p=>({...p,drenaje:e.target.value}))} style={{...IS,width:65}} placeholder="mL"/>:<span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#2980b9"}}>{r.drenaje?`${r.drenaje}mL`:"—"}</span>}</td>
+                  {(r.ca||r.no3||r.k||r.fe||isE)&&<>
+                    <td style={{padding:"6px 8px",minWidth:55}}>{isE?<input type="number" step="0.1" value={editForm.ca} onChange={e=>setEditForm(p=>({...p,ca:e.target.value}))} style={{...IS,width:50}} placeholder="Ca"/>:<span style={{fontFamily:"'Courier New',monospace",fontSize:10,color:"#8e44ad"}}>{r.ca||"—"}</span>}</td>
+                    <td style={{padding:"6px 8px",minWidth:55}}>{isE?<input type="number" step="0.1" value={editForm.no3} onChange={e=>setEditForm(p=>({...p,no3:e.target.value}))} style={{...IS,width:50}} placeholder="NO₃"/>:<span style={{fontFamily:"'Courier New',monospace",fontSize:10,color:"#8e44ad"}}>{r.no3||"—"}</span>}</td>
+                    <td style={{padding:"6px 8px",minWidth:50}}>{isE?<input type="number" step="0.1" value={editForm.k} onChange={e=>setEditForm(p=>({...p,k:e.target.value}))} style={{...IS,width:45}} placeholder="K"/>:<span style={{fontFamily:"'Courier New',monospace",fontSize:10,color:"#8e44ad"}}>{r.k||"—"}</span>}</td>
+                    <td style={{padding:"6px 8px",minWidth:50}}>{isE?<input type="number" step="0.01" value={editForm.fe} onChange={e=>setEditForm(p=>({...p,fe:e.target.value}))} style={{...IS,width:45}} placeholder="Fe"/>:<span style={{fontFamily:"'Courier New',monospace",fontSize:10,color:"#8e44ad"}}>{r.fe||"—"}</span>}</td>
+                  </>}
                   <td style={{padding:"6px 8px"}}><Badge status={s} small/></td>
                   <td style={{padding:"6px 8px",color:"#888",whiteSpace:"nowrap"}}>{r.worker}</td>
                   <td style={{padding:"6px 8px"}}>
@@ -489,7 +502,24 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(CROPS).map(([k,c])=>(<button key={k} onClick={()=>setCropFilter(k)} style={{padding:"7px 14px",border:`1px solid ${cropFilter===k?c.color:"#e0e0e0"}`,borderRadius:20,background:cropFilter===k?c.color+"18":"transparent",color:cropFilter===k?c.color:"#666",cursor:"pointer",fontSize:12,fontWeight:500}}>{c.emoji} {c.name}</button>))}</div>
         <button onClick={()=>exportCSV(cr)} style={{marginLeft:"auto",padding:"7px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
-      </div>
+          <button onClick={()=>setShowReset(s=>!s)} style={{padding:"7px 14px",border:"1px solid #e74c3c44",borderRadius:20,background:showReset?"#fdedec":"#fff",color:"#c0392b",cursor:"pointer",fontSize:12,fontWeight:600}}>🔄 Reset</button>
+        </div>
+      {showReset&&(
+        <div style={{background:"#fdedec",border:"2px solid #e74c3c",borderRadius:12,padding:"14px 18px",marginBottom:14}}>
+          <div style={{fontWeight:700,color:"#c0392b",marginBottom:6}}>⚠️ Reset de mediciones del ciclo</div>
+          <div style={{fontSize:13,color:"#555",marginBottom:12}}>Elimina <strong>permanentemente</strong> todas las mediciones de pH/CE de Firebase. Las ventas, cosechas y mermas <strong>NO</strong> se borran.</div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={resetReadings} disabled={resetting}
+              style={{padding:"9px 20px",background:resetting?"#aaa":"#e74c3c",color:"#fff",border:"none",borderRadius:8,cursor:resetting?"not-allowed":"pointer",fontWeight:700,fontSize:13}}>
+              {resetting?"Borrando...":"🗑 Confirmar reset total"}
+            </button>
+            <button onClick={()=>setShowReset(false)}
+              style={{padding:"9px 16px",border:"1px solid #e0e0e0",borderRadius:8,background:"#fff",color:"#888",cursor:"pointer",fontSize:13}}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{display:"flex",gap:4,marginBottom:12,background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:4}}>
         {[["tendencia","📈 Tendencia"],["comparar","⇅ Entrada vs Salida"],["invernaderos","🏠 Invernaderos"],["drenaje","💧 Drenaje"],["nutrientes","🔬 Nutrientes"],["semanas","📅 Semanas"],["historial","📋 Historial"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSub(k)}
@@ -685,7 +715,9 @@ function DiagnosticoIA(){
       const result=await res.json();
       if(result.error) throw new Error(result.error);
       const id=Date.now();
-      setDiagnoses(p=>[{id,...form,ph:parseFloat(form.ph)||0,ce:parseFloat(form.ce)||0,date:new Date().toISOString().slice(0,10),imgPreview,result},...p]);
+      const diagData={...form,ph:parseFloat(form.ph)||0,ce:parseFloat(form.ce)||0,date:new Date().toISOString().slice(0,10),result,createdAt:new Date().toISOString()};
+      try{ await addDoc(collection(db,"diagnosticos"),diagData); }catch(e){ console.warn("No se pudo guardar diagnóstico:",e.message); }
+      setDiagnoses(p=>[{id,imgPreview,...diagData},...p]);
       setSel(id);setView("historial");setForm({crop:"jitomate",zone:"",worker:"",ph:"",ce:"",notes:""});setImgPreview(null);setImgBase64(null);
     }catch{alert("Error al analizar. Verifica la API key.");}
     setLoading(false);
@@ -1376,7 +1408,7 @@ export default function App(){
 
   const SECTION={
     suelo:       <AnalisisSuelo/>,
-    resumen:     <Resumen readings={readings} onDelete={esObservador?()=>{}:handleDelete}/>,
+    resumen:     <Resumen readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
     alertas:     <Alertas readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
     ia:          <DiagnosticoIA/>,
     reportes:    <Reportes readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,

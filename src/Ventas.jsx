@@ -158,6 +158,9 @@ function StatCard({ icon, label, value, color, sub }) {
 // ─── LOTES ────────────────────────────────────────────────────────────────────
 function GestionLotes() {
   const [lotes, setLotes] = useState([]);
+  const [ventasLote, setVentasLote] = useState([]);
+  const [cosechasLote, setCosechasLote] = useState([]);
+  const [mermasLote, setMermasLote] = useState([]);
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -170,7 +173,10 @@ function GestionLotes() {
   useEffect(()=>{
     const q = query(collection(db,"lotes"), orderBy("createdAt","desc"));
     const unsub = onSnapshot(q, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
-    return () => unsub();
+    const u2 = onSnapshot(query(collection(db,"ventas")), s=>setVentasLote(s.docs.map(d=>({id:d.id,...d.data()}))));
+    const u3 = onSnapshot(query(collection(db,"cosechas_trabajador")), s=>setCosechasLote(s.docs.map(d=>({id:d.id,...d.data()}))));
+    const u4 = onSnapshot(query(collection(db,"mermas")), s=>setMermasLote(s.docs.map(d=>({id:d.id,...d.data()}))));
+    return () => { unsub(); u2(); u3(); u4(); };
   }, []);
 
   const save = async () => {
@@ -240,6 +246,11 @@ function GestionLotes() {
         const crop=CROPS[lote.crop];
         const trat=TRATAMIENTOS.find(t=>t.id===lote.tratamiento);
         const eficiencia=lote.kgEstimados>0?((lote.kgCosechados/lote.kgEstimados)*100).toFixed(1):null;
+        const kgVend = Number((ventasLote||[]).filter(v=>v.loteId===lote.id).reduce((s,v)=>s+(parseFloat(v.kgVendidos)||0),0));
+        const kgCos  = Number((cosechasLote||[]).filter(c=>c.loteId===lote.id).reduce((s,c)=>s+(parseFloat(c.kgCosechados)||0),0) || parseFloat(lote.kgCosechados) || 0);
+        const kgMerm = Number((mermasLote||[]).filter(m=>m.loteId===lote.id).reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0));
+        const kgDisp = Math.max(0, kgCos - kgVend - kgMerm);
+        const pctVend = kgCos>0 ? Math.min((kgVend/kgCos)*100,100) : 0;
         return(
           <div key={lote.id} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderTop:`3px solid ${crop?.color||"#27ae60"}`,borderRadius:12,padding:"14px 18px",marginBottom:10}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
@@ -251,11 +262,28 @@ function GestionLotes() {
                   <span style={{fontSize:12,color:"#888"}}>📍 {lote.zona}</span>
                   <span style={{fontSize:12,color:"#888"}}>📅 {lote.fechaCosecha}</span>
                 </div>
-                <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-                  <span style={{fontFamily:"'Courier New',monospace",fontSize:13,color:"#27ae60",fontWeight:700}}>{lote.kgCosechados} kg cosechados</span>
-                  {lote.kgEstimados>0&&<span style={{fontFamily:"'Courier New',monospace",fontSize:12,color:"#aaa"}}>{lote.kgEstimados} kg estimados</span>}
-                  {eficiencia&&<span style={{fontFamily:"'Courier New',monospace",fontSize:12,color:eficiencia>=90?"#27ae60":eficiencia>=70?"#f39c12":"#e74c3c",fontWeight:600}}>{eficiencia}% eficiencia</span>}
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+                  <div style={{textAlign:"center",background:"#f0faf5",borderRadius:8,padding:"5px 10px"}}>
+                    <div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:"#27ae60"}}>{kgCos.toFixed(1)} kg</div>
+                    <div style={{fontSize:9,color:"#aaa"}}>Cosechados</div>
+                  </div>
+                  <div style={{textAlign:"center",background:"#eaf4fb",borderRadius:8,padding:"5px 10px"}}>
+                    <div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:"#2980b9"}}>{kgVend.toFixed(1)} kg</div>
+                    <div style={{fontSize:9,color:"#aaa"}}>Vendidos</div>
+                  </div>
+                  {kgMerm>0&&<div style={{textAlign:"center",background:"#fef9e7",borderRadius:8,padding:"5px 10px"}}>
+                    <div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:"#f39c12"}}>{kgMerm.toFixed(1)} kg</div>
+                    <div style={{fontSize:9,color:"#aaa"}}>Merma</div>
+                  </div>}
+                  <div style={{textAlign:"center",background:kgDisp>0?"#fff3cd":"#eafaf1",border:`2px solid ${kgDisp>0?"#f39c12":"#a9dfbf"}`,borderRadius:8,padding:"5px 10px"}}>
+                    <div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:kgDisp>0?"#f39c12":"#27ae60"}}>{kgDisp.toFixed(1)} kg</div>
+                    <div style={{fontSize:9,color:kgDisp>0?"#856404":"#27ae60",fontWeight:600}}>Por vender</div>
+                  </div>
                 </div>
+                <div style={{background:"#e0e0e0",borderRadius:3,height:5,overflow:"hidden",marginBottom:3}}>
+                  <div style={{width:`${pctVend}%`,height:"100%",background:CROPS[lote.crop]?.color||"#27ae60",borderRadius:3}}/>
+                </div>
+                <div style={{fontSize:10,color:"#aaa"}}>{pctVend.toFixed(1)}% comercializado</div>
                 {lote.notas&&<div style={{fontSize:11,color:"#aaa",marginTop:4}}>📝 {lote.notas}</div>}
               </div>
               <div style={{display:"flex",gap:6}}>
