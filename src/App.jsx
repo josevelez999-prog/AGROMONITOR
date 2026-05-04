@@ -491,7 +491,12 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
         <button onClick={()=>exportCSV(cr)} style={{marginLeft:"auto",padding:"7px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
       </div>
       <div style={{display:"flex",gap:4,marginBottom:12,background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:4}}>
-        {[["tendencia","📈 Tendencia"],["comparar","📊 Comparar semanas"],["historial","📋 Historial"]].map(([k,l])=>(<button key={k} onClick={()=>setSub(k)} style={{flex:1,padding:"7px 8px",border:"none",borderRadius:8,background:sub===k?"#f0f4ff":"transparent",color:sub===k?"#2c3e50":"#888",cursor:"pointer",fontSize:12,fontWeight:sub===k?600:400}}>{l}</button>))}
+        {[["tendencia","📈 Tendencia"],["comparar","⇅ Entrada vs Salida"],["invernaderos","🏠 Invernaderos"],["drenaje","💧 Drenaje"],["nutrientes","🔬 Nutrientes"],["semanas","📅 Semanas"],["historial","📋 Historial"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setSub(k)}
+            style={{padding:"7px 10px",border:"none",borderRadius:8,background:sub===k?"#27ae60":"transparent",color:sub===k?"#fff":"#888",cursor:"pointer",fontSize:11,fontWeight:sub===k?600:400,whiteSpace:"nowrap"}}>
+            {l}
+          </button>
+        ))}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:16}}>
         {[{l:"Promedio",v:stats.avg,c:crop.color},{l:"Mínimo",v:stats.min,c:"#2980b9"},{l:"Máximo",v:stats.max,c:"#8e44ad"},{l:"Fuera rango",v:stats.out,c:"#e74c3c"},{l:"Total",v:stats.total,c:"#27ae60"}].map(s=>(<div key={s.l} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:"12px",textAlign:"center"}}><div style={{fontSize:20,fontWeight:700,color:s.c,fontFamily:"'Courier New',monospace"}}>{s.v}</div><div style={{fontSize:10,color:"#aaa",marginTop:2}}>{s.l}</div></div>))}
@@ -536,6 +541,122 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
         </div>
       )}
       {sub==="drenaje"&&<DrenajeDashboard readings={cr} cropFilter={cropFilter} crop={crop}/>}
+      {/* ── INVERNADEROS ── */}
+      {sub==="invernaderos"&&crop.invernaderos&&(
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:14,letterSpacing:0.3}}>🏠 COMPARACIÓN POR INVERNADERO — {crop.emoji} {crop.name}</div>
+          {crop.invernaderos.map(inv=>{
+            const invData=cr.filter(r=>r.invernadero===inv);
+            if(!invData.length) return null;
+            const phVals=invData.map(r=>r.ph).filter(Boolean);
+            const ceVals=invData.map(r=>r.ce).filter(Boolean);
+            const phAvg=phVals.length?n(phVals.reduce((s,v)=>s+v,0)/phVals.length):null;
+            const ceAvg=ceVals.length?n(ceVals.reduce((s,v)=>s+v,0)/ceVals.length):null;
+            const rng=getRangos(cropFilter,"entrada","",weeklyRangos||{});
+            const ps=phAvg?getStatus(phAvg,rng?rng.ph:crop.ph):"ok";
+            const cs=ceAvg?getStatus(ceAvg,rng?rng.ce:crop.ce):"ok";
+            return(
+              <div key={inv} style={{background:"#f9f9f9",borderRadius:10,padding:"12px 16px",marginBottom:10,border:`1px solid ${SC[ps]==="danger"||SC[cs]==="danger"?"#e74c3c33":"#e0e0e0"}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                  <div style={{fontWeight:700,fontSize:14,color:"#c0392b",minWidth:60}}>{inv}</div>
+                  <div style={{fontSize:12,color:"#888"}}>{invData.length} mediciones</div>
+                  <div style={{display:"flex",gap:10,marginLeft:"auto",flexWrap:"wrap"}}>
+                    <div style={{textAlign:"center",background:SB[ps],borderRadius:8,padding:"6px 14px"}}>
+                      <div style={{fontFamily:"'Courier New',monospace",fontWeight:700,fontSize:16,color:SC[ps]}}>{phAvg??"-"}</div>
+                      <div style={{fontSize:9,color:SC[ps]}}>pH prom</div>
+                    </div>
+                    <div style={{textAlign:"center",background:SB[cs],borderRadius:8,padding:"6px 14px"}}>
+                      <div style={{fontFamily:"'Courier New',monospace",fontWeight:700,fontSize:16,color:SC[cs]}}>{ceAvg??"-"}</div>
+                      <div style={{fontSize:9,color:SC[cs]}}>CE prom</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {!crop.invernaderos&&<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Este cultivo no tiene invernaderos configurados</div>}
+        </div>
+      )}
+
+      {/* ── NUTRIENTES ── */}
+      {sub==="nutrientes"&&(
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:14}}>🔬 NUTRIENTES — {crop.emoji} {crop.name}</div>
+          {(()=>{
+            const nutReadings=cr.filter(r=>r.ca||r.no3||r.k||r.fe);
+            if(!nutReadings.length) return <div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos de nutrientes. Los trabajadores los registran al hacer mediciones de {crop.name}.</div>;
+            const avg=field=>{ const vals=nutReadings.map(r=>r[field]).filter(v=>v>0); return vals.length?n(vals.reduce((s,v)=>s+v,0)/vals.length):null; };
+            return(
+              <div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:16}}>
+                  {[{l:"Calcio (Ca)",k:"ca",u:"mg/L",min:120,max:180},{l:"Nitratos",k:"no3",u:"mg/L",min:150,max:200},{l:"Potasio (K)",k:"k",u:"mg/L",min:200,max:300},{l:"Hierro (Fe)",k:"fe",u:"mg/L",min:1.5,max:3.0}].map(f=>{
+                    const v=avg(f.k);
+                    const st=v?getStatus(v,{min:f.min,max:f.max}):"ok";
+                    return(
+                      <div key={f.k} style={{background:SB[st],border:`1px solid ${SC[st]}33`,borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+                        <div style={{fontFamily:"'Courier New',monospace",fontSize:18,fontWeight:700,color:SC[st]}}>{v??"-"} {f.u}</div>
+                        <div style={{fontSize:10,color:"#888",marginTop:2}}>{f.l}</div>
+                        <div style={{fontSize:9,color:"#aaa"}}>Rango: {f.min}–{f.max}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={nutReadings.slice(-14).map(r=>({date:r.date.slice(5),ca:r.ca||0,no3:r.no3||0,k:r.k||0,fe:r.fe||0}))} margin={{top:5,right:20,left:0,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                    <XAxis dataKey="date" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={40}/>
+                    <Tooltip contentStyle={{fontSize:11,borderRadius:8}}/>
+                    <Legend wrapperStyle={{fontSize:11}}/>
+                    <Bar dataKey="ca"  name="Ca"  fill="#e74c3c" radius={[3,3,0,0]}/>
+                    <Bar dataKey="no3" name="NO₃" fill="#3498db" radius={[3,3,0,0]}/>
+                    <Bar dataKey="k"   name="K"   fill="#f39c12" radius={[3,3,0,0]}/>
+                    <Bar dataKey="fe"  name="Fe"  fill="#8e44ad" radius={[3,3,0,0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ── SEMANAS ── */}
+      {sub==="semanas"&&(
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:14}}>📅 COMPARACIÓN SEMANAL — {crop.emoji} {crop.name}</div>
+          {(()=>{
+            const byWeek={};
+            cr.forEach(r=>{
+              const d=new Date(r.date);
+              const week=`${d.getFullYear()}-W${String(Math.ceil((d.getDate()+new Date(d.getFullYear(),d.getMonth(),1).getDay())/7)).padStart(2,"0")}`;
+              if(!byWeek[week])byWeek[week]={week,phVals:[],ceVals:[]};
+              if(r.ph)byWeek[week].phVals.push(r.ph);
+              if(r.ce)byWeek[week].ceVals.push(r.ce);
+            });
+            const weekData=Object.values(byWeek).sort((a,b)=>a.week.localeCompare(b.week)).slice(-8).map(w=>({
+              week:w.week.slice(5),
+              ph:w.phVals.length?n(w.phVals.reduce((s,v)=>s+v,0)/w.phVals.length):null,
+              ce:w.ceVals.length?n(w.ceVals.reduce((s,v)=>s+v,0)/w.ceVals.length):null,
+              n:w.phVals.length,
+            }));
+            if(!weekData.length) return <div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:12}}>Sin datos suficientes para comparar semanas</div>;
+            return(
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={weekData} margin={{top:5,right:20,left:0,bottom:0}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+                  <XAxis dataKey="week" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={35}/>
+                  <Tooltip contentStyle={{fontSize:11,borderRadius:8}}/>
+                  <Legend wrapperStyle={{fontSize:11}}/>
+                  <Bar dataKey="ph" name="pH prom" fill="#27ae60" radius={[4,4,0,0]}/>
+                  <Bar dataKey="ce" name="CE prom" fill="#2980b9" radius={[4,4,0,0]}/>
+                </BarChart>
+              </ResponsiveContainer>
+            );
+          })()}
+        </div>
+      )}
+
       {sub==="historial"&&<HistorialTable cr={cr} onDelete={onDelete} weeklyRangos={weeklyRangos}/>}
     </div>
   );
