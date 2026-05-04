@@ -130,36 +130,27 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
     .filter(r => !r.resolved && !r.dismissed && (r.tipo||"entrada")==="entrada")
     .map(r => {
       const c = CROPS[r.crop]; if(!c) return null;
-      const rng = getRangos(r.crop, "entrada", r.invernadero, weeklyRangos);
-      const ph = rng ? rng.ph : c.ph;
-      const ce = rng ? rng.ce : c.ce;
-      const ps = getStatus(r.ph, ph);
-      const cs = getStatus(r.ce, ce);
-      const s = ps==="danger"||cs==="danger" ? "danger" : ps==="warning"||cs==="warning" ? "warning" : null;
-      return s ? {...r, status:s, phStatus:ps, ceStatus:cs} : null;
-    })
-    .filter(Boolean)
-    .sort((a,b) => ({danger:0,warning:1}[a.status]-({danger:0,warning:1}[b.status]) || b.date?.localeCompare(a.date)));
+      const rng = getRangos(r.crop,"entrada",r.invernadero,weeklyRangos);
+      const ph = rng?rng.ph:c.ph; const ce = rng?rng.ce:c.ce;
+      const ps = getStatus(r.ph,ph); const cs = getStatus(r.ce,ce);
+      const s = ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":null;
+      return s?{...r,status:s,phStatus:ps,ceStatus:cs}:null;
+    }).filter(Boolean)
+    .sort((a,b)=>({danger:0,warning:1}[a.status]-({danger:0,warning:1}[b.status])||b.date?.localeCompare(a.date)));
 
-  const filtered = filter==="all" ? all : all.filter(r=>r.status===filter);
-
-  const resolverOne = async id => updateDoc(doc(db,"readings",id),{resolved:true,resolvedAt:new Date().toISOString()});
-  const dismissOne  = async id => updateDoc(doc(db,"readings",id),{dismissed:true});
-
-  const resolverTodas = async () => {
-    if(!window.confirm(`¿Marcar ${filtered.length} alertas como resueltas? Los datos se conservan para reportes.`)) return;
-    setWorking(true);
-    for(const r of filtered) await resolverOne(r.id).catch(()=>{});
-    setWorking(false);
+  const filtered = filter==="all"?all:all.filter(r=>r.status===filter);
+  const resolverOne = id => updateDoc(doc(db,"readings",id),{resolved:true,resolvedAt:new Date().toISOString()});
+  const dismissOne  = id => updateDoc(doc(db,"readings",id),{dismissed:true});
+  const resolverTodas = async()=>{
+    if(!window.confirm(`¿Marcar ${filtered.length} alertas como resueltas? Los datos se conservan.`))return;
+    setWorking(true);for(const r of filtered)await resolverOne(r.id).catch(()=>{});setWorking(false);
   };
-  const descartarTodas = async () => {
-    if(!window.confirm(`¿Descartar todas las ${all.length} alertas? Los datos se conservan.`)) return;
-    setWorking(true);
-    for(const r of all) await dismissOne(r.id).catch(()=>{});
-    setWorking(false);
+  const descartarTodas = async()=>{
+    if(!window.confirm(`¿Descartar todas las ${all.length} alertas? Los datos se conservan.`))return;
+    setWorking(true);for(const r of all)await dismissOne(r.id).catch(()=>{});setWorking(false);
   };
 
-  return (
+  return(
     <div>
       <div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1a5276"}}>
         💡 <strong>Resolver</strong> oculta la alerta pero conserva el dato en Reportes y gráficas. Solo las mediciones de <strong>Entrada</strong> generan alertas.
@@ -167,8 +158,7 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {[["all","Todas","#555"],["danger","Críticas","#e74c3c"],["warning","Advertencias","#f39c12"]].map(([v,l,c])=>(
-            <button key={v} onClick={()=>setFilter(v)}
-              style={{padding:"7px 16px",border:`1px solid ${filter===v?c:"#e0e0e0"}`,borderRadius:20,background:filter===v?c+"18":"transparent",color:filter===v?c:"#666",cursor:"pointer",fontSize:12,fontWeight:500}}>
+            <button key={v} onClick={()=>setFilter(v)} style={{padding:"7px 16px",border:`1px solid ${filter===v?c:"#e0e0e0"}`,borderRadius:20,background:filter===v?c+"18":"transparent",color:filter===v?c:"#666",cursor:"pointer",fontSize:12,fontWeight:500}}>
               {l} {v==="all"?all.length:all.filter(r=>r.status===v).length}
             </button>
           ))}
@@ -177,14 +167,8 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
       </div>
       {filtered.length>0&&(
         <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-          <button onClick={resolverTodas} disabled={working}
-            style={{padding:"7px 16px",border:"1px solid #27ae60",borderRadius:8,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>
-            ✓ Resolver mostradas ({filtered.length})
-          </button>
-          <button onClick={descartarTodas} disabled={working}
-            style={{padding:"7px 16px",border:"1px solid #f39c1244",borderRadius:8,background:"#fef9e7",color:"#f39c12",cursor:"pointer",fontSize:12,fontWeight:600}}>
-            ⊘ Descartar todas ({all.length})
-          </button>
+          <button onClick={resolverTodas} disabled={working} style={{padding:"7px 16px",border:"1px solid #27ae60",borderRadius:8,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>✓ Resolver mostradas ({filtered.length})</button>
+          <button onClick={descartarTodas} disabled={working} style={{padding:"7px 16px",border:"1px solid #f39c1244",borderRadius:8,background:"#fef9e7",color:"#f39c12",cursor:"pointer",fontSize:12,fontWeight:600}}>⊘ Descartar todas ({all.length})</button>
         </div>
       )}
       {!filtered.length&&(
@@ -195,7 +179,7 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
         </div>
       )}
       {filtered.map(r=>{
-        const c=CROPS[r.crop]; if(!c) return null;
+        const c=CROPS[r.crop]; if(!c)return null;
         const rng=getRangos(r.crop,"entrada",r.invernadero,weeklyRangos);
         const ph=rng?rng.ph:c.ph; const ce=rng?rng.ce:c.ce;
         return(
@@ -216,18 +200,15 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
                     <div style={{fontFamily:"'Courier New',monospace",fontWeight:700,fontSize:14,color:SC[r.ceStatus]}}>CE {r.ce}</div>
                     <div style={{fontSize:9,color:SC[r.ceStatus]}}>Rango: {ce.min}–{ce.max}</div>
                   </div>
+                  <span style={{background:(r.tipo||"entrada")==="salida"?"#eaf4fb":"#eafaf1",color:(r.tipo||"entrada")==="salida"?"#2980b9":"#27ae60",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:600,display:"flex",alignItems:"center"}}>
+                    {(r.tipo||"entrada")==="salida"?"⬆ Salida":"⬇ Entrada"}
+                  </span>
                 </div>
                 {r.notes&&<div style={{fontSize:12,color:"#e67e22",marginTop:6}}>📝 {r.notes}</div>}
               </div>
               <div style={{display:"flex",gap:6,flexShrink:0}}>
-                <button onClick={()=>resolverOne(r.id)}
-                  style={{padding:"6px 12px",background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:8,color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>
-                  ✓ Resolver
-                </button>
-                <button onClick={()=>dismissOne(r.id)}
-                  style={{padding:"6px 10px",background:"#f5f5f5",border:"none",borderRadius:8,color:"#aaa",cursor:"pointer",fontSize:12}}>
-                  ✕
-                </button>
+                <button onClick={()=>resolverOne(r.id)} style={{padding:"6px 12px",background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:8,color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>✓ Resolver</button>
+                <button onClick={()=>dismissOne(r.id)} style={{padding:"6px 10px",background:"#f5f5f5",border:"none",borderRadius:8,color:"#aaa",cursor:"pointer",fontSize:12}}>✕</button>
               </div>
             </div>
           </div>
@@ -237,10 +218,224 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
   );
 }
 
-function Reportes({readings,onDelete}){
+// ─── DRENAJE DASHBOARD ────────────────────────────────────────────────────────
+function DrenajeDashboard({readings, cropFilter, crop}) {
+  const drR = readings.filter(r=>r.crop===cropFilter&&(r.tipo||"entrada")==="salida"&&r.drenaje>0);
+  const entR = readings.filter(r=>r.crop===cropFilter&&(r.tipo||"entrada")==="entrada"&&r.volumenEntrada>0);
+  const drVals = drR.map(r=>r.drenaje);
+  const entVals = entR.map(r=>r.volumenEntrada);
+  const drAvg = drVals.length?n(drVals.reduce((s,v)=>s+v,0)/drVals.length):null;
+  const drMin = drVals.length?n(Math.min(...drVals)):null;
+  const drMax = drVals.length?n(Math.max(...drVals)):null;
+  const drTotal = n(drVals.reduce((s,v)=>s+v,0));
+  const entAvg = entVals.length?n(entVals.reduce((s,v)=>s+v,0)/entVals.length):null;
+  const entTotal = n(entVals.reduce((s,v)=>s+v,0));
+  const byDate={};
+  drR.forEach(r=>{const d=r.date.slice(5);if(!byDate[d])byDate[d]={date:d,drenaje:0,entrada:0};byDate[d].drenaje=n(byDate[d].drenaje+r.drenaje);});
+  entR.forEach(r=>{const d=r.date.slice(5);if(!byDate[d])byDate[d]={date:d,drenaje:0,entrada:0};byDate[d].entrada=n(byDate[d].entrada+(r.volumenEntrada||0));});
+  const chartData = Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date)).slice(-14).map(d=>({...d,pct:d.entrada>0?n((d.drenaje/d.entrada)*100,1):null}));
+  if(!drR.length) return(
+    <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"3rem",textAlign:"center"}}>
+      <div style={{fontSize:36,marginBottom:8}}>💧</div>
+      <div style={{fontWeight:600,color:"#555",marginBottom:4}}>Sin datos de drenaje</div>
+      <div style={{fontSize:12,color:"#aaa"}}>Los trabajadores deben seleccionar tipo "Salida" y llenar el volumen de drenaje</div>
+    </div>
+  );
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:14}}>
+        {[{l:"Promedio drenaje",v:drAvg!==null?`${drAvg}mL`:"—",c:"#2980b9"},{l:"Mínimo",v:drMin!==null?`${drMin}mL`:"—",c:"#27ae60"},{l:"Máximo",v:drMax!==null?`${drMax}mL`:"—",c:"#e74c3c"},{l:"Total drenaje",v:`${drTotal}mL`,c:"#8e44ad"},{l:"Promedio entrada",v:entAvg!==null?`${entAvg}mL`:"—",c:"#27ae60"},{l:"Total entrada",v:`${entTotal}mL`,c:"#27ae60"},{l:"Registros",v:drR.length,c:"#7f8c8d"}].map(k=>(
+          <div key={k.l} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+            <div style={{fontFamily:"'Courier New',monospace",fontSize:18,fontWeight:700,color:k.c}}>{k.v}</div>
+            <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{k.l}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px",marginBottom:12}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:4}}>💧 DRENAJE vs ENTRADA — {crop.emoji} {crop.name}</div>
+        <div style={{fontSize:11,color:"#888",marginBottom:12}}>Rango recomendado: 20–35% del volumen de entrada</div>
+        <ResponsiveContainer width="100%" height={230}>
+          <BarChart data={chartData} margin={{top:5,right:20,left:0,bottom:0}}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+            <XAxis dataKey="date" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+            <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={50} unit="mL"/>
+            <Tooltip formatter={(v,name)=>[`${v}mL`,name]} contentStyle={{fontSize:11,borderRadius:8}}/>
+            <Legend wrapperStyle={{fontSize:11}}/>
+            <Bar dataKey="entrada" name="Entrada(mL)" fill="#a9dfb4" radius={[4,4,0,0]}/>
+            <Bar dataKey="drenaje" name="Drenaje(mL)" fill="#2980b9" radius={[4,4,0,0]}/>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      {chartData.some(d=>d.pct!==null)&&(
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>📊 % DRENAJE / ENTRADA POR DÍA</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={chartData.filter(d=>d.pct!==null)} margin={{top:5,right:30,left:0,bottom:0}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
+              <XAxis dataKey="date" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
+              <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={35} unit="%"/>
+              <Tooltip formatter={v=>[`${v}%`,"% drenaje"]} contentStyle={{fontSize:11,borderRadius:8}}/>
+              <ReferenceLine y={20} stroke="#27ae60" strokeDasharray="4 2"/>
+              <ReferenceLine y={35} stroke="#f39c12" strokeDasharray="4 2"/>
+              <Bar dataKey="pct" name="% drenaje" radius={[4,4,0,0]}>
+                {chartData.filter(d=>d.pct!==null).map((d,i)=>(<Cell key={i} fill={d.pct>=20&&d.pct<=35?"#27ae60":d.pct<20?"#e74c3c":"#f39c12"}/>))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          <div style={{display:"flex",gap:12,marginTop:6,fontSize:11,color:"#888"}}>
+            <span><span style={{display:"inline-block",width:10,height:10,background:"#27ae60",borderRadius:2,marginRight:4}}/>20–35% óptimo</span>
+            <span><span style={{display:"inline-block",width:10,height:10,background:"#f39c12",borderRadius:2,marginRight:4}}/>{">"} 35% exceso</span>
+            <span><span style={{display:"inline-block",width:10,height:10,background:"#e74c3c",borderRadius:2,marginRight:4}}/>{"<"} 20% insuficiente</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── HISTORIAL TABLE ─────────────────────────────────────────────────────────
+function HistorialTable({cr, onDelete, weeklyRangos={}}) {
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const startEdit = r => { setEditId(r.id); setEditForm({ph:r.ph,ce:r.ce,volumenEntrada:r.volumenEntrada||"",drenaje:r.drenaje||"",notes:r.notes||"",zone:r.zone||"",bandeja:r.bandeja||""}); };
+  const saveEdit = async()=>{
+    setSaving(true);
+    try{
+      await updateDoc(doc(db,"readings",editId),{ph:parseFloat(editForm.ph)||0,ce:parseFloat(editForm.ce)||0,volumenEntrada:editForm.volumenEntrada?parseFloat(editForm.volumenEntrada):null,drenaje:editForm.drenaje?parseFloat(editForm.drenaje):null,notes:editForm.notes||"",zone:editForm.zone||"",bandeja:editForm.bandeja||""});
+      setEditId(null);
+    }catch(e){alert("Error: "+e.message);}
+    setSaving(false);
+  };
+  const IS = {padding:"4px 6px",border:"1px solid #ccc",borderRadius:6,fontSize:12,background:"#fff",color:"#111",WebkitTextFillColor:"#111",colorScheme:"light",fontFamily:"'Courier New',monospace"};
+  return(
+    <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+      {editId&&<div style={{background:"#fff3cd",border:"1px solid #ffc10744",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#856404",display:"flex",alignItems:"center",gap:10}}>✎ Editando registro — corrige y guarda<button onClick={()=>setEditId(null)} style={{marginLeft:"auto",background:"transparent",border:"none",cursor:"pointer",color:"#aaa",fontSize:14}}>✕</button></div>}
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>
+            {["","Fecha","Tipo","Inv.","Zona","Bandeja","pH","CE","Vol.Ent","Drenaje","Estado","Trabajador",""].map((h,i)=>(
+              <th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {[...cr].reverse().map((r,i)=>{
+              const c=CROPS[r.crop]; if(!c)return null;
+              const rng=getRangos(r.crop,r.tipo||"entrada",r.invernadero||"",weeklyRangos||{});
+              const ps=getStatus(r.ph,rng?rng.ph:c.ph); const cs=getStatus(r.ce,rng?rng.ce:c.ce);
+              const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";
+              const isE=editId===r.id;
+              return(
+                <tr key={r.id||i} style={{borderBottom:`1px solid ${isE?"#ffc10744":"#fafafa"}`,background:isE?"#fffdf0":"transparent"}}>
+                  <td style={{padding:"6px 8px"}}>{r.photoURL&&<img src={r.photoURL} alt="" style={{width:26,height:26,borderRadius:4,objectFit:"cover"}}/>}</td>
+                  <td style={{padding:"6px 8px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#999",whiteSpace:"nowrap"}}>{r.date}</td>
+                  <td style={{padding:"6px 8px"}}><span style={{background:(r.tipo||"entrada")==="salida"?"#eaf4fb":"#eafaf1",color:(r.tipo||"entrada")==="salida"?"#2980b9":"#27ae60",borderRadius:8,padding:"1px 6px",fontSize:10,fontWeight:600}}>{(r.tipo||"entrada")==="salida"?"⬆ Sal":"⬇ Ent"}</span></td>
+                  <td style={{padding:"6px 8px",fontSize:11,color:"#c0392b",fontWeight:600}}>{r.invernadero||"—"}</td>
+                  <td style={{padding:"6px 8px",minWidth:60}}>{isE?<input value={editForm.zone} onChange={e=>setEditForm(p=>({...p,zone:e.target.value}))} style={{...IS,width:65}}/>:r.zone}</td>
+                  <td style={{padding:"6px 8px",minWidth:70}}>{isE?<input value={editForm.bandeja} onChange={e=>setEditForm(p=>({...p,bandeja:e.target.value}))} style={{...IS,width:70}}/>:r.bandeja||"—"}</td>
+                  <td style={{padding:"6px 8px",minWidth:55}}>{isE?<input type="number" step="0.01" value={editForm.ph} onChange={e=>setEditForm(p=>({...p,ph:e.target.value}))} style={{...IS,width:55,fontWeight:700}}/>:<span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[ps]}}>{r.ph}</span>}</td>
+                  <td style={{padding:"6px 8px",minWidth:55}}>{isE?<input type="number" step="0.01" value={editForm.ce} onChange={e=>setEditForm(p=>({...p,ce:e.target.value}))} style={{...IS,width:55,fontWeight:700}}/>:<span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</span>}</td>
+                  <td style={{padding:"6px 8px",minWidth:70}}>{isE?<input type="number" step="1" value={editForm.volumenEntrada} onChange={e=>setEditForm(p=>({...p,volumenEntrada:e.target.value}))} style={{...IS,width:65}} placeholder="mL"/>:<span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#27ae60"}}>{r.volumenEntrada?`${r.volumenEntrada}mL`:"—"}</span>}</td>
+                  <td style={{padding:"6px 8px",minWidth:70}}>{isE?<input type="number" step="1" value={editForm.drenaje} onChange={e=>setEditForm(p=>({...p,drenaje:e.target.value}))} style={{...IS,width:65}} placeholder="mL"/>:<span style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#2980b9"}}>{r.drenaje?`${r.drenaje}mL`:"—"}</span>}</td>
+                  <td style={{padding:"6px 8px"}}><Badge status={s} small/></td>
+                  <td style={{padding:"6px 8px",color:"#888",whiteSpace:"nowrap"}}>{r.worker}</td>
+                  <td style={{padding:"6px 8px"}}>
+                    {isE?<div style={{display:"flex",gap:4}}><button onClick={saveEdit} disabled={saving} style={{background:"#27ae60",color:"#fff",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:700}}>{saving?"...":"✓ Guardar"}</button><button onClick={()=>setEditId(null)} style={{background:"#f0f0f0",color:"#666",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕</button></div>
+                    :<div style={{display:"flex",gap:4}}><button onClick={()=>startEdit(r)} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button><button onClick={()=>{if(window.confirm("¿Eliminar?"))onDelete(r.id);}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button></div>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── RANGOS SEMANALES ─────────────────────────────────────────────────────────
+function RangosSemanales() {
+  const [rangos, setRangos] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","rangos_semanales"),snap=>{if(snap.exists())setRangos(snap.data());});
+    return()=>unsub();
+  },[]);
+  const filas=[];
+  Object.entries(CROPS).forEach(([cropKey,crop])=>{
+    const tipos=cropKey==="zarzamora"?["entrada"]:["entrada","salida"];
+    const invernaderos=crop.invernaderos||[null];
+    invernaderos.forEach(inv=>tipos.forEach(tipo=>{
+      const key=inv?`${cropKey}_${inv.replace(" ","")}_${tipo}`:`${cropKey}_${tipo}`;
+      const defRng=tipo==="entrada"?crop.entrada:crop.salida;
+      filas.push({cropKey,crop,inv,tipo,key,defRng});
+    }));
+  });
+  const getV=(key,field)=>rangos[key]?.[field]??"";
+  const setV=(key,field,val)=>setRangos(p=>({...p,[key]:{...(p[key]||{}),[field]:parseFloat(val)||0}}));
+  const guardar=async()=>{setSaving(true);try{await setDoc(doc(db,"config","rangos_semanales"),rangos);setSaved(true);setTimeout(()=>setSaved(false),3000);}catch(e){alert("Error: "+e.message);}setSaving(false);};
+  const resetDefaults=async()=>{if(!window.confirm("¿Resetear a valores de literatura?"))return;const d={};filas.forEach(({key,defRng})=>{d[key]={phMin:defRng.ph.min,phMax:defRng.ph.max,ceMin:defRng.ce.min,ceMax:defRng.ce.max};});setRangos(d);await setDoc(doc(db,"config","rangos_semanales"),d);};
+  const IS2={width:58,padding:"5px 6px",border:"1.5px solid #ddd",borderRadius:6,fontSize:12,textAlign:"center",background:"#fff",color:"#111",WebkitTextFillColor:"#111",colorScheme:"light",fontFamily:"'Courier New',monospace"};
+  return(
+    <div>
+      {saved&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:"10px 14px",marginBottom:14,color:"#27ae60",fontWeight:600,fontSize:13}}>✓ Rangos guardados — se aplican inmediatamente en alertas y reportes</div>}
+      <div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#1a5276"}}>
+        📋 Configura los rangos de pH y CE para <strong>esta semana</strong>. Si dejas vacío se usan los valores de literatura.
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:600}}>
+          <thead>
+            <tr style={{background:"#f9f9f9",borderBottom:"2px solid #e0e0e0"}}>
+              <th style={{padding:"10px 12px",textAlign:"left",color:"#555",fontWeight:600,fontSize:11}}>Cultivo</th>
+              <th style={{padding:"10px 12px",textAlign:"left",color:"#555",fontWeight:600,fontSize:11}}>Invernadero</th>
+              <th style={{padding:"10px 12px",textAlign:"left",color:"#555",fontWeight:600,fontSize:11}}>Tipo</th>
+              <th style={{padding:"10px 12px",textAlign:"center",color:"#27ae60",fontWeight:600,fontSize:11}} colSpan={2}>pH Min / Max</th>
+              <th style={{padding:"10px 12px",textAlign:"center",color:"#2980b9",fontWeight:600,fontSize:11}} colSpan={2}>CE Min / Max</th>
+              <th style={{padding:"10px 12px",color:"#aaa",fontWeight:400,fontSize:11}}>Literatura</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map(({cropKey,crop,inv,tipo,key,defRng})=>(
+              <tr key={key} style={{borderBottom:"1px solid #f5f5f5"}}>
+                <td style={{padding:"8px 12px"}}><span style={{color:crop.color,fontWeight:600}}>{crop.emoji} {crop.name}</span></td>
+                <td style={{padding:"8px 12px",color:"#c0392b",fontWeight:600,fontSize:12}}>{inv||"—"}</td>
+                <td style={{padding:"8px 12px"}}><span style={{background:tipo==="entrada"?"#eafaf1":"#eaf4fb",color:tipo==="entrada"?"#27ae60":"#2980b9",borderRadius:8,padding:"2px 8px",fontSize:11,fontWeight:600}}>{tipo==="entrada"?"⬇ Entrada":"⬆ Salida"}</span></td>
+                <td style={{padding:"6px 8px",textAlign:"center"}}><input type="number" step="0.1" value={getV(key,"phMin")} onChange={e=>setV(key,"phMin",e.target.value)} placeholder={defRng.ph.min} style={{...IS2,borderColor:"#27ae6066"}}/></td>
+                <td style={{padding:"6px 8px",textAlign:"center"}}><input type="number" step="0.1" value={getV(key,"phMax")} onChange={e=>setV(key,"phMax",e.target.value)} placeholder={defRng.ph.max} style={{...IS2,borderColor:"#27ae6066"}}/></td>
+                <td style={{padding:"6px 8px",textAlign:"center"}}><input type="number" step="0.1" value={getV(key,"ceMin")} onChange={e=>setV(key,"ceMin",e.target.value)} placeholder={defRng.ce.min} style={{...IS2,borderColor:"#2980b966"}}/></td>
+                <td style={{padding:"6px 8px",textAlign:"center"}}><input type="number" step="0.1" value={getV(key,"ceMax")} onChange={e=>setV(key,"ceMax",e.target.value)} placeholder={defRng.ce.max} style={{...IS2,borderColor:"#2980b966"}}/></td>
+                <td style={{padding:"8px 12px",fontSize:11,color:"#aaa"}}>pH {defRng.ph.min}–{defRng.ph.max} · CE {defRng.ce.min}–{defRng.ce.max}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
+        <button onClick={guardar} disabled={saving} style={{padding:"10px 28px",background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:saving?"not-allowed":"pointer",fontWeight:700,fontSize:13}}>{saving?"Guardando...":"💾 Guardar rangos"}</button>
+        <button onClick={resetDefaults} style={{padding:"10px 18px",border:"1px solid #e0e0e0",borderRadius:8,background:"#fff",color:"#888",cursor:"pointer",fontSize:13}}>🔄 Resetear a literatura</button>
+      </div>
+    </div>
+  );
+}
+
+
+function Reportes({readings,onDelete,weeklyRangos={}}){
+  const [showReset,setShowReset]=useState(false);
+  const [resetting,setResetting]=useState(false);
+  const resetReadings=async()=>{
+    if(!window.confirm("⚠️ Eliminará PERMANENTEMENTE todas las mediciones. ¿Seguro?"))return;
+    if(!window.confirm("Última confirmación — no se puede deshacer."))return;
+    setResetting(true);
+    try{const snap=await import("firebase/firestore").then(({getDocs,collection:col})=>getDocs(col(db,"readings")));for(const d of snap.docs)await import("firebase/firestore").then(({deleteDoc:del,doc:dc})=>del(dc(db,"readings",d.id)));setShowReset(false);}
+    catch(e){alert("Error: "+e.message);}
+    setResetting(false);
+  };
   const [cropFilter,setCropFilter]=useState("jitomate");
   const [metric,setMetric]=useState("ph");
   const [sub,setSub]=useState("tendencia");
+  const [invFilter,setInvFilter]=useState("all");
+  const [zonaFilter,setZonaFilter]=useState("all");
   const crop=CROPS[cropFilter];
   const cr=readings.filter(r=>r.crop===cropFilter);
   const chartData=useMemo(()=>{const g={};cr.sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{if(!g[r.date])g[r.date]={date:r.date,phVals:[],ceVals:[]};g[r.date].phVals.push(r.ph);g[r.date].ceVals.push(r.ce);});return Object.values(g).map(d=>({date:d.date.slice(5),ph:n(d.phVals.reduce((s,v)=>s+v,0)/d.phVals.length),ce:n(d.ceVals.reduce((s,v)=>s+v,0)/d.ceVals.length)}));},[readings,cropFilter]);
@@ -298,7 +493,9 @@ function Reportes({readings,onDelete}){
           )}
         </div>
       )}
-      {sub==="historial"&&(
+      {sub==="drenaje"&&<DrenajeDashboard readings={cr} cropFilter={cropFilter} crop={crop}/>}
+      {sub==="historial"&&<HistorialTable cr={cr} onDelete={onDelete} weeklyRangos={weeklyRangos}/>}
+      {sub==="historial_OLD"&&(
         <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
@@ -992,13 +1189,15 @@ const NAV=[
   {id:"trabajadores",label:"Equipo",icon:"◎"},
   {id:"suelo", label:"Análisis de Suelo", icon:"🌍"},
   {id:"ventas", label:"Ventas", icon:"💰"},
+  {id:"rangos", label:"Rangos", icon:"🎯"},
   {id:"usuarios", label:"Usuarios", icon:"👥"},
 ];
-const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas",usuarios:"Gestión de usuarios"};
+const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas",rangos:"Rangos semanales pH/CE",usuarios:"Gestión de usuarios"};
 
 export default function App(){
   const [page,setPage]=useState("resumen");
   const [readings,setReadings]=useState([]);
+  const [weeklyRangos,setWeeklyRangos]=useState({});
   const [loading,setLoading]=useState(true);
   const [authLoading,setAuthLoading]=useState(true);
   const [currentUser,setCurrentUser]=useState(null);
@@ -1032,7 +1231,8 @@ export default function App(){
   useEffect(()=>{
     const q=query(collection(db,"readings"),orderBy("createdAt","desc"));
     const unsub=onSnapshot(q,snap=>{setReadings(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);},()=>setLoading(false));
-    return()=>unsub();
+    const rangosUnsub=onSnapshot(doc(db,"config","rangos_semanales"),snap=>{if(snap.exists())setWeeklyRangos(snap.data());});
+    return()=>{unsub();rangosUnsub();};
   },[]);
 
   const handleDelete=async id=>{try{await deleteDoc(doc(db,"readings",id));}catch{alert("Error al eliminar.");}};
@@ -1050,7 +1250,7 @@ export default function App(){
   // Data loading for admin
   if(loading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f4f5f7"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,color:"#27ae60",fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#aaa",marginTop:4}}>Cargando...</div></div></div>;
 
-  const SECTION={suelo:<AnalisisSuelo />,resumen:<Resumen readings={readings} onDelete={handleDelete}/>,alertas:<Alertas readings={readings} onDelete={handleDelete}/>,ia:<DiagnosticoIA/>,reportes:<Reportes readings={readings} onDelete={handleDelete}/>,formulador:<Formulador/>,incidencias:<IncidenciasAdmin/>,tareas:<TareasAdmin/>,instrucciones:<InstruccionesAdmin/>,inventario:<Inventario/>,trabajadores:<Trabajadores readings={readings}/>,ventas:<Ventas/>,usuarios:<UsuariosAdmin/>};
+  const SECTION={suelo:<AnalisisSuelo />,resumen:<Resumen readings={readings} onDelete={handleDelete}/>,alertas:<Alertas readings={readings} onDelete={handleDelete} weeklyRangos={weeklyRangos}/>,ia:<DiagnosticoIA/>,reportes:<Reportes readings={readings} onDelete={handleDelete} weeklyRangos={weeklyRangos}/>,formulador:<Formulador/>,incidencias:<IncidenciasAdmin/>,tareas:<TareasAdmin/>,instrucciones:<InstruccionesAdmin/>,inventario:<Inventario/>,trabajadores:<Trabajadores readings={readings}/>,ventas:<Ventas/>,rangos:<RangosSemanales/>,usuarios:<UsuariosAdmin/>};
 
   return(
     <div style={{display:"flex",minHeight:"100vh",background:"#f4f5f7",fontFamily:"'Georgia',serif"}}>
