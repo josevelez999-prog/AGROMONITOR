@@ -42,6 +42,17 @@ const FERTS_INIT = [
 
 const n=(v,d=2)=>Number(parseFloat(v||0).toFixed(d));
 const getStatus=(v,r)=>{if(v<r.min||v>r.max)return"danger";const m=(r.max-r.min)*0.15;return(v<r.min+m||v>r.max-m)?"warning":"ok";};
+const getRangos=(crop,tipo,invernadero,weeklyRangos)=>{
+  const c=CROPS[crop]; if(!c) return null;
+  if(weeklyRangos){
+    const inv=(invernadero||"").replace(" ","");
+    const key=inv?`${crop}_${inv}_${tipo}`:`${crop}_${tipo}`;
+    const wr=weeklyRangos[key];
+    if(wr&&wr.phMin&&wr.phMax&&wr.ceMin&&wr.ceMax)
+      return {ph:{min:wr.phMin,max:wr.phMax},ce:{min:wr.ceMin,max:wr.ceMax}};
+  }
+  return tipo==="salida"?c.salida:c.entrada;
+};
 const SC={ok:"#27ae60",warning:"#f39c12",danger:"#e74c3c"};
 const SB={ok:"#eafaf1",warning:"#fef9e7",danger:"#fdedec"};
 const SL={ok:"OK",warning:"Alerta",danger:"Crítico"};
