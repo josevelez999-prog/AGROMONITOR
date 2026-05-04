@@ -82,7 +82,7 @@ function exportCSV(readings){const h=["Fecha","Hora","Cultivo","Zona","pH","CE",
 
 // ─── RESUMEN ──────────────────────────────────────────────────────────────────
 function Resumen({readings,onDelete}){
-  const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,weeklyRangos);const ph=rng?rng.ph:c.ph;const ce=rng?rng.ce:c.ce;return getStatus(r.ph,ph)==="danger"||getStatus(r.ce,ce)==="danger";});
+  const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,{});return getStatus(r.ph,rng.ph)==="danger"||getStatus(r.ce,rng.ce)==="danger";});
   const warn=readings.filter(r=>{const c=CROPS[r.crop];if(!c)return false;const p=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return(p==="warning"||cs==="warning")&&p!=="danger"&&cs!=="danger";});
   const latest=Object.keys(CROPS).map(k=>{const recs=readings.filter(r=>r.crop===k).sort((a,b)=>b.date.localeCompare(a.date));return{key:k,...recs[0]};}).filter(r=>r.ph);
   const byW={};readings.forEach(r=>{byW[r.worker]=(byW[r.worker]||0)+1;});
@@ -525,29 +525,6 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
       )}
       {sub==="drenaje"&&<DrenajeDashboard readings={cr} cropFilter={cropFilter} crop={crop}/>}
       {sub==="historial"&&<HistorialTable cr={cr} onDelete={onDelete} weeklyRangos={weeklyRangos}/>}
-      {sub==="historial_OLD"&&(
-        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-              <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>{["","Fecha","Zona","pH","CE","Estado","Trabajador","Notas",""].map((h,i)=><th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11}}>{h}</th>)}</tr></thead>
-              <tbody>{[...cr].reverse().map((r,i)=>{const c=CROPS[r.crop];const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);const s=ps==="danger"||cs==="danger"?"danger":ps==="warning"||cs==="warning"?"warning":"ok";return(
-                <tr key={r.id||i} style={{borderBottom:"1px solid #fafafa"}}>
-                  <td style={{padding:"8px 10px"}}>{r.photoURL&&<img src={r.photoURL} alt="" style={{width:30,height:30,borderRadius:5,objectFit:"cover"}}/>}</td>
-                  <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontSize:11,color:"#999"}}>{r.date}</td>
-                  <td style={{padding:"8px 10px",color:"#888"}}>{r.zone}</td>
-                  <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[ps]}}>{r.ph}</td>
-                  <td style={{padding:"8px 10px",fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</td>
-                  <td style={{padding:"8px 10px"}}><Badge status={s} small/></td>
-                  <td style={{padding:"8px 10px",color:"#888"}}>{r.worker}</td>
-                  <td style={{padding:"8px 10px",color:"#e67e22",fontSize:11}}>{r.notes||"—"}</td>
-                  <td style={{padding:"8px 10px"}}><button onClick={()=>{if(window.confirm("¿Eliminar?"))onDelete(r.id);}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button></td>
-                </tr>
-              );})}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1266,7 +1243,7 @@ export default function App(){
   },[]);
 
   const handleDelete=async id=>{try{await deleteDoc(doc(db,"readings",id));}catch{alert("Error al eliminar.");}};
-  const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,weeklyRangos);const ph=rng?rng.ph:c.ph;const ce=rng?rng.ce:c.ce;return getStatus(r.ph,ph)==="danger"||getStatus(r.ce,ce)==="danger";});
+  const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,{});return getStatus(r.ph,rng.ph)==="danger"||getStatus(r.ce,rng.ce)==="danger";});
 
   // Auth loading
   if(authLoading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(160deg,#0f1e2e,#1a3a2a)"}}><div style={{textAlign:"center",color:"#fff"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#4ecb8d",marginTop:4}}>Cargando...</div></div></div>;
