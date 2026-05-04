@@ -491,8 +491,15 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
   const [sub,setSub]=useState("tendencia");
   const [invFilter,setInvFilter]=useState("all");
   const [zonaFilter,setZonaFilter]=useState("all");
+  const [tipoFilter,setTipoFilter]=useState("all");
   const crop=CROPS[cropFilter];
-  const cr=readings.filter(r=>r.crop===cropFilter);
+  const cr=readings.filter(r=>{
+    if(r.crop!==cropFilter) return false;
+    if(tipoFilter!=="all" && (r.tipo||"entrada")!==tipoFilter) return false;
+    if(invFilter!=="all" && r.invernadero!==invFilter) return false;
+    if(zonaFilter!=="all" && r.zone!==zonaFilter) return false;
+    return true;
+  });
   const chartData=useMemo(()=>{const g={};cr.sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{if(!g[r.date])g[r.date]={date:r.date,phVals:[],ceVals:[]};g[r.date].phVals.push(r.ph);g[r.date].ceVals.push(r.ce);});return Object.values(g).map(d=>({date:d.date.slice(5),ph:n(d.phVals.reduce((s,v)=>s+v,0)/d.phVals.length),ce:n(d.ceVals.reduce((s,v)=>s+v,0)/d.ceVals.length)}));},[readings,cropFilter]);
   const compareData=useMemo(()=>{const w={};cr.forEach(r=>{const d=new Date(r.date);const wk=`S${Math.ceil(d.getDate()/7)}-${d.getMonth()+1}`;if(!w[wk])w[wk]={week:wk,phVals:[],ceVals:[]};w[wk].phVals.push(r.ph);w[wk].ceVals.push(r.ce);});return Object.values(w).map(wk=>({week:wk.week,ph:n(wk.phVals.reduce((s,v)=>s+v,0)/wk.phVals.length),ce:n(wk.ceVals.reduce((s,v)=>s+v,0)/wk.ceVals.length),registros:wk.phVals.length}));},[readings,cropFilter]);
   const stats=useMemo(()=>{const vals=cr.map(r=>r[metric]);if(!vals.length)return{avg:"—",min:"—",max:"—",out:0,total:0};return{avg:n(vals.reduce((s,v)=>s+v,0)/vals.length),min:n(Math.min(...vals)),max:n(Math.max(...vals)),out:vals.filter(v=>metric==="ph"?(v<crop.ph.min||v>crop.ph.max):(v<crop.ce.min||v>crop.ce.max)).length,total:vals.length};},[readings,cropFilter,metric]);
@@ -525,6 +532,27 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
           <button key={k} onClick={()=>setSub(k)}
             style={{padding:"7px 10px",border:"none",borderRadius:8,background:sub===k?"#27ae60":"transparent",color:sub===k?"#fff":"#888",cursor:"pointer",fontSize:11,fontWeight:sub===k?600:400,whiteSpace:"nowrap"}}>
             {l}
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+        {[["all","Todos"],["entrada","⬇ Entrada"],["salida","⬆ Salida"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setTipoFilter(v)} style={{padding:"5px 12px",border:`1px solid ${tipoFilter===v?"#555":"#e0e0e0"}`,borderRadius:20,background:tipoFilter===v?"#55555518":"transparent",color:tipoFilter===v?"#333":"#777",cursor:"pointer",fontSize:11,fontWeight:tipoFilter===v?700:400}}>{l}</button>
+        ))}
+      </div>
+      {CROPS[cropFilter]?.invernaderos&&(
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+          {["all",...CROPS[cropFilter].invernaderos].map(inv=>(
+            <button key={inv} onClick={()=>setInvFilter(inv)} style={{padding:"5px 12px",border:`1px solid ${invFilter===inv?"#c0392b":"#e0e0e0"}`,borderRadius:20,background:invFilter===inv?"#c0392b18":"transparent",color:invFilter===inv?"#c0392b":"#777",cursor:"pointer",fontSize:11,fontWeight:invFilter===inv?700:400}}>
+              {inv==="all"?"Todos":inv}
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+        {["all","Zona 1","Zona 2","Zona 3","Zona 4"].map(z=>(
+          <button key={z} onClick={()=>setZonaFilter(z)} style={{padding:"5px 12px",border:`1px solid ${zonaFilter===z?"#333":"#e0e0e0"}`,borderRadius:20,background:zonaFilter===z?"#33333318":"transparent",color:zonaFilter===z?"#333":"#777",cursor:"pointer",fontSize:11,fontWeight:zonaFilter===z?700:400}}>
+            {z==="all"?"Todas zonas":z}
           </button>
         ))}
       </div>
