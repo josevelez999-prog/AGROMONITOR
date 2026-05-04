@@ -10,10 +10,28 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import AnalisisSuelo from "./SueloAnalisis";
 
 const CROPS = {
-  jitomate:  { name:"Jitomate",  emoji:"🍅", color:"#c0392b", ph:{min:5.5,max:6.5}, ce:{min:2.5,max:4.0} },
-  fresa:     { name:"Fresa",     emoji:"🍓", color:"#e74c3c", ph:{min:5.5,max:6.5}, ce:{min:1.0,max:2.0} },
-  arandano:  { name:"Arándano",  emoji:"🫐", color:"#2980b9", ph:{min:4.5,max:5.5}, ce:{min:1.0,max:2.0} },
-  zarzamora: { name:"Zarzamora", emoji:"🫐", color:"#8e44ad", ph:{min:5.5,max:6.5}, ce:{min:1.5,max:2.5} },
+  jitomate:  { name:"Jitomate",  emoji:"🍅", color:"#c0392b",
+    ph:{min:5.5,max:6.2}, ce:{min:2.5,max:4.0},
+    entrada:{ph:{min:5.5,max:6.2},ce:{min:2.5,max:4.0}},
+    salida: {ph:{min:5.8,max:6.5},ce:{min:3.5,max:6.0}},
+    invernaderos:["INV 2","INV 3","INV 5","INV 6"],
+  },
+  fresa:     { name:"Fresa",     emoji:"🍓", color:"#e74c3c",
+    ph:{min:5.5,max:6.5}, ce:{min:1.0,max:2.0},
+    entrada:{ph:{min:5.5,max:6.5},ce:{min:1.0,max:2.0}},
+    salida: {ph:{min:5.8,max:6.8},ce:{min:1.5,max:2.5}},
+  },
+  arandano:  { name:"Arándano",  emoji:"🫐", color:"#2980b9",
+    ph:{min:4.5,max:5.5}, ce:{min:1.0,max:2.0},
+    entrada:{ph:{min:4.5,max:5.5},ce:{min:1.0,max:2.0}},
+    salida: {ph:{min:4.8,max:5.8},ce:{min:1.5,max:2.5}},
+  },
+  zarzamora: { name:"Zarzamora", emoji:"🫐", color:"#8e44ad",
+    ph:{min:5.5,max:6.5}, ce:{min:1.5,max:2.5},
+    entrada:{ph:{min:5.5,max:6.5},ce:{min:1.5,max:2.5}},
+    salida: {ph:{min:5.8,max:6.8},ce:{min:2.0,max:3.5}},
+    noDrenaje:true,
+  },
 };
 const ETAPAS = ["Vegetativo","Floración","Fructificación","Post-cosecha"];
 const ANIONS  = ["NO3","H2PO4","SO4","HCO3","Cl"];
@@ -51,7 +69,8 @@ const getRangos=(crop,tipo,invernadero,weeklyRangos)=>{
     if(wr&&wr.phMin&&wr.phMax&&wr.ceMin&&wr.ceMax)
       return {ph:{min:wr.phMin,max:wr.phMax},ce:{min:wr.ceMin,max:wr.ceMax}};
   }
-  return tipo==="salida"?c.salida:c.entrada;
+  if(tipo==="salida") return c.salida||{ph:c.ph,ce:c.ce};
+  return c.entrada||{ph:c.ph,ce:c.ce};
 };
 const SC={ok:"#27ae60",warning:"#f39c12",danger:"#e74c3c"};
 const SB={ok:"#eafaf1",warning:"#fef9e7",danger:"#fdedec"};
