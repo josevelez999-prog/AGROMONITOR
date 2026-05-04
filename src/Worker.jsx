@@ -611,6 +611,7 @@ function RegistroCosecha({ worker }) {
           {formVL.loteId&&(()=>{
             const lote=getLote(formVL.loteId);
             const crop=CROPS[lote?.crop];
+            if(!lote) return null;
             return (
               <>
                 <div style={{background:"#fff",border:"2px solid #2980b9",borderRadius:12,padding:16,marginBottom:16,textAlign:"center"}}>

@@ -1305,6 +1305,18 @@ const NAV=[
 ];
 const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas",rangos:"Rangos semanales pH/CE",usuarios:"Gestión de usuarios"};
 
+// ─── BLOQUEADO ────────────────────────────────────────────────────────────────
+function Bloqueado({nombre="esta sección"}) {
+  return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"4rem 2rem",textAlign:"center"}}>
+      <div style={{fontSize:48,marginBottom:16}}>🔒</div>
+      <div style={{fontSize:18,fontWeight:700,color:"#555",marginBottom:8}}>Acceso restringido</div>
+      <div style={{fontSize:13,color:"#aaa"}}>No tienes permiso para ver {nombre}.<br/>Contacta al administrador.</div>
+    </div>
+  );
+}
+
+
 export default function App(){
   const [page,setPage]=useState("resumen");
   const [readings,setReadings]=useState([]);
@@ -1313,6 +1325,7 @@ export default function App(){
   const [authLoading,setAuthLoading]=useState(true);
   const [currentUser,setCurrentUser]=useState(null);
   const [userRole,setUserRole]=useState(null);
+  const esObservador = userRole==="observador";
 
   useEffect(()=>{
     const unsub = onAuthStateChanged(auth, async user => {
@@ -1361,7 +1374,22 @@ export default function App(){
   // Data loading for admin
   if(loading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f4f5f7"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,color:"#27ae60",fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#aaa",marginTop:4}}>Cargando...</div></div></div>;
 
-  const SECTION={suelo:<AnalisisSuelo />,resumen:<Resumen readings={readings} onDelete={handleDelete}/>,alertas:<Alertas readings={readings} onDelete={handleDelete} weeklyRangos={weeklyRangos}/>,ia:<DiagnosticoIA/>,reportes:<Reportes readings={readings} onDelete={handleDelete} weeklyRangos={weeklyRangos}/>,formulador:<Formulador/>,incidencias:<IncidenciasAdmin/>,tareas:<TareasAdmin/>,instrucciones:<InstruccionesAdmin/>,inventario:<Inventario/>,trabajadores:<Trabajadores readings={readings}/>,ventas:<Ventas/>,rangos:<RangosSemanales/>,usuarios:<UsuariosAdmin/>};
+  const SECTION={
+    suelo:       <AnalisisSuelo/>,
+    resumen:     <Resumen readings={readings} onDelete={esObservador?()=>{}:handleDelete}/>,
+    alertas:     <Alertas readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
+    ia:          <DiagnosticoIA/>,
+    reportes:    <Reportes readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
+    formulador:  <Formulador/>,
+    incidencias: <IncidenciasAdmin/>,
+    tareas:      <TareasAdmin/>,
+    instrucciones:<InstruccionesAdmin/>,
+    inventario:  <Inventario/>,
+    trabajadores:<Trabajadores readings={readings}/>,
+    ventas:      <Ventas readOnly={esObservador}/>,
+    rangos:      esObservador?<Bloqueado nombre="los rangos"/>:<RangosSemanales/>,
+    usuarios:    esObservador?<Bloqueado nombre="la gestión de usuarios"/>:<UsuariosAdmin/>,
+  };
 
   return(
     <div style={{display:"flex",minHeight:"100vh",background:"#f4f5f7",fontFamily:"'Georgia',serif"}}>
