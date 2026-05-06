@@ -553,7 +553,9 @@ function ReportesVentas() {
   // ── KPIs globales ──
   const totalIngresos = ventasFilt.reduce((s,v)=>s+v.totalVenta,0);
   const totalKgVendidos = ventasFilt.reduce((s,v)=>s+v.kgVendidos,0);
-  const totalKgCosechados = cosechasFilt.reduce((s,c)=>s+c.kgCosechados,0);
+  const totalKgCosechados = cosechasFilt.length>0
+    ? cosechasFilt.reduce((s,c)=>s+(c.kgCosechados||0),0)
+    : (lotes||[]).filter(l=>filterCrop==="all"||l.crop===filterCrop).reduce((s,l)=>s+(parseFloat(l.kgCosechados)||0),0);
   const totalMerma = filtrarPeriodo(mermasData).filter(m=>filterCrop==="all"||m.crop===filterCrop).reduce((s,m)=>s+(m.kgMerma||0),0);
   const precioPromedio = totalKgVendidos > 0 ? totalIngresos/totalKgVendidos : 0;
   const eficiencia = totalKgCosechados > 0 ? Math.min((totalKgVendidos/totalKgCosechados)*100, 100) : 0;
@@ -575,13 +577,23 @@ function ReportesVentas() {
   // ── Por cultivo — cosechas ──
   const porCultivoC = useMemo(() => {
     const map = {};
+    // Primero acumula cosechas registradas por trabajadores
     cosechasFilt.forEach(c => {
       if (!map[c.crop]) map[c.crop] = { kg:0, registros:0 };
-      map[c.crop].kg += c.kgCosechados;
+      map[c.crop].kg += (c.kgCosechados||0);
       map[c.crop].registros++;
     });
+    // Si no hay cosechas registradas, usa kgCosechados de los lotes
+    if(Object.keys(map).length===0) {
+      (lotes||[]).forEach(lote => {
+        if(!lote.crop||!lote.kgCosechados) return;
+        if(!map[lote.crop]) map[lote.crop] = { kg:0, registros:0 };
+        map[lote.crop].kg += parseFloat(lote.kgCosechados)||0;
+        map[lote.crop].registros++;
+      });
+    }
     return map;
-  }, [cosechasFilt]);
+  }, [cosechasFilt, lotes]);
 
   // ── Comparativo cosecha vs venta por cultivo ──
   const comparativo = useMemo(() => {
