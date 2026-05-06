@@ -269,7 +269,7 @@ function GestionLotes() {
                   </div>
                   <div style={{textAlign:"center",background:"#f5eef8",borderRadius:8,padding:"5px 10px",border:"1px solid #8e44ad33"}}>
                     <div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:"#8e44ad"}}>{(kgCos+kgMerm).toFixed(1)} kg</div>
-                    <div style={{fontSize:9,color:"#8e44ad",fontWeight:600}}>Total bruto</div>
+                    <div style={{fontSize:9,color:"#8e44ad",fontWeight:600}}>Producción Total</div>
                   </div>
                   <div style={{textAlign:"center",background:"#eaf4fb",borderRadius:8,padding:"5px 10px"}}>
                     <div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:"#2980b9"}}>{kgVend.toFixed(1)} kg</div>
@@ -702,7 +702,7 @@ function ReportesVentas() {
           {icon:"📊",label:"Precio promedio/kg",v:`$${fmt(precioPromedio)}`,c:"#e67e22"},
           {icon:"🎯",label:"Eficiencia venta",v:`${eficiencia.toFixed(1)}%`,c:eficiencia>=80?"#27ae60":eficiencia>=60?"#f39c12":"#e74c3c"},
           {icon:"📬",label:"Kg por vender",v:`${fmt(kgStock)} kg`,c:kgStock>0?"#f39c12":"#27ae60"},
-          {icon:"📦",label:"Total bruto campo",v:`${fmt(totalKgCosechados+totalMerma)} kg`,c:"#8e44ad"},
+          {icon:"📦",label:"Producción Total",v:`${fmt(totalKgCosechados+totalMerma)} kg`,c:"#8e44ad"},
           {icon:"🏷️",label:"Transacciones",v:ventasFilt.length,c:"#7f8c8d"},
           {icon:"⚠️",label:"Kg merma",v:`${fmt(totalMerma)} kg`,c:totalMerma>0?"#f39c12":"#aaa"},
         ].map(k=>(
@@ -727,7 +727,7 @@ function ReportesVentas() {
             <div style={{background:"#f5eef8",borderRadius:10,padding:"14px",textAlign:"center",border:"2px solid #8e44ad44"}}>
               <div style={{fontSize:28,marginBottom:4}}>📦</div>
               <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#8e44ad"}}>{fmt(totalKgCosechados+totalMerma)}</div>
-              <div style={{fontSize:11,color:"#8e44ad",marginTop:2,fontWeight:600}}>Total bruto campo</div>
+              <div style={{fontSize:11,color:"#8e44ad",marginTop:2,fontWeight:600}}>Producción Total</div>
               <div style={{fontSize:10,color:"#aaa"}}>cosechado + merma</div>
             </div>
             <div style={{background:"#eaf4fb",borderRadius:10,padding:"14px",textAlign:"center",border:"1px solid #b5d4f4"}}>
@@ -773,7 +773,7 @@ function ReportesVentas() {
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
                 {comparativo.map(d=>{
                   const mermaCrop = filtrarPeriodo(mermasData).filter(m=>m.crop===Object.keys(CROPS).find(k=>CROPS[k].name===d.name)).reduce((s,m)=>s+(m.kgMerma||0),0);
-                  const stockCrop = Math.max(0, d.cosechado - d.vendido - mermaCrop);
+                  const stockCrop = Math.max(0, d.cosechado - d.vendido);
                   const pctV = d.cosechado>0?Math.min((d.vendido/d.cosechado)*100,100):0;
                   return(
                     <div key={d.name} style={{background:"#f9f9f9",borderRadius:10,padding:"10px 12px",borderLeft:`4px solid ${d.color}`}}>
