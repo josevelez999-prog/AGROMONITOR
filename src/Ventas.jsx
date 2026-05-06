@@ -249,8 +249,8 @@ function GestionLotes() {
         const kgVend = Number((ventasLote||[]).filter(v=>v.loteId===lote.id).reduce((s,v)=>s+(parseFloat(v.kgVendidos)||0),0));
         const kgCos  = Number((cosechasLote||[]).filter(c=>c.loteId===lote.id).reduce((s,c)=>s+(parseFloat(c.kgCosechados)||0),0) || parseFloat(lote.kgCosechados) || 0);
         const kgMerm = Number((mermasLote||[]).filter(m=>m.loteId===lote.id).reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0));
-        const kgDisp = Math.max(0, kgCos - kgVend - kgMerm);
-        const pctVend = kgCos>0 ? Math.min((kgVend/kgCos)*100,100) : 0;
+        const kgDisp = Math.max(0, kgCos - kgVend);
+        const pctVend = kgCos>0 ? Math.min((kgVend/kgCos)*100,100) : 0; // merma se muestra aparte
         return(
           <div key={lote.id} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderTop:`3px solid ${crop?.color||"#27ae60"}`,borderRadius:12,padding:"14px 18px",marginBottom:10}}>
             <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
@@ -266,6 +266,10 @@ function GestionLotes() {
                   <div style={{textAlign:"center",background:"#f0faf5",borderRadius:8,padding:"5px 10px"}}>
                     <div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:"#27ae60"}}>{kgCos.toFixed(1)} kg</div>
                     <div style={{fontSize:9,color:"#aaa"}}>Cosechados</div>
+                  </div>
+                  <div style={{textAlign:"center",background:"#f5eef8",borderRadius:8,padding:"5px 10px",border:"1px solid #8e44ad33"}}>
+                    <div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:"#8e44ad"}}>{(kgCos+kgMerm).toFixed(1)} kg</div>
+                    <div style={{fontSize:9,color:"#8e44ad",fontWeight:600}}>Total bruto</div>
                   </div>
                   <div style={{textAlign:"center",background:"#eaf4fb",borderRadius:8,padding:"5px 10px"}}>
                     <div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:"#2980b9"}}>{kgVend.toFixed(1)} kg</div>
@@ -553,7 +557,7 @@ function ReportesVentas() {
   const totalMerma = filtrarPeriodo(mermasData).filter(m=>filterCrop==="all"||m.crop===filterCrop).reduce((s,m)=>s+(m.kgMerma||0),0);
   const precioPromedio = totalKgVendidos > 0 ? totalIngresos/totalKgVendidos : 0;
   const eficiencia = totalKgCosechados > 0 ? Math.min((totalKgVendidos/totalKgCosechados)*100, 100) : 0;
-  const kgStock = Math.max(0, totalKgCosechados - totalKgVendidos - totalMerma);
+  const kgStock = Math.max(0, totalKgCosechados - totalKgVendidos);
   const pctStock = totalKgCosechados > 0 ? (kgStock/totalKgCosechados)*100 : 0;
 
   // ── Por cultivo — ventas ──
@@ -697,6 +701,8 @@ function ReportesVentas() {
           {icon:"🧺",label:"Kg cosechados",v:`${fmt(totalKgCosechados)} kg`,c:"#8e44ad"},
           {icon:"📊",label:"Precio promedio/kg",v:`$${fmt(precioPromedio)}`,c:"#e67e22"},
           {icon:"🎯",label:"Eficiencia venta",v:`${eficiencia.toFixed(1)}%`,c:eficiencia>=80?"#27ae60":eficiencia>=60?"#f39c12":"#e74c3c"},
+          {icon:"📬",label:"Kg por vender",v:`${fmt(kgStock)} kg`,c:kgStock>0?"#f39c12":"#27ae60"},
+          {icon:"📦",label:"Total bruto campo",v:`${fmt(totalKgCosechados+totalMerma)} kg`,c:"#8e44ad"},
           {icon:"🏷️",label:"Transacciones",v:ventasFilt.length,c:"#7f8c8d"},
           {icon:"⚠️",label:"Kg merma",v:`${fmt(totalMerma)} kg`,c:totalMerma>0?"#f39c12":"#aaa"},
         ].map(k=>(
@@ -715,8 +721,14 @@ function ReportesVentas() {
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:16}}>
             <div style={{background:"#f0faf5",borderRadius:10,padding:"14px",textAlign:"center",border:"1px solid #a9dfbf"}}>
               <div style={{fontSize:28,marginBottom:4}}>🧺</div>
-              <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#8e44ad"}}>{fmt(totalKgCosechados)}</div>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#27ae60"}}>{fmt(totalKgCosechados)}</div>
               <div style={{fontSize:11,color:"#888",marginTop:2}}>kg cosechados</div>
+            </div>
+            <div style={{background:"#f5eef8",borderRadius:10,padding:"14px",textAlign:"center",border:"2px solid #8e44ad44"}}>
+              <div style={{fontSize:28,marginBottom:4}}>📦</div>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#8e44ad"}}>{fmt(totalKgCosechados+totalMerma)}</div>
+              <div style={{fontSize:11,color:"#8e44ad",marginTop:2,fontWeight:600}}>Total bruto campo</div>
+              <div style={{fontSize:10,color:"#aaa"}}>cosechado + merma</div>
             </div>
             <div style={{background:"#eaf4fb",borderRadius:10,padding:"14px",textAlign:"center",border:"1px solid #b5d4f4"}}>
               <div style={{fontSize:28,marginBottom:4}}>💰</div>
