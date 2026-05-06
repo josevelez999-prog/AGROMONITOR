@@ -280,7 +280,7 @@ function GestionLotes() {
                     <div style={{fontSize:9,color:"#aaa"}}>Merma</div>
                   </div>}
                   <div style={{textAlign:"center",background:kgDisp>0?"#fff3cd":"#eafaf1",border:`2px solid ${kgDisp>0?"#f39c12":"#a9dfbf"}`,borderRadius:8,padding:"5px 10px"}}>
-                    <div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:kgDisp>0?"#f39c12":"#27ae60"}}>{kgDisp.toFixed(1)} kg</div>
+                    <div style={{fontFamily:"'Courier New',monospace",fontSize:13,fontWeight:700,color:kgDisp>0?"#f39c12":"#27ae60"}}>{kgDisp.toFixed(2)} kg</div>
                     <div style={{fontSize:9,color:kgDisp>0?"#856404":"#27ae60",fontWeight:600}}>Por vender</div>
                   </div>
                 </div>
@@ -580,7 +580,7 @@ function ReportesVentas() {
     // Primero acumula cosechas registradas por trabajadores
     cosechasFilt.forEach(c => {
       if (!map[c.crop]) map[c.crop] = { kg:0, registros:0 };
-      map[c.crop].kg += (c.kgCosechados||0);
+      map[c.crop].kg += parseFloat(c.kgCosechados)||0;
       map[c.crop].registros++;
     });
     // Si no hay cosechas registradas, usa kgCosechados de los lotes
@@ -602,9 +602,9 @@ function ReportesVentas() {
       name: CROPS[k]?.name || k,
       emoji: CROPS[k]?.emoji || "🌱",
       color: CROPS[k]?.color || "#27ae60",
-      cosechado: Math.round(porCultivoC[k]?.kg || 0),
-      vendido: Math.round(porCultivoV[k]?.kg || 0),
-      ingresos: Math.round(porCultivoV[k]?.total || 0),
+      cosechado: n(porCultivoC[k]?.kg || 0, 1),
+      vendido: n(porCultivoV[k]?.kg || 0, 1),
+      ingresos: n(porCultivoV[k]?.total || 0, 2),
     }));
   }, [porCultivoV, porCultivoC]);
 
@@ -792,19 +792,19 @@ function ReportesVentas() {
                       <div style={{fontWeight:700,color:d.color,fontSize:13,marginBottom:6}}>{d.emoji} {d.name}</div>
                       <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}>
                         <span style={{color:"#888"}}>Cosechado</span>
-                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:600}}>{d.cosechado} kg</span>
+                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:600}}>{Number(d.cosechado).toFixed(2)} kg</span>
                       </div>
                       <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}>
                         <span style={{color:"#888"}}>Vendido</span>
-                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:600,color:"#2980b9"}}>{d.vendido} kg</span>
+                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:600,color:"#2980b9"}}>{Number(d.vendido).toFixed(2)} kg</span>
                       </div>
                       {mermaCrop>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}>
                         <span style={{color:"#888"}}>Merma</span>
-                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:600,color:"#f39c12"}}>{mermaCrop.toFixed(1)} kg</span>
+                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:600,color:"#f39c12"}}>{mermaCrop.toFixed(2)} kg</span>
                       </div>}
                       <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginTop:4,paddingTop:4,borderTop:"1px solid #e0e0e0"}}>
                         <span style={{fontWeight:700,color:stockCrop>0?"#f39c12":"#27ae60"}}>📦 Por vender</span>
-                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,fontSize:14,color:stockCrop>0?"#f39c12":"#27ae60"}}>{stockCrop.toFixed(1)} kg</span>
+                        <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,fontSize:14,color:stockCrop>0?"#f39c12":"#27ae60"}}>{stockCrop.toFixed(2)} kg</span>
                       </div>
                       <div style={{background:"#e0e0e0",borderRadius:3,height:4,overflow:"hidden",marginTop:6}}>
                         <div style={{width:`${pctV}%`,height:"100%",background:d.color,borderRadius:3}}/>
@@ -827,7 +827,7 @@ function ReportesVentas() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
               <XAxis dataKey="fecha" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
               <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={50} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`}/>
-              <Tooltip formatter={(v,n)=>n==="ingresos"?[`$${v.toLocaleString("es-MX")}`,`Ingresos`]:[`${v} kg`,"Kg"]} contentStyle={{fontSize:11,borderRadius:8,border:"1px solid #e0e0e0"}}/>
+              <Tooltip formatter={(v,n)=>n==="ingresos"?[`$${Number(v).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}`,"Ingresos $"]:[`${Number(v).toFixed(2)} kg`,"Kg vendidos"]} contentStyle={{fontSize:11,borderRadius:8,border:"1px solid #e0e0e0"}}/>
               <Legend wrapperStyle={{fontSize:11}}/>
               <Line type="monotone" dataKey="ingresos" name="Ingresos $" stroke="#27ae60" strokeWidth={2.5} dot={{r:3}} activeDot={{r:5}}/>
               <Line type="monotone" dataKey="kg" name="Kg vendidos" stroke="#2980b9" strokeWidth={2} dot={{r:3}} strokeDasharray="4 2"/>
