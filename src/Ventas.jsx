@@ -827,7 +827,7 @@ function ReportesVentas() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
               <XAxis dataKey="fecha" tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false}/>
               <YAxis tick={{fontSize:10,fill:"#aaa"}} axisLine={false} tickLine={false} width={50} tickFormatter={v=>`$${(v/1000).toFixed(0)}k`}/>
-              <Tooltip formatter={(v,n)=>n==="ingresos"?[`$${Number(v).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}`,"Ingresos $"]:[`${Number(v).toFixed(2)} kg`,"Kg vendidos"]} contentStyle={{fontSize:11,borderRadius:8,border:"1px solid #e0e0e0"}}/>
+              <Tooltip formatter={(v,n)=>n==="Ingresos $"||n==="ingresos"?[`$${Number(v).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}`,"Ingresos $"]:[`${Number(v).toFixed(2)} kg`,"Kg vendidos"]} contentStyle={{fontSize:11,borderRadius:8,border:"1px solid #e0e0e0"}}/>
               <Legend wrapperStyle={{fontSize:11}}/>
               <Line type="monotone" dataKey="ingresos" name="Ingresos $" stroke="#27ae60" strokeWidth={2.5} dot={{r:3}} activeDot={{r:5}}/>
               <Line type="monotone" dataKey="kg" name="Kg vendidos" stroke="#2980b9" strokeWidth={2} dot={{r:3}} strokeDasharray="4 2"/>
