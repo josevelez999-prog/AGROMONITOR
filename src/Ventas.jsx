@@ -664,24 +664,32 @@ function ReportesVentas() {
     return Object.values(map).slice(-14);
   }, [ventasFilt]);
 
-  const exportCSV = () => {
+  const exportCSVVentas = () => {
     const lines = [];
-    // Header ventas
-    lines.push(["TIPO","Fecha","Cultivo","Lote","Tratamiento","Comprador/Causa","Canal","Calidad","Kg","$/kg","Total","Folio/Notas"].join(","));
-    // Ventas
-    ventasFilt.forEach(v => {
-      const trat = TRATAMIENTOS.find(t=>t.id===v.tratamiento);
-      const cal = CALIDADES.find(c=>c.id===v.calidad);
-      lines.push(["VENTA",v.fecha,v.cropName||"",v.loteName||"",trat?.label||"",v.comprador||"",v.canal||"",cal?.label||"",v.kgVendidos||0,v.precioKg||0,v.totalVenta||0,v.factura||""].map(x=>`"${x}"`).join(","));
-    });
-    // Mermas del mismo filtro de cultivo
-    const mermasFilt = mermasData.filter(m => filterCrop==="all" || m.crop===filterCrop);
-    mermasFilt.forEach(m => {
-      const crop = CROPS[m.crop];
-      lines.push(["MERMA",m.date||"",crop?.name||m.crop||"",m.loteName||"",m.tratamiento||"",m.causa||"","","","",m.kgMerma||0,"",m.notas||""].map(x=>`"${x}"`).join(","));
+    lines.push(["Fecha","Cultivo","Lote","Comprador","Canal","Calidad","Kg vendidos","$/kg","Total $","Folio","Notas"].join(","));
+    [...ventasFilt].sort((a,b)=>b.fecha?.localeCompare(a.fecha)||b.createdAt?.localeCompare(a.createdAt)).forEach(venta => {
+      const cal = CALIDADES.find(c=>c.id===venta.calidad);
+      lines.push([venta.fecha||"",venta.cropName||"",venta.loteName||"",venta.comprador||"",venta.canal||"",cal?.label||"",venta.kgVendidos||0,venta.precioKg||0,venta.totalVenta||0,venta.factura||"",venta.notas||""].map(x=>`"${x}"`).join(","));
     });
     const blob = new Blob(["\uFEFF",lines.join("\n")],{type:"text/csv;charset=utf-8;"});
-    const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`ventas_mermas_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`ventas_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  };
+
+  const exportCSVCosechas = () => {
+    const lines = [];
+    lines.push(["TIPO","Fecha","Cultivo","Lote","Zona","Calidad/Causa","Kg","Trabajador","Notas"].join(","));
+    const cosechasFiltCSV = filtrarPeriodo(cosechas).filter(c => filterCrop==="all" || c.crop===filterCrop);
+    [...cosechasFiltCSV].sort((a,b)=>b.date?.localeCompare(a.date)||b.createdAt?.localeCompare(a.createdAt)).forEach(c => {
+      const crop = CROPS[c.crop];
+      lines.push(["COSECHA",c.date||"",crop?.name||c.crop||"",c.loteName||"",c.zona||"",c.calidad||"",c.kgCosechados||0,c.worker||"",c.notas||""].map(x=>`"${x}"`).join(","));
+    });
+    const mermasFiltCSV = mermasData.filter(m => filterCrop==="all" || m.crop===filterCrop);
+    [...mermasFiltCSV].sort((a,b)=>b.date?.localeCompare(a.date)||b.createdAt?.localeCompare(a.createdAt)).forEach(m => {
+      const crop = CROPS[m.crop];
+      lines.push(["MERMA",m.date||"",crop?.name||m.crop||"",m.loteName||"",m.zona||"",m.causa||"",m.kgMerma||0,m.worker||"",m.notas||""].map(x=>`"${x}"`).join(","));
+    });
+    const blob = new Blob(["\uFEFF",lines.join("\n")],{type:"text/csv;charset=utf-8;"});
+    const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`cosechas_mermas_${new Date().toISOString().slice(0,10)}.csv`; a.click();
   };
 
   const fmt = v => Number(v||0).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -701,7 +709,8 @@ function ReportesVentas() {
           <option value="90d">Últimos 90 días</option>
         </select>
         <div style={{marginLeft:"auto",display:"flex",gap:8}}>
-          <button onClick={exportCSV} style={{padding:"8px 16px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV Ventas+Mermas</button>
+          <button onClick={exportCSVVentas} style={{padding:"8px 16px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV Ventas</button>
+          <button onClick={exportCSVCosechas} style={{padding:"8px 16px",border:"1px solid #8e44ad",borderRadius:20,background:"#f5eef8",color:"#8e44ad",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV Cosechas+Mermas</button>
         </div>
       </div>
 
