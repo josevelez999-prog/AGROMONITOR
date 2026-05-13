@@ -105,7 +105,7 @@ const LBL = {
 function Registro({ worker }) {
   const [form, setForm] = useState({
     crop:"jitomate", zone:"Zona 1", invernadero:"INV 2",
-    tipo:"entrada", bandeja:"Bandeja 1",
+    tipo:"entrada", bandeja:"Bandeja 1", tinaco:"Tinaco 1",
     ph:"", ce:"", drenaje:"", volumenEntrada:"", notes:"",
     ca:"", no3:"", k:"", fe:"",
   });
@@ -139,6 +139,10 @@ function Registro({ worker }) {
 
   const submit = async () => {
     if (!form.zone||!form.ph||!form.ce) { alert("Llena zona, pH y CE."); return; }
+    const phVal = parseFloat(form.ph);
+    const ceVal = parseFloat(form.ce);
+    if (isNaN(phVal) || phVal < 0 || phVal > 14) { alert("⚠ pH debe estar entre 0 y 14. Verifica el valor."); return; }
+    if (isNaN(ceVal) || ceVal < 0 || ceVal > 10) { alert("⚠ CE debe estar entre 0 y 10 mS/cm. Verifica el valor."); return; }
     setSaving(true);
     let photoURL = "";
     try {
@@ -164,7 +168,7 @@ function Registro({ worker }) {
       Object.keys(data).forEach(k => data[k] === null && delete data[k]);
       await addDoc(collection(db,"readings"), data);
       setSaved(true);
-      setForm(p=>({...p,zone:"Zona 1",bandeja:"Bandeja 1",ph:"",ce:"",drenaje:"",volumenEntrada:"",notes:"",ca:"",no3:"",k:"",fe:""}));
+      setForm(p=>({...p,zone:"Zona 1",bandeja:"Bandeja 1",tinaco:"Tinaco 1",ph:"",ce:"",drenaje:"",volumenEntrada:"",notes:"",ca:"",no3:"",k:"",fe:""}));
       setImgFile(null); setImgPreview(null);
       setTimeout(()=>setSaved(false),4000);
     } catch { alert("Error al guardar."); }
@@ -248,6 +252,12 @@ function Registro({ worker }) {
             {Array.from({length:14},(_,i)=>`Bandeja ${i+1}`).map(b=><option key={b} value={b}>{b}</option>)}
           </select>
         </div>
+        <div>
+          <label style={LBL}>Tinaco *</label>
+          <select value={form.tinaco||"Tinaco 1"} onChange={e=>setForm(p=>({...p,tinaco:e.target.value}))} style={INP}>
+            {["Tinaco 1","Tinaco 2","Tinaco 3","Tinaco 4"].map(t=><option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
 
         {form.tipo==="entrada"&&(
           <div style={{gridColumn:"1/-1"}}>
@@ -267,7 +277,7 @@ function Registro({ worker }) {
 
         <div>
           <label style={LBL}>CE mS/cm *</label>
-          <input type="number" step="0.1" min="0" max="15" value={form.ce}
+          <input type="number" step="0.1" min="0" max="10" value={form.ce}
             onChange={e=>setForm(p=>({...p,ce:e.target.value}))} placeholder={`${rangos.ce.min}–${rangos.ce.max}`}
             style={{...INP,borderColor:sBorder(form.ce,rangos.ce)}}/>
           {form.ce&&<div style={{fontSize:10,marginTop:3,color:sBorder(form.ce,rangos.ce)}}>{sText(form.ce,rangos.ce)}</div>}
