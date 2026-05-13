@@ -363,7 +363,7 @@ function HistorialTable({cr, onDelete, weeklyRangos={}}) {
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
           <thead><tr style={{borderBottom:"1px solid #f0f0f0"}}>
-            {["","Fecha","Tipo","Inv.","Zona","Bandeja","pH","CE","Vol.Ent","Drenaje","Ca","NO₃","K","Fe","Estado","Trabajador",""].map((h,i)=>(
+            {["","Fecha","Tipo","Inv.","Zona","Tinaco","Bandeja","pH","CE","Vol.Ent","Drenaje","Ca","NO₃","K","Fe","Estado","Trabajador",""].map((h,i)=>(
               <th key={i} style={{padding:"7px 10px",textAlign:"left",color:"#aaa",fontWeight:500,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
             ))}
           </tr></thead>
@@ -381,6 +381,7 @@ function HistorialTable({cr, onDelete, weeklyRangos={}}) {
                   <td style={{padding:"6px 8px"}}><span style={{background:(r.tipo||"entrada")==="salida"?"#eaf4fb":"#eafaf1",color:(r.tipo||"entrada")==="salida"?"#2980b9":"#27ae60",borderRadius:8,padding:"1px 6px",fontSize:10,fontWeight:600}}>{(r.tipo||"entrada")==="salida"?"⬆ Sal":"⬇ Ent"}</span></td>
                   <td style={{padding:"6px 8px",fontSize:11,color:"#c0392b",fontWeight:600}}>{r.invernadero||"—"}</td>
                   <td style={{padding:"6px 8px",minWidth:60}}>{isE?<input value={editForm.zone} onChange={e=>setEditForm(p=>({...p,zone:e.target.value}))} style={{...IS,width:65}}/>:r.zone}</td>
+                  <td style={{padding:"6px 8px",minWidth:75,fontSize:11,color:"#2980b9",fontWeight:600}}>{r.tinaco||"—"}</td>
                   <td style={{padding:"6px 8px",minWidth:70}}>{isE?<input value={editForm.bandeja} onChange={e=>setEditForm(p=>({...p,bandeja:e.target.value}))} style={{...IS,width:70}}/>:r.bandeja||"—"}</td>
                   <td style={{padding:"6px 8px",minWidth:55}}>{isE?<input type="number" step="0.01" value={editForm.ph} onChange={e=>setEditForm(p=>({...p,ph:e.target.value}))} style={{...IS,width:55,fontWeight:700}}/>:<span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[ps]}}>{r.ph}</span>}</td>
                   <td style={{padding:"6px 8px",minWidth:55}}>{isE?<input type="number" step="0.01" value={editForm.ce} onChange={e=>setEditForm(p=>({...p,ce:e.target.value}))} style={{...IS,width:55,fontWeight:700}}/>:<span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:SC[cs]}}>{r.ce}</span>}</td>
@@ -492,17 +493,19 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
   const [invFilter,setInvFilter]=useState("all");
   const [zonaFilter,setZonaFilter]=useState("all");
   const [tipoFilter,setTipoFilter]=useState("all");
+  const [tinacoFilter,setTinacoFilter]=useState("all");
   const crop=CROPS[cropFilter];
   const cr=readings.filter(r=>{
     if(r.crop!==cropFilter) return false;
     if(tipoFilter!=="all" && (r.tipo||"entrada")!==tipoFilter) return false;
     if(invFilter!=="all" && r.invernadero!==invFilter) return false;
     if(zonaFilter!=="all" && r.zone!==zonaFilter) return false;
+    if(tinacoFilter!=="all" && r.tinaco!==tinacoFilter) return false;
     return true;
   });
-  const chartData=useMemo(()=>{const g={};cr.sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{if(!g[r.date])g[r.date]={date:r.date,phVals:[],ceVals:[]};g[r.date].phVals.push(r.ph);g[r.date].ceVals.push(r.ce);});return Object.values(g).map(d=>({date:d.date.slice(5),ph:n(d.phVals.reduce((s,v)=>s+v,0)/d.phVals.length),ce:n(d.ceVals.reduce((s,v)=>s+v,0)/d.ceVals.length)}));},[readings,cropFilter,tipoFilter,invFilter,zonaFilter]);
-  const compareData=useMemo(()=>{const w={};cr.forEach(r=>{const d=new Date(r.date);const wk=`S${Math.ceil(d.getDate()/7)}-${d.getMonth()+1}`;if(!w[wk])w[wk]={week:wk,phVals:[],ceVals:[]};w[wk].phVals.push(r.ph);w[wk].ceVals.push(r.ce);});return Object.values(w).map(wk=>({week:wk.week,ph:n(wk.phVals.reduce((s,v)=>s+v,0)/wk.phVals.length),ce:n(wk.ceVals.reduce((s,v)=>s+v,0)/wk.ceVals.length),registros:wk.phVals.length}));},[readings,cropFilter,tipoFilter,invFilter,zonaFilter]);
-  const stats=useMemo(()=>{const vals=cr.map(r=>r[metric]);if(!vals.length)return{avg:"—",min:"—",max:"—",out:0,total:0};return{avg:n(vals.reduce((s,v)=>s+v,0)/vals.length),min:n(Math.min(...vals)),max:n(Math.max(...vals)),out:vals.filter(v=>metric==="ph"?(v<crop.ph.min||v>crop.ph.max):(v<crop.ce.min||v>crop.ce.max)).length,total:vals.length};},[readings,cropFilter,metric,tipoFilter,invFilter,zonaFilter]);
+  const chartData=useMemo(()=>{const g={};cr.sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{if(!g[r.date])g[r.date]={date:r.date,phVals:[],ceVals:[]};g[r.date].phVals.push(r.ph);g[r.date].ceVals.push(r.ce);});return Object.values(g).map(d=>({date:d.date.slice(5),ph:n(d.phVals.reduce((s,v)=>s+v,0)/d.phVals.length),ce:n(d.ceVals.reduce((s,v)=>s+v,0)/d.ceVals.length)}));},[readings,cropFilter,tipoFilter,invFilter,zonaFilter,tinacoFilter]);
+  const compareData=useMemo(()=>{const w={};cr.forEach(r=>{const d=new Date(r.date);const wk=`S${Math.ceil(d.getDate()/7)}-${d.getMonth()+1}`;if(!w[wk])w[wk]={week:wk,phVals:[],ceVals:[]};w[wk].phVals.push(r.ph);w[wk].ceVals.push(r.ce);});return Object.values(w).map(wk=>({week:wk.week,ph:n(wk.phVals.reduce((s,v)=>s+v,0)/wk.phVals.length),ce:n(wk.ceVals.reduce((s,v)=>s+v,0)/wk.ceVals.length),registros:wk.phVals.length}));},[readings,cropFilter,tipoFilter,invFilter,zonaFilter,tinacoFilter]);
+  const stats=useMemo(()=>{const vals=cr.map(r=>r[metric]);if(!vals.length)return{avg:"—",min:"—",max:"—",out:0,total:0};return{avg:n(vals.reduce((s,v)=>s+v,0)/vals.length),min:n(Math.min(...vals)),max:n(Math.max(...vals)),out:vals.filter(v=>metric==="ph"?(v<crop.ph.min||v>crop.ph.max):(v<crop.ce.min||v>crop.ce.max)).length,total:vals.length};},[readings,cropFilter,metric,tipoFilter,invFilter,zonaFilter,tinacoFilter]);
   const yD=metric==="ph"?[3.5,8.5]:[0,6];
   return(
     <div>
@@ -549,10 +552,17 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
           ))}
         </div>
       )}
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
         {["all","Zona 1","Zona 2","Zona 3","Zona 4"].map(z=>(
           <button key={z} onClick={()=>setZonaFilter(z)} style={{padding:"5px 12px",border:`1px solid ${zonaFilter===z?"#333":"#e0e0e0"}`,borderRadius:20,background:zonaFilter===z?"#33333318":"transparent",color:zonaFilter===z?"#333":"#777",cursor:"pointer",fontSize:11,fontWeight:zonaFilter===z?700:400}}>
             {z==="all"?"Todas zonas":z}
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+        {["all","Tinaco 1","Tinaco 2","Tinaco 3","Tinaco 4"].map(t=>(
+          <button key={t} onClick={()=>setTinacoFilter(t)} style={{padding:"5px 12px",border:`1px solid ${tinacoFilter===t?"#2980b9":"#e0e0e0"}`,borderRadius:20,background:tinacoFilter===t?"#2980b918":"transparent",color:tinacoFilter===t?"#2980b9":"#777",cursor:"pointer",fontSize:11,fontWeight:tinacoFilter===t?700:400}}>
+            {t==="all"?"Todos tinacos":`💧 ${t}`}
           </button>
         ))}
       </div>
