@@ -106,6 +106,7 @@ function Registro({ worker }) {
   const [form, setForm] = useState({
     crop:"jitomate", zone:"Zona 1", invernadero:"INV 2",
     tipo:"entrada", bandeja:"Bandeja 1", tinaco:"Tinaco 1",
+    modo:"bandeja",
     ph:"", ce:"", drenaje:"", volumenEntrada:"", notes:"",
     ca:"", no3:"", k:"", fe:"",
   });
@@ -138,7 +139,11 @@ function Registro({ worker }) {
   };
 
   const submit = async () => {
-    if (!form.zone||!form.ph||!form.ce) { alert("Llena zona, pH y CE."); return; }
+    if (form.modo==="tinaco") {
+      if (!form.tinaco||!form.ph||!form.ce) { alert("Llena tinaco, pH y CE."); return; }
+    } else {
+      if (!form.zone||!form.ph||!form.ce) { alert("Llena zona, pH y CE."); return; }
+    }
     const phVal = parseFloat(form.ph);
     const ceVal = parseFloat(form.ce);
     if (isNaN(phVal) || phVal < 0 || phVal > 14) { alert("⚠ pH debe estar entre 0 y 14. Verifica el valor."); return; }
@@ -152,12 +157,14 @@ function Registro({ worker }) {
         await uploadBytes(r,imgFile); photoURL = await getDownloadURL(r);
       }
       const now = new Date();
+      const esTinaco = form.modo==="tinaco";
       const data = {
         ...form, worker,
         ph:parseFloat(form.ph), ce:parseFloat(form.ce),
-        bandeja: form.bandeja||"",
-        drenaje: form.drenaje ? parseFloat(form.drenaje) : null,
-        volumenEntrada: form.volumenEntrada ? parseFloat(form.volumenEntrada) : null,
+        bandeja: esTinaco ? "" : (form.bandeja||""),
+        zone:    esTinaco ? "" : (form.zone||""),
+        drenaje:        esTinaco ? null : (form.drenaje ? parseFloat(form.drenaje) : null),
+        volumenEntrada: esTinaco ? null : (form.volumenEntrada ? parseFloat(form.volumenEntrada) : null),
         ca:  form.ca  ? parseFloat(form.ca)  : null,
         no3: form.no3 ? parseFloat(form.no3) : null,
         k:   form.k   ? parseFloat(form.k)   : null,
@@ -239,7 +246,21 @@ function Registro({ worker }) {
         </div>
       )}
 
+      <div style={{display:"flex",gap:8,marginBottom:12,padding:6,background:"#f5f5f5",borderRadius:10}}>
+        {[["bandeja","📊 Bandeja","#27ae60"],["tinaco","💧 Tinaco","#2980b9"]].map(([v,l,c])=>(
+          <button key={v} type="button" onClick={()=>setForm(p=>({...p,modo:v}))}
+            style={{flex:1,padding:"10px 14px",border:"none",borderRadius:8,background:form.modo===v?c:"transparent",color:form.modo===v?"#fff":"#666",cursor:"pointer",fontWeight:form.modo===v?700:500,fontSize:13}}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {form.modo==="tinaco"&&(
+        <div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#1a5276"}}>
+          💧 Modo Tinaco: solo registrarás cultivo, invernadero, tinaco y la medición. Zona/bandeja/volumen no aplican.
+        </div>
+      )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+        {form.modo!=="tinaco"&&<>
         <div>
           <label style={LBL}>Zona *</label>
           <select value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} style={INP}>
@@ -252,14 +273,17 @@ function Registro({ worker }) {
             {Array.from({length:14},(_,i)=>`Bandeja ${i+1}`).map(b=><option key={b} value={b}>{b}</option>)}
           </select>
         </div>
-        <div>
+        </>}
+        {form.modo==="tinaco"&&(
+        <div style={{gridColumn:"1 / span 2"}}>
           <label style={LBL}>Tinaco *</label>
           <select value={form.tinaco||"Tinaco 1"} onChange={e=>setForm(p=>({...p,tinaco:e.target.value}))} style={INP}>
             {["Tinaco 1","Tinaco 2","Tinaco 3","Tinaco 4"].map(t=><option key={t} value={t}>{t}</option>)}
           </select>
         </div>
+        )}
 
-        {form.tipo==="entrada"&&(
+        {form.tipo==="entrada"&&form.modo!=="tinaco"&&(
           <div style={{gridColumn:"1/-1"}}>
             <label style={LBL}>Volumen de entrada (mL)</label>
             <input type="number" step="0.1" min="0" value={form.volumenEntrada}
