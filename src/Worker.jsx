@@ -395,6 +395,8 @@ function MiHistorial({ worker }) {
 function RegistroCosecha({ worker }) {
   const [subtab, setSubtab] = useState("cosecha");
   const [lotes, setLotes] = useState([]);
+  const [ventasW, setVentasW] = useState([]);
+  const [cosechasW, setCosechasW] = useState([]);
   const [preciosSugeridos, setPreciosSugeridos] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState("");
@@ -409,7 +411,9 @@ function RegistroCosecha({ worker }) {
   useEffect(()=>{
     const q = query(collection(db,"lotes"),orderBy("createdAt","desc"));
     const unsub = onSnapshot(q,snap=>setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
-    return()=>unsub();
+    const u2 = onSnapshot(query(collection(db,"ventas")), s=>setVentasW(s.docs.map(d=>({id:d.id,...d.data()}))));
+    const u3 = onSnapshot(query(collection(db,"cosechas_trabajador")), s=>setCosechasW(s.docs.map(d=>({id:d.id,...d.data()}))));
+    return()=>{ unsub(); u2(); u3(); };
   },[]);
 
   useEffect(()=>{
@@ -434,6 +438,17 @@ function RegistroCosecha({ worker }) {
                 <div style={{flex:1}}>
                   <div style={{fontWeight:600,fontSize:14,color:sel?"#27ae60":"#222"}}>{lote.nombre}</div>
                   <div style={{fontSize:11,color:"#888"}}>{c?.name} · {lote.zona}</div>
+                  {(()=>{
+                    const kgCos = Number((cosechasW||[]).filter(co=>co.loteId===lote.id).reduce((s,co)=>s+(parseFloat(co.kgCosechados)||0),0)) || parseFloat(lote.kgCosechados)||0;
+                    const kgVen = Number((ventasW||[]).filter(vt=>vt.loteId===lote.id).reduce((s,vt)=>s+(parseFloat(vt.kgVendidos)||0),0));
+                    const stock = Math.max(0, kgCos - kgVen);
+                    return (
+                      <div style={{display:"flex",gap:8,marginTop:4,fontSize:10,flexWrap:"wrap"}}>
+                        <span style={{background:"#eafaf1",color:"#27ae60",padding:"2px 6px",borderRadius:6,fontWeight:600}}>📦 {stock.toFixed(1)} kg disp.</span>
+                        <span style={{color:"#aaa"}}>Cos: {kgCos.toFixed(1)} kg · Vend: {kgVen.toFixed(1)} kg</span>
+                      </div>
+                    );
+                  })()}
                 </div>
                 {sel&&<span style={{color:"#27ae60",fontSize:20,fontWeight:700}}>✓</span>}
               </button>
