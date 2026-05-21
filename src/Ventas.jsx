@@ -166,7 +166,7 @@ function GestionLotes() {
   const [form, setForm] = useState({
     nombre:"", crop:"jitomate", zona:"", tratamiento:"convencional",
     fechaCosecha:new Date().toISOString().slice(0,10),
-    kgCosechados:0, kgEstimados:0, notas:""
+    kgCosechados:0, kgEstimados:0, costoCiclo:0, notas:""
   });
   const [saving, setSaving] = useState(false);
 
@@ -188,7 +188,7 @@ function GestionLotes() {
     } else {
       await addDoc(collection(db,"lotes"), data);
     }
-    setForm({ nombre:"", crop:"jitomate", zona:"", tratamiento:"convencional", fechaCosecha:new Date().toISOString().slice(0,10), kgCosechados:0, kgEstimados:0, notas:"" });
+    setForm({ nombre:"", crop:"jitomate", zona:"", tratamiento:"convencional", fechaCosecha:new Date().toISOString().slice(0,10), kgCosechados:0, kgEstimados:0, costoCiclo:0, notas:"" });
     setShowForm(false);
   };
 
@@ -224,6 +224,7 @@ function GestionLotes() {
             </div>
             <div><label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Kg cosechados</label><input type="number" step="0.1" min="0" value={form.kgCosechados} onChange={e=>setForm(p=>({...p,kgCosechados:e.target.value}))} style={inp}/></div>
             <div><label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Kg estimados</label><input type="number" step="0.1" min="0" value={form.kgEstimados} onChange={e=>setForm(p=>({...p,kgEstimados:e.target.value}))} style={inp}/></div>
+            <div><label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>💰 Costo del ciclo $</label><input type="number" step="0.01" min="0" value={form.costoCiclo||0} onChange={e=>setForm(p=>({...p,costoCiclo:e.target.value}))} placeholder="Costo total $" style={inp}/></div>
             <div><label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Fecha cosecha</label><input type="date" value={form.fechaCosecha} onChange={e=>setForm(p=>({...p,fechaCosecha:e.target.value}))} style={inp}/></div>
             <div><label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Notas</label><input value={form.notas} onChange={e=>setForm(p=>({...p,notas:e.target.value}))} placeholder="Observaciones..." style={inp}/></div>
           </div>
@@ -602,11 +603,31 @@ function ReportesVentas() {
       name: CROPS[k]?.name || k,
       emoji: CROPS[k]?.emoji || "🌱",
       color: CROPS[k]?.color || "#27ae60",
+      cropKey: k,
       cosechado: n(porCultivoC[k]?.kg || 0, 1),
       vendido: n(porCultivoV[k]?.kg || 0, 1),
       ingresos: n(porCultivoV[k]?.total || 0, 2),
     }));
   }, [porCultivoV, porCultivoC]);
+
+  // ── RBC (Relación Beneficio/Costo) ──
+  const rbcData = useMemo(() => {
+    const lotesFilt = (lotes||[]).filter(l => filterCrop==="all" || l.crop===filterCrop);
+    const costoTotal = lotesFilt.reduce((s,l)=>s+(parseFloat(l.costoCiclo)||0),0);
+    const ingresoTotal = totalIngresos;
+    const rbcGlobal = costoTotal>0?(ingresoTotal/costoTotal):0;
+    const gNeta = ingresoTotal - costoTotal;
+    const porCultivo = {};
+    (lotes||[]).forEach(l => {
+      if(!porCultivo[l.crop]) porCultivo[l.crop] = {costo:0,ingresos:0};
+      porCultivo[l.crop].costo += parseFloat(l.costoCiclo)||0;
+    });
+    Object.keys(porCultivoV).forEach(k => {
+      if(!porCultivo[k]) porCultivo[k] = {costo:0,ingresos:0};
+      porCultivo[k].ingresos = porCultivoV[k]?.total||0;
+    });
+    return { rbcGlobal, costoTotal, ingresoTotal, gNeta, porCultivo };
+  }, [lotes, totalIngresos, porCultivoV, filterCrop]);
 
   // ── Por canal ──
   const porCanal = useMemo(() => {
@@ -734,6 +755,62 @@ function ReportesVentas() {
           </div>
         ))}
       </div>
+
+      {/* ── RBC RELACIÓN BENEFICIO/COSTO ── */}
+      {rbcData.costoTotal > 0 && (
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#444",textAlign:"center",marginBottom:14,letterSpacing:0.3}}>
+            💼 RBC — RELACIÓN BENEFICIO / COSTO
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:14}}>
+            <div style={{background:"#fef9e7",borderRadius:10,padding:"14px",textAlign:"center",border:"1px solid #f9e79f"}}>
+              <div style={{fontSize:24,marginBottom:4}}>💰</div>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:18,fontWeight:700,color:"#b7950b"}}>${rbcData.costoTotal.toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+              <div style={{fontSize:11,color:"#888",marginTop:2}}>Costos totales</div>
+            </div>
+            <div style={{background:"#eafaf1",borderRadius:10,padding:"14px",textAlign:"center",border:"1px solid #a9dfbf"}}>
+              <div style={{fontSize:24,marginBottom:4}}>📈</div>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:18,fontWeight:700,color:"#27ae60"}}>${rbcData.ingresoTotal.toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+              <div style={{fontSize:11,color:"#888",marginTop:2}}>Ingresos totales</div>
+            </div>
+            <div style={{background:rbcData.gNeta>=0?"#eafaf1":"#fdedec",borderRadius:10,padding:"14px",textAlign:"center",border:`1px solid ${rbcData.gNeta>=0?"#a9dfbf":"#f5b7b1"}`}}>
+              <div style={{fontSize:24,marginBottom:4}}>{rbcData.gNeta>=0?"✅":"❌"}</div>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:18,fontWeight:700,color:rbcData.gNeta>=0?"#27ae60":"#c0392b"}}>${rbcData.gNeta.toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+              <div style={{fontSize:11,color:rbcData.gNeta>=0?"#27ae60":"#c0392b",fontWeight:600,marginTop:2}}>Ganancia neta</div>
+            </div>
+            <div style={{background:rbcData.rbcGlobal>=1?"#eafaf1":"#fdedec",borderRadius:10,padding:"14px",textAlign:"center",border:`3px solid ${rbcData.rbcGlobal>=1?"#27ae60":"#e74c3c"}`}}>
+              <div style={{fontSize:28,marginBottom:4,fontWeight:900,color:rbcData.rbcGlobal>=1?"#27ae60":"#c0392b"}}>{rbcData.rbcGlobal.toFixed(2)}</div>
+              <div style={{fontSize:11,color:rbcData.rbcGlobal>=1?"#27ae60":"#c0392b",fontWeight:700,marginTop:2}}>RBC GLOBAL</div>
+              <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{rbcData.rbcGlobal>=1?"Rentable":rbcData.rbcGlobal>0?"Pérdida":"Sin ventas"}</div>
+            </div>
+          </div>
+          {Object.keys(rbcData.porCultivo).length>0 && (
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:"#aaa",marginBottom:8,letterSpacing:0.3}}>RBC POR CULTIVO</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
+                {Object.entries(rbcData.porCultivo).filter(([k,d])=>d.costo>0||d.ingresos>0).map(([k,d])=>{
+                  const crop = CROPS[k];
+                  const rbc = d.costo>0?(d.ingresos/d.costo):0;
+                  const neta = d.ingresos - d.costo;
+                  return (
+                    <div key={k} style={{background:"#fafafa",borderRadius:10,padding:"10px 12px",border:`1px solid ${rbc>=1?"#a9dfbf":"#f5b7b1"}`,borderLeft:`4px solid ${crop?.color||"#27ae60"}`}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,fontWeight:600,color:crop?.color}}>
+                        <span style={{fontSize:16}}>{crop?.emoji}</span> {crop?.name||k}
+                      </div>
+                      <div style={{fontSize:11,color:"#888",marginBottom:2}}>Costo: <span style={{fontFamily:"'Courier New',monospace",color:"#b7950b"}}>${d.costo.toLocaleString("es-MX",{minimumFractionDigits:2})}</span></div>
+                      <div style={{fontSize:11,color:"#888",marginBottom:2}}>Ingreso: <span style={{fontFamily:"'Courier New',monospace",color:"#27ae60"}}>${d.ingresos.toLocaleString("es-MX",{minimumFractionDigits:2})}</span></div>
+                      <div style={{fontSize:11,color:"#888",marginBottom:6}}>Neta: <span style={{fontFamily:"'Courier New',monospace",color:neta>=0?"#27ae60":"#c0392b",fontWeight:700}}>${neta.toLocaleString("es-MX",{minimumFractionDigits:2})}</span></div>
+                      <div style={{textAlign:"center",background:rbc>=1?"#eafaf1":"#fdedec",borderRadius:6,padding:"4px 8px",border:`1px solid ${rbc>=1?"#27ae60":"#e74c3c"}`}}>
+                        <span style={{fontFamily:"'Courier New',monospace",fontSize:14,fontWeight:700,color:rbc>=1?"#27ae60":"#c0392b"}}>RBC {rbc.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── DIFERENCIAL STOCK ── */}
       {totalKgCosechados > 0 && (
