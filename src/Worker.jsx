@@ -1110,8 +1110,15 @@ export default function Worker({ user }) {
   },[worker]);
 
   const resolver = async (id) => {
-    if(!window.confirm("¿Marcar esta medición como resuelta? Se quitará la alerta del admin.")) return;
-    await updateDoc(doc(db,"readings",id),{resolved:true,resolvedAt:new Date().toISOString(),resolvedBy:worker});
+    if(!window.confirm("¿Marcar esta medición como resuelta? Se quitará la alerta del admin y de tu pantalla.")) return;
+    // Optimistic UI: quita la alerta inmediatamente de la pantalla
+    setAlertas(prev => prev.filter(a => a.id !== id));
+    try {
+      await updateDoc(doc(db,"readings",id),{resolved:true,resolvedAt:new Date().toISOString(),resolvedBy:worker});
+    } catch(e) {
+      alert("⚠ Error al guardar: "+e.message);
+      // Si falla, la alerta volverá a aparecer en el siguiente snapshot
+    }
   };
 
   if(!alertas.length) return null;
