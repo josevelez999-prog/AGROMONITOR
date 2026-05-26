@@ -200,6 +200,7 @@ function Registro({ worker }) {
   return (
     <div>
       {saved&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:16,color:"#27ae60",fontWeight:600,textAlign:"center"}}>✓ Medición enviada</div>}
+      <MisAlertasActivas worker={worker}/>
 
       <div style={{marginBottom:14}}>
         <label style={LBL}>Cultivo</label>
@@ -757,43 +758,71 @@ function Tareas({ worker }) {
   const [tasks, setTasks] = useState([]);
   const today = new Date().toISOString().slice(0,10);
   useEffect(()=>{
-    const q = query(collection(db,"tasks"),where("date","==",today));
+    const q = query(collection(db,"tasks"),orderBy("fechaCreacion","desc"));
     const unsub = onSnapshot(q,snap=>setTasks(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return()=>unsub();
-  },[today]);
-  const mine=tasks.filter(t=>!t.assignedTo||t.assignedTo===worker||t.assignedTo==="todos");
-  const done=mine.filter(t=>t.completedBy?.includes(worker));
-  const pending=mine.filter(t=>!t.completedBy?.includes(worker));
-  const mark=async t=>{
-    const {updateDoc,doc:d}=await import("firebase/firestore");
-    const completed=[...(t.completedBy||[])];
-    if(!completed.includes(worker))completed.push(worker);
-    await updateDoc(d(db,"tasks",t.id),{completedBy:completed});
+  },[]);
+
+  const mine = tasks.filter(t=>{
+    const asig = Array.isArray(t.assignedTo) ? t.assignedTo : [t.assignedTo];
+    if(asig.includes("todos")||asig.length===0) return true;
+    return asig.includes(worker);
+  });
+  const done = mine.filter(t=>t.completedBy?.includes(worker));
+  const pending = mine.filter(t=>!t.completedBy?.includes(worker));
+
+  const mark = async t => {
+    const completed = [...(t.completedBy||[])];
+    if(!completed.includes(worker)) completed.push(worker);
+    await updateDoc(doc(db,"tasks",t.id),{completedBy:completed,completedAt:new Date().toISOString()});
   };
+
+  const renderTask = (t,isCompleted=false) => {
+    const tipoIcon = {tarea:"📋",instruccion:"📖",aviso:"📢"}[t.tipo||"tarea"];
+    const priColor = {alta:"#e74c3c",baja:"#27ae60",normal:"#888"}[t.priority||"normal"];
+    const isOverdue = t.fechaLimite && t.fechaLimite < today && !isCompleted;
+    return (
+      <div key={t.id} style={{background:isCompleted?"#f9f9f9":"#fff",border:`1px solid ${isOverdue?"#e74c3c44":"#e0e0e0"}`,borderLeft:`4px solid ${priColor}`,borderRadius:10,padding:"12px 14px",marginBottom:10,opacity:isCompleted?0.7:1}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:8}}>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:4,color:"#222"}}>
+              {tipoIcon} {t.title}
+              {t.priority==="alta"&&<span style={{background:"#fdedec",color:"#c0392b",fontSize:9,padding:"2px 5px",borderRadius:6,marginLeft:6,fontWeight:700}}>ALTA</span>}
+              {isOverdue&&<span style={{background:"#fdedec",color:"#c0392b",fontSize:9,padding:"2px 5px",borderRadius:6,marginLeft:6,fontWeight:700}}>⏰ VENCIDA</span>}
+            </div>
+            {t.description&&<div style={{fontSize:13,color:"#555",lineHeight:1.5,marginBottom:8,whiteSpace:"pre-wrap",padding:"8px 10px",background:"#fafafa",borderRadius:6,borderLeft:"2px solid #e0e0e0"}}>{t.description}</div>}
+            <div style={{display:"flex",gap:10,fontSize:11,color:"#888",flexWrap:"wrap"}}>
+              {t.zone&&<span>📍 {t.zone}</span>}
+              <span>📅 {t.fechaCreacion||t.date||"—"}</span>
+              {t.fechaLimite&&<span style={{color:isOverdue?"#c0392b":"#888",fontWeight:isOverdue?700:400}}>⏰ Límite: {t.fechaLimite}</span>}
+            </div>
+          </div>
+        </div>
+        {!isCompleted && <button onClick={()=>mark(t)} style={{width:"100%",padding:"10px 14px",background:"#27ae60",border:"none",borderRadius:8,color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>✓ Marcar como completada</button>}
+        {isCompleted && <div style={{textAlign:"center",fontSize:11,color:"#27ae60",fontWeight:600}}>✓ Completada por ti</div>}
+      </div>
+    );
+  };
+
   return (
     <div>
       <div style={{display:"flex",gap:12,marginBottom:16}}>
-        <div style={{flex:1,background:"#eafaf1",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:24,fontWeight:700,color:"#27ae60"}}>{done.length}</div><div style={{fontSize:11,color:"#aaa"}}>Completadas</div></div>
-        <div style={{flex:1,background:"#fef9e7",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:24,fontWeight:700,color:"#f39c12"}}>{pending.length}</div><div style={{fontSize:11,color:"#aaa"}}>Pendientes</div></div>
+        <div style={{flex:1,background:"#fef9e7",borderRadius:10,padding:12,textAlign:"center"}}>
+          <div style={{fontSize:24,fontWeight:700,color:"#f39c12"}}>{pending.length}</div>
+          <div style={{fontSize:11,color:"#aaa"}}>Pendientes</div>
+        </div>
+        <div style={{flex:1,background:"#eafaf1",borderRadius:10,padding:12,textAlign:"center"}}>
+          <div style={{fontSize:24,fontWeight:700,color:"#27ae60"}}>{done.length}</div>
+          <div style={{fontSize:11,color:"#aaa"}}>Completadas</div>
+        </div>
       </div>
-      {!mine.length&&<div style={{textAlign:"center",padding:"2rem",color:"#aaa"}}><div style={{fontSize:36,marginBottom:8}}>✅</div><div>Sin tareas para hoy</div></div>}
-      {pending.map(t=>(
-        <div key={t.id} style={{background:"#fff",border:"1px solid #e0e0e0",borderRadius:10,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-          <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13,marginBottom:2}}>{t.title}</div>{t.description&&<div style={{fontSize:12,color:"#888"}}>{t.description}</div>}{t.zone&&<div style={{fontSize:11,color:"#aaa",marginTop:2}}>📍 {t.zone}</div>}</div>
-          <button onClick={()=>mark(t)} style={{padding:"8px 14px",background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:8,color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0}}>✓ Listo</button>
-        </div>
-      ))}
-      {done.map(t=>(
-        <div key={t.id} style={{background:"#f9f9f9",border:"1px solid #e0e0e0",borderRadius:10,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10,opacity:0.6}}>
-          <span style={{color:"#27ae60",fontSize:18}}>✓</span>
-          <div style={{fontWeight:500,fontSize:13,textDecoration:"line-through",color:"#888"}}>{t.title}</div>
-        </div>
-      ))}
+      {!mine.length&&<div style={{textAlign:"center",padding:"2rem",color:"#aaa"}}><div style={{fontSize:36,marginBottom:8}}>✅</div><div>Sin tareas asignadas</div></div>}
+      {pending.map(t=>renderTask(t,false))}
+      {done.length>0&&<div style={{fontSize:11,color:"#aaa",margin:"16px 0 8px",letterSpacing:0.3}}>COMPLETADAS</div>}
+      {done.map(t=>renderTask(t,true))}
     </div>
   );
 }
-
-// ─── GUÍA SÍNTOMAS ─────────────────────────────────────────────────────────────
 function GuiaSintomas() {
   const [crop,setCrop]=useState("jitomate");
   const [sel,setSel]=useState(null);
@@ -1060,4 +1089,50 @@ export default function Worker({ user }) {
       </div>
     </div>
   );
+}function MisAlertasActivas({ worker }) {
+  const [alertas, setAlertas] = useState([]);
+  useEffect(()=>{
+    const q = query(collection(db,"readings"), where("worker","==",worker), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap=>{
+      const recent = snap.docs.slice(0,10).map(d=>({id:d.id,...d.data()}));
+      const conAlerta = recent.filter(r=>{
+        if(r.resolved||r.dismissed) return false;
+        if((r.tipo||"entrada")!=="entrada") return false;
+        const c = CROPS[r.crop]; if(!c) return false;
+        const ph = c.entrada?.ph||c.ph; const ce = c.entrada?.ce||c.ce;
+        const phOut = r.ph<ph.min||r.ph>ph.max;
+        const ceOut = r.ce<ce.min||r.ce>ce.max;
+        return phOut||ceOut;
+      });
+      setAlertas(conAlerta);
+    });
+    return()=>unsub();
+  },[worker]);
+
+  const resolver = async (id) => {
+    if(!window.confirm("¿Marcar esta medición como resuelta? Se quitará la alerta del admin.")) return;
+    await updateDoc(doc(db,"readings",id),{resolved:true,resolvedAt:new Date().toISOString(),resolvedBy:worker});
+  };
+
+  if(!alertas.length) return null;
+  return(
+    <div style={{background:"#fdedec",border:"1.5px solid #e74c3c",borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+      <div style={{fontSize:12,fontWeight:700,color:"#c0392b",marginBottom:8}}>⚠ Tienes {alertas.length} medición(es) con alerta. Si ya las corregiste, márcalas como resueltas:</div>
+      {alertas.map(r=>{
+        const c = CROPS[r.crop];
+        return(
+          <div key={r.id} style={{background:"#fff",borderRadius:8,padding:"8px 12px",marginBottom:6,display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:18}}>{c?.emoji}</span>
+            <div style={{flex:1,fontSize:12}}>
+              <div style={{fontWeight:600,color:"#222"}}>{c?.name} · {r.invernadero||"—"} · {r.zone||r.tinaco||"—"}</div>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#888"}}>pH {r.ph} · CE {r.ce} · {r.date} {r.time||""}</div>
+            </div>
+            <button onClick={()=>resolver(r.id)} style={{padding:"6px 12px",background:"#27ae60",border:"none",borderRadius:6,color:"#fff",cursor:"pointer",fontSize:11,fontWeight:700,flexShrink:0}}>✓ Resuelto</button>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
+
+

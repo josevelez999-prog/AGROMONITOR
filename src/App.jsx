@@ -74,15 +74,21 @@ const n=(v,d=2)=>Number(parseFloat(v||0).toFixed(d));
 const getStatus=(v,r)=>{if(v<r.min||v>r.max)return"danger";const m=(r.max-r.min)*0.15;return(v<r.min+m||v>r.max-m)?"warning":"ok";};
 const getRangos=(crop,tipo,invernadero,weeklyRangos)=>{
   const c=CROPS[crop]; if(!c) return null;
+  const defaultRng = tipo==="salida" ? (c.salida||{ph:c.ph,ce:c.ce}) : (c.entrada||{ph:c.ph,ce:c.ce});
   if(weeklyRangos){
     const inv=(invernadero||"").replace(" ","");
     const key=inv?`${crop}_${inv}_${tipo}`:`${crop}_${tipo}`;
     const wr=weeklyRangos[key];
-    if(wr&&wr.phMin&&wr.phMax&&wr.ceMin&&wr.ceMax)
-      return {ph:{min:wr.phMin,max:wr.phMax},ce:{min:wr.ceMin,max:wr.ceMax}};
+    if(wr){
+      // Permite rangos parciales: usa lo configurado y default para lo demás
+      const phMin = wr.phMin!==undefined ? wr.phMin : defaultRng.ph.min;
+      const phMax = wr.phMax!==undefined ? wr.phMax : defaultRng.ph.max;
+      const ceMin = wr.ceMin!==undefined ? wr.ceMin : defaultRng.ce.min;
+      const ceMax = wr.ceMax!==undefined ? wr.ceMax : defaultRng.ce.max;
+      return {ph:{min:phMin,max:phMax},ce:{min:ceMin,max:ceMax}};
+    }
   }
-  if(tipo==="salida") return c.salida||{ph:c.ph,ce:c.ce};
-  return c.entrada||{ph:c.ph,ce:c.ce};
+  return defaultRng;
 };
 const SC={ok:"#27ae60",warning:"#f39c12",danger:"#e74c3c"};
 const LBL={fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase",letterSpacing:0.3};
@@ -429,8 +435,30 @@ function RangosSemanales() {
     }));
   });
   const getV=(key,field)=>rangos[key]?.[field]??"";
-  const setV=(key,field,val)=>setRangos(p=>({...p,[key]:{...(p[key]||{}),[field]:parseFloat(val)||0}}));
-  const guardar=async()=>{setSaving(true);try{await setDoc(doc(db,"config","rangos_semanales"),rangos);setSaved(true);setTimeout(()=>setSaved(false),3000);}catch(e){alert("Error: "+e.message);}setSaving(false);};
+  const setV=(key,field,val)=>setRangos(p=>{
+    const v = val===""?undefined:parseFloat(val);
+    const newKey = {...(p[key]||{})};
+    if(v===undefined||isNaN(v)) delete newKey[field];
+    else newKey[field] = v;
+    return {...p,[key]:newKey};
+  });
+  const guardar=async()=>{
+    setSaving(true);
+    try{
+      // Filtrar solo entradas con datos válidos
+      const clean = {};
+      Object.entries(rangos).forEach(([k,obj])=>{
+        const hasData = obj && (obj.phMin!==undefined||obj.phMax!==undefined||obj.ceMin!==undefined||obj.ceMax!==undefined);
+        if(hasData) clean[k] = obj;
+      });
+      await setDoc(doc(db,"config","rangos_semanales"), clean);
+      setSaved(true);
+      setTimeout(()=>setSaved(false),4000);
+    }catch(e){
+      alert("⚠ Error al guardar: "+e.message);
+    }
+    setSaving(false);
+  };
   const resetDefaults=async()=>{if(!window.confirm("¿Resetear a valores de literatura?"))return;const d={};filas.forEach(({key,defRng})=>{d[key]={phMin:defRng.ph.min,phMax:defRng.ph.max,ceMin:defRng.ce.min,ceMax:defRng.ce.max};});setRangos(d);await setDoc(doc(db,"config","rangos_semanales"),d);};
   const IS2={width:58,padding:"5px 6px",border:"1.5px solid #ddd",borderRadius:6,fontSize:12,textAlign:"center",background:"#fff",color:"#111",WebkitTextFillColor:"#111",colorScheme:"light",fontFamily:"'Courier New',monospace"};
   return(
@@ -1145,71 +1173,201 @@ function IncidenciasAdmin(){
 // ─── TAREAS ADMIN ─────────────────────────────────────────────────────────────
 function TareasAdmin(){
   const [tasks,setTasks]=useState([]);
-  const [form,setForm]=useState({title:"",description:"",zone:"",assignedTo:"todos",date:new Date().toISOString().slice(0,10)});
-  const [workers,setWorkers]=useState([]);
-  const [editing,setEditingTask]=useState(null);
-  useEffect(()=>{const q=query(collection(db,"tasks"),orderBy("date","desc"));const unsub=onSnapshot(q,snap=>setTasks(snap.docs.map(d=>({id:d.id,...d.data()}))));return()=>unsub();},[]);
-  useEffect(()=>{const q=query(collection(db,"readings"),orderBy("createdAt","desc"));const unsub=onSnapshot(q,snap=>{setWorkers([...new Set(snap.docs.map(d=>d.data().worker).filter(Boolean))]);});return()=>unsub();},[]);
+  const [usuarios,setUsuarios]=useState([]);
+  const [form,setForm]=useState({
+    title:"",description:"",zone:"",
+    assignedTo:[],
+    tipo:"tarea", priority:"normal",
+    fechaCreacion:new Date().toISOString().slice(0,10),
+    fechaLimite:"",
+  });
+  const [editing,setEditing]=useState(null);
+  const [filterTipo,setFilterTipo]=useState("all");
+  const [filterStatus,setFilterStatus]=useState("all");
+
+  useEffect(()=>{
+    const q=query(collection(db,"tasks"),orderBy("fechaCreacion","desc"));
+    const unsub=onSnapshot(q,snap=>setTasks(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    const u2=onSnapshot(query(collection(db,"usuarios")),s=>setUsuarios(s.docs.map(d=>({id:d.id,...d.data()})).filter(u=>u.rol==="trabajador")));
+    return()=>{unsub();u2();};
+  },[]);
+
   const addTask=async()=>{
-    if(!form.title)return;
+    if(!form.title){alert("El título es obligatorio");return;}
+    const data={
+      ...form,
+      assignedTo: form.assignedTo.length===0?["todos"]:form.assignedTo,
+      completedBy:[],
+      updatedAt:new Date().toISOString(),
+    };
     if(editing){
-      await updateDoc(doc(db,"tasks",editing),{...form});
-      setEditingTask(null);
+      await updateDoc(doc(db,"tasks",editing),data);
+      setEditing(null);
     }else{
-      await addDoc(collection(db,"tasks"),{...form,completedBy:[],createdAt:new Date().toISOString()});
+      await addDoc(collection(db,"tasks"),{...data,createdAt:new Date().toISOString()});
     }
-    setForm({title:"",description:"",zone:"",assignedTo:"todos",date:new Date().toISOString().slice(0,10)});
+    setForm({title:"",description:"",zone:"",assignedTo:[],tipo:"tarea",priority:"normal",fechaCreacion:new Date().toISOString().slice(0,10),fechaLimite:""});
   };
-  const startEdit=t=>{setForm({title:t.title,description:t.description||"",zone:t.zone||"",assignedTo:t.assignedTo||"todos",date:t.date});setEditingTask(t.id);window.scrollTo(0,0);};
-  const cancelEdit=()=>{setEditingTask(null);setForm({title:"",description:"",zone:"",assignedTo:"todos",date:new Date().toISOString().slice(0,10)});};
+
+  const startEdit=t=>{
+    setForm({
+      title:t.title||"",description:t.description||"",zone:t.zone||"",
+      assignedTo: Array.isArray(t.assignedTo) ? t.assignedTo : (t.assignedTo&&t.assignedTo!=="todos"?[t.assignedTo]:[]),
+      tipo:t.tipo||"tarea", priority:t.priority||"normal",
+      fechaCreacion:t.fechaCreacion||t.date||new Date().toISOString().slice(0,10),
+      fechaLimite:t.fechaLimite||"",
+    });
+    setEditing(t.id); window.scrollTo(0,0);
+  };
+
+  const toggleWorker=name=>{
+    setForm(p=>({...p,assignedTo: p.assignedTo.includes(name)? p.assignedTo.filter(x=>x!==name) : [...p.assignedTo,name]}));
+  };
+
+  const delTask=async id=>{
+    if(!window.confirm("¿Eliminar registro?"))return;
+    await deleteDoc(doc(db,"tasks",id));
+  };
+
+  const exportCSV=()=>{
+    const lines=[];
+    lines.push(["Tipo","Título","Descripción","Asignado a","Zona","Prioridad","Fecha origen","Fecha límite","Completado por"].join(","));
+    [...tasks].sort((a,b)=>(b.fechaCreacion||b.date||"").localeCompare(a.fechaCreacion||a.date||"")).forEach(t=>{
+      const asig = Array.isArray(t.assignedTo)?t.assignedTo.join(" / "):t.assignedTo;
+      const comp = Array.isArray(t.completedBy)?t.completedBy.join(" / "):"";
+      lines.push([t.tipo||"tarea",t.title,t.description||"",asig||"todos",t.zone||"",t.priority||"normal",t.fechaCreacion||t.date||"",t.fechaLimite||"",comp].map(x=>`"${(x+"").replace(/"/g,"\"\"")}"`).join(","));
+    });
+    const blob=new Blob(["\uFEFF",lines.join("\n")],{type:"text/csv;charset=utf-8;"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`bitacora_tareas_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  };
+
+  const inp2={padding:"8px 12px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:13,width:"100%",boxSizing:"border-box",background:"#fff",color:"#111",WebkitTextFillColor:"#111",colorScheme:"light"};
   const today=new Date().toISOString().slice(0,10);
-  const inp2={padding:"8px 12px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:13,width:"100%",boxSizing:"border-box"};
+  const tasksFilt = tasks.filter(t=>{
+    if(filterTipo!=="all" && (t.tipo||"tarea")!==filterTipo) return false;
+    if(filterStatus==="vigente" && t.completedBy?.length>0) return false;
+    if(filterStatus==="completadas" && !(t.completedBy?.length>0)) return false;
+    return true;
+  });
+
   return(
     <div>
       <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px",marginBottom:16}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#444"}}>{editing?"✎ EDITAR TAREA":"AGREGAR TAREA"}</div>
-          {editing&&<span style={{fontSize:11,color:"#f39c12",background:"#fef9e7",border:"1px solid #f39c1244",borderRadius:6,padding:"2px 8px"}}>Editando tarea</span>}
+          <div style={{fontSize:12,fontWeight:700,color:"#444"}}>{editing?"✎ EDITAR REGISTRO":"➕ NUEVO REGISTRO"}</div>
+          {editing&&<button onClick={()=>{setEditing(null);setForm({title:"",description:"",zone:"",assignedTo:[],tipo:"tarea",priority:"normal",fechaCreacion:today,fechaLimite:""});}} style={{background:"#f5f5f5",border:"none",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontSize:11,color:"#888"}}>Cancelar</button>}
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-          <div style={{gridColumn:"1/-1"}}><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>TÍTULO *</label><input value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))} placeholder="Ej: Revisar pH Zona A" style={inp2}/></div>
-          <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>ZONA</label><input value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} placeholder="Zona A" style={inp2}/></div>
-          <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>ASIGNAR A</label><select value={form.assignedTo} onChange={e=>setForm(p=>({...p,assignedTo:e.target.value}))} style={inp2}><option value="todos">Todos</option>{workers.map(w=><option key={w} value={w}>{w}</option>)}</select></div>
-          <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>FECHA</label><input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={inp2}/></div>
-          <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>DESCRIPCIÓN</label><input value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} placeholder="Detalles..." style={inp2}/></div>
+          <div>
+            <label style={LBL}>Tipo *</label>
+            <select value={form.tipo} onChange={e=>setForm(p=>({...p,tipo:e.target.value}))} style={inp2}>
+              <option value="tarea">📋 Tarea</option>
+              <option value="instruccion">📖 Instrucción</option>
+              <option value="aviso">📢 Aviso</option>
+            </select>
+          </div>
+          <div>
+            <label style={LBL}>Prioridad</label>
+            <select value={form.priority} onChange={e=>setForm(p=>({...p,priority:e.target.value}))} style={inp2}>
+              <option value="normal">Normal</option>
+              <option value="alta">🔴 Alta</option>
+              <option value="baja">🟢 Baja</option>
+            </select>
+          </div>
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={addTask} style={{padding:"9px 24px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>{editing?"Guardar cambios":"+ Agregar tarea"}</button>
-          {editing&&<button onClick={cancelEdit} style={{padding:"9px 16px",border:"1px solid #e0e0e0",borderRadius:8,background:"transparent",color:"#888",cursor:"pointer",fontSize:13}}>Cancelar</button>}
+        <div style={{marginBottom:10}}>
+          <label style={LBL}>Título *</label>
+          <input placeholder="Ej: Revisar pH Zona A" value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))} style={inp2}/>
         </div>
+        <div style={{marginBottom:10}}>
+          <label style={LBL}>Descripción / instrucciones detalladas</label>
+          <textarea placeholder="Descripción completa que se mostrará al trabajador..." value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} style={{...inp2,minHeight:80,fontFamily:"inherit",resize:"vertical"}}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
+          <div>
+            <label style={LBL}>Zona</label>
+            <input placeholder="Zona A" value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} style={inp2}/>
+          </div>
+          <div>
+            <label style={LBL}>📅 Fecha origen *</label>
+            <input type="date" value={form.fechaCreacion} onChange={e=>setForm(p=>({...p,fechaCreacion:e.target.value}))} style={inp2}/>
+          </div>
+          <div>
+            <label style={LBL}>⏰ Fecha límite</label>
+            <input type="date" value={form.fechaLimite} onChange={e=>setForm(p=>({...p,fechaLimite:e.target.value}))} style={inp2}/>
+          </div>
+        </div>
+        <div style={{marginBottom:12}}>
+          <label style={LBL}>👥 Asignar a (selección múltiple, vacío = todos)</label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,padding:8,background:"#f9f9f9",borderRadius:8,border:"1px solid #e0e0e0",minHeight:42}}>
+            {!usuarios.length ? <div style={{fontSize:12,color:"#aaa",alignSelf:"center"}}>No hay trabajadores registrados</div>
+            : usuarios.map(u=>{
+                const sel = form.assignedTo.includes(u.nombre||u.email||"");
+                const name = u.nombre||u.email||"";
+                return(
+                  <button key={u.id} onClick={()=>toggleWorker(name)} type="button"
+                    style={{padding:"6px 12px",border:`2px solid ${sel?"#27ae60":"#ddd"}`,borderRadius:20,background:sel?"#eafaf1":"#fff",color:sel?"#27ae60":"#666",cursor:"pointer",fontSize:12,fontWeight:sel?700:500}}>
+                    {sel?"✓ ":""}{name}
+                  </button>
+                );
+              })
+            }
+          </div>
+          {form.assignedTo.length===0 && <div style={{fontSize:11,color:"#888",marginTop:4}}>📢 Se notificará a todos los trabajadores</div>}
+          {form.assignedTo.length>0 && <div style={{fontSize:11,color:"#27ae60",marginTop:4,fontWeight:600}}>✓ {form.assignedTo.length} trabajador(es) seleccionado(s)</div>}
+        </div>
+        <button onClick={addTask} style={{background:"#27ae60",color:"#fff",border:"none",borderRadius:8,padding:"10px 22px",cursor:"pointer",fontWeight:700,fontSize:13}}>
+          {editing?"✓ Guardar cambios":"➕ Crear registro"}
+        </button>
       </div>
-      {!tasks.length&&<div style={{background:"#fff",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa"}}>Sin tareas creadas</div>}
-      {tasks.map(t=>(
-        <div key={t.id} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12,opacity:t.date<today?0.6:1}}>
-          <div style={{flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:2}}>
-              <span style={{fontWeight:600,fontSize:13}}>{t.title}</span>
-              {t.date===today&&<span style={{background:"#e8f4fd",color:"#2980b9",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:600}}>Hoy</span>}
-            </div>
-            {t.description&&<div style={{fontSize:11,color:"#888",marginBottom:2}}>{t.description}</div>}
-            <div style={{fontSize:11,color:"#aaa",display:"flex",gap:10,flexWrap:"wrap"}}>
-              {t.zone&&<span>📍 {t.zone}</span>}
-              <span>👤 {t.assignedTo==="todos"?"Todos":t.assignedTo}</span>
-              <span>📅 {t.date}</span>
-              {t.completedBy?.length>0&&<span style={{color:"#27ae60"}}>✓ {t.completedBy.join(", ")}</span>}
+
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+        {[["all","Todos"],["tarea","📋 Tareas"],["instruccion","📖 Instrucciones"],["aviso","📢 Avisos"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFilterTipo(v)} style={{padding:"6px 12px",border:`1px solid ${filterTipo===v?"#555":"#e0e0e0"}`,borderRadius:20,background:filterTipo===v?"#55555518":"transparent",color:filterTipo===v?"#333":"#777",cursor:"pointer",fontSize:11,fontWeight:filterTipo===v?700:400}}>{l}</button>
+        ))}
+        {[["all","Todas"],["vigente","Vigentes"],["completadas","Completadas"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFilterStatus(v)} style={{padding:"6px 12px",border:`1px solid ${filterStatus===v?"#2980b9":"#e0e0e0"}`,borderRadius:20,background:filterStatus===v?"#2980b918":"transparent",color:filterStatus===v?"#2980b9":"#777",cursor:"pointer",fontSize:11,fontWeight:filterStatus===v?700:400}}>{l}</button>
+        ))}
+        <button onClick={exportCSV} style={{marginLeft:"auto",padding:"6px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:11,fontWeight:600}}>⬇ CSV Bitácora</button>
+      </div>
+
+      {!tasksFilt.length&&<div style={{textAlign:"center",padding:"2rem",color:"#aaa",background:"#fff",border:"1px solid #eee",borderRadius:12,fontSize:13}}>Sin registros</div>}
+      {tasksFilt.map(t=>{
+        const completos = Array.isArray(t.completedBy) ? t.completedBy : [];
+        const asignados = Array.isArray(t.assignedTo) ? t.assignedTo : (t.assignedTo?[t.assignedTo]:["todos"]);
+        const isOverdue = t.fechaLimite && t.fechaLimite < today && completos.length === 0;
+        const tipoIcon = {tarea:"📋",instruccion:"📖",aviso:"📢"}[t.tipo||"tarea"];
+        const priColor = {alta:"#e74c3c",baja:"#27ae60",normal:"#888"}[t.priority||"normal"];
+        return(
+          <div key={t.id} style={{background:"#fff",border:`1px solid ${isOverdue?"#e74c3c44":"#e0e0e0"}`,borderLeft:`4px solid ${priColor}`,borderRadius:10,padding:"12px 16px",marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:6}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:14,color:"#222",marginBottom:4}}>
+                  {tipoIcon} {t.title}
+                  {t.priority==="alta"&&<span style={{background:"#fdedec",color:"#c0392b",fontSize:10,padding:"2px 6px",borderRadius:8,marginLeft:8,fontWeight:700}}>ALTA</span>}
+                  {isOverdue&&<span style={{background:"#fdedec",color:"#c0392b",fontSize:10,padding:"2px 6px",borderRadius:8,marginLeft:8,fontWeight:700}}>⏰ VENCIDA</span>}
+                  {completos.length>0&&<span style={{background:"#eafaf1",color:"#27ae60",fontSize:10,padding:"2px 6px",borderRadius:8,marginLeft:8,fontWeight:700}}>✓ Completada</span>}
+                </div>
+                {t.description&&<div style={{fontSize:12,color:"#555",marginBottom:6,whiteSpace:"pre-wrap"}}>{t.description}</div>}
+                <div style={{display:"flex",gap:12,fontSize:11,color:"#888",flexWrap:"wrap"}}>
+                  {t.zone&&<span>📍 {t.zone}</span>}
+                  <span>👥 {asignados.length>1?`${asignados.length} trabajadores`:asignados.join(", ")}</span>
+                  <span>📅 Origen: {t.fechaCreacion||t.date||"—"}</span>
+                  {t.fechaLimite&&<span style={{color:isOverdue?"#c0392b":"#888",fontWeight:isOverdue?700:400}}>⏰ Límite: {t.fechaLimite}</span>}
+                </div>
+                {completos.length>0&&<div style={{fontSize:11,color:"#27ae60",marginTop:6,fontWeight:600}}>✓ Completada por: {completos.join(", ")}</div>}
+              </div>
+              <div style={{display:"flex",gap:4,flexShrink:0}}>
+                <button onClick={()=>startEdit(t)} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button>
+                <button onClick={()=>delTask(t.id)} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>
+              </div>
             </div>
           </div>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>startEdit(t)} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12,color:"#2980b9",fontWeight:600}}>✎</button>
-            <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12,color:"#c0392b",fontWeight:600}}>✕</button>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
-
-// ─── INSTRUCCIONES ADMIN ──────────────────────────────────────────────────────
 function InstruccionesAdmin(){
   const [data,setData]=useState([]);
   const [form,setForm]=useState({crop:"jitomate",title:"",zone:"",volume:"",notes:"",date:new Date().toISOString().slice(0,10)});
@@ -1364,8 +1522,7 @@ const NAV=[
   {id:"reportes",label:"Reportes",icon:"↗"},
   {id:"formulador",label:"Formulador",icon:"⬡"},
   {id:"incidencias",label:"Incidencias",icon:"🚨"},
-  {id:"tareas",label:"Tareas",icon:"✅"},
-  {id:"instrucciones",label:"Instrucciones",icon:"📋"},
+  {id:"tareas",label:"Tareas y avisos",icon:"📋"},
   {id:"inventario",label:"Inventario",icon:"📦"},
   {id:"trabajadores",label:"Equipo",icon:"◎"},
   {id:"suelo", label:"Análisis de Suelo", icon:"🌍"},
@@ -1453,7 +1610,7 @@ export default function App(){
     formulador:  <Formulador/>,
     incidencias: <IncidenciasAdmin/>,
     tareas:      <TareasAdmin/>,
-    instrucciones:<InstruccionesAdmin/>,
+    
     inventario:  <Inventario/>,
     trabajadores:<Trabajadores readings={readings}/>,
     ventas:      <Ventas readOnly={esObservador}/>,
