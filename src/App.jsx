@@ -963,170 +963,387 @@ function Formulador(){
   const [ferts,setFerts]=useState(FERTS_INIT);
   const [volume,setVolume]=useState(1000);
   const [sub,setSub]=useState("tabla");
-  const [saved,setSaved]=useState([]);
+  const [savedFormulas,setSavedFormulas]=useState([]);
   const [saveName,setSaveName]=useState("");
+  const [saveNotes,setSaveNotes]=useState("");
   const [etapa,setEtapa]=useState("Vegetativo");
-  const aportes=useMemo(()=>Object.fromEntries(ALL_IONS.map(ion=>[ion,Math.max(0,n(target[ion]-water[ion]))])),[target,water]);
-  const fert=useMemo(()=>{const t=Object.fromEntries(ALL_IONS.map(ion=>[ion,0]));ferts.filter(f=>f.active&&f.meq>0).forEach(f=>{Object.entries(f.ions).forEach(([ion,ratio])=>{if(t[ion]!==undefined)t[ion]=n(t[ion]+f.meq*ratio);});});return t;},[ferts]);
-  const dosis=useMemo(()=>ferts.map(f=>{if(!f.active||f.meq===0)return{...f,grm3:0,mlm3:0};let grm3=0,mlm3=0;if(f.type==="solid")grm3=n(f.meq*f.Peq);else{mlm3=n(f.meq*f.Peq/((f.density||1)*(f.richness||100)/100));grm3=n(mlm3*(f.density||1));}const kgT=n(grm3*volume/1000000,3);const costoT=n(kgT*(f.precio||0),2);return{...f,grm3,mlm3,kgTotal:kgT,mlTotal:f.type==="liquid"?n(mlm3*volume/1000,2):0,costoTotal:costoT};}), [ferts,volume]);
-  const costoTotal=dosis.filter(f=>f.active&&f.meq>0).reduce((s,f)=>s+f.costoTotal,0);
-  const costoPorLitro=volume>0?n(costoTotal/volume,4):0;
+  const [saving,setSaving]=useState(false);
+  const [savedAlert,setSavedAlert]=useState(false);
+  const [editingId,setEditingId]=useState(null);
+  const [iaPrompt,setIaPrompt]=useState("");
+  const [iaResp,setIaResp]=useState("");
+  const [iaLoading,setIaLoading]=useState(false);
+
+  // Cargar fórmulas guardadas desde Firebase
+  useEffect(()=>{
+    const q = query(collection(db,"formulas_nutritivas"), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap=>setSavedFormulas(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    return()=>unsub();
+  },[]);
+
+  const aportes = useMemo(()=>Object.fromEntries(ALL_IONS.map(ion=>[ion,Math.max(0,n(target[ion]-water[ion]))])),[target,water]);
+  const fert = useMemo(()=>{
+    const t = Object.fromEntries(ALL_IONS.map(ion=>[ion,0]));
+    ferts.filter(f=>f.active&&f.meq>0).forEach(f=>{
+      Object.entries(f.ions).forEach(([ion,ratio])=>{
+        if(t[ion]!==undefined) t[ion]=n(t[ion]+f.meq*ratio);
+      });
+    });
+    return t;
+  },[ferts]);
+
+  const dosis = useMemo(()=>ferts.map(f=>{
+    if(!f.active||f.meq===0) return{...f,grm3:0,mlm3:0,kgTotal:0,mlTotal:0,costoTotal:0};
+    let grm3=0, mlm3=0;
+    if(f.type==="solid") grm3=n(f.meq*f.Peq);
+    else {
+      mlm3=n(f.meq*f.Peq/((f.density||1)*(f.richness||100)/100));
+      grm3=n(mlm3*(f.density||1));
+    }
+    const kgT=n(grm3*volume/1000000,3);
+    const costoT=n(kgT*(f.precio||0),2);
+    return{...f,grm3,mlm3,kgTotal:kgT,mlTotal:f.type==="liquid"?n(mlm3*volume/1000,2):0,costoTotal:costoT};
+  }),[ferts,volume]);
+
+  const costoTotal = dosis.filter(f=>f.active&&f.meq>0).reduce((s,f)=>s+f.costoTotal,0);
+  const costoPorLitro = volume>0?n(costoTotal/volume,4):0;
+  const costoPorM3 = volume>0?n(costoTotal*1000/volume,2):0;
+
+  const balance = useMemo(()=>{
+    const dif = {};
+    ALL_IONS.forEach(ion=>{
+      const objetivo = aportes[ion]||0;
+      const aportado = fert[ion]||0;
+      dif[ion] = {objetivo,aportado,delta:n(aportado-objetivo,2),pct:objetivo>0?n((aportado/objetivo)*100,1):0};
+    });
+    return dif;
+  },[aportes,fert]);
+
+  // Guardar fórmula en Firebase
+  const guardarFormula = async()=>{
+    if(!saveName.trim()){alert("Pon un nombre a la fórmula"); return;}
+    setSaving(true);
+    try{
+      const data = {
+        nombre: saveName.trim(),
+        notas: saveNotes||"",
+        crop, etapa, volume,
+        target:{...target}, water:{...water},
+        ferts: ferts.map(f=>({nombre:f.nombre,type:f.type,active:f.active,meq:f.meq,Peq:f.Peq,density:f.density,richness:f.richness,precio:f.precio,ions:f.ions})),
+        costoTotal: n(costoTotal,2),
+        costoPorLitro: costoPorLitro,
+        updatedAt: new Date().toISOString(),
+      };
+      if(editingId){
+        await updateDoc(doc(db,"formulas_nutritivas",editingId), data);
+        setEditingId(null);
+      } else {
+        await addDoc(collection(db,"formulas_nutritivas"), {...data,createdAt:new Date().toISOString()});
+      }
+      setSaveName(""); setSaveNotes("");
+      setSavedAlert(true); setTimeout(()=>setSavedAlert(false),3000);
+    } catch(e){
+      alert("⚠ Error al guardar: "+e.message);
+    }
+    setSaving(false);
+  };
+
+  // Cargar fórmula guardada
+  const cargarFormula = (f) => {
+    setCrop(f.crop||"jitomate");
+    setEtapa(f.etapa||"Vegetativo");
+    setVolume(f.volume||1000);
+    setTarget(f.target||{...CROP_NUT.jitomate});
+    setWater(f.water||{...DEF_WATER});
+    if(f.ferts&&f.ferts.length) setFerts(f.ferts);
+    setSaveName(f.nombre);
+    setSaveNotes(f.notas||"");
+    setEditingId(f.id);
+    setSub("tabla");
+    window.scrollTo(0,0);
+  };
+
+  // Eliminar fórmula
+  const eliminarFormula = async (id) => {
+    if(!window.confirm("¿Eliminar esta fórmula?")) return;
+    await deleteDoc(doc(db,"formulas_nutritivas",id));
+  };
+
+  // Duplicar fórmula
+  const duplicarFormula = (f) => {
+    cargarFormula(f);
+    setEditingId(null);
+    setSaveName(f.nombre + " (copia)");
+  };
+
+  // IA Nutricional
+  const consultarIA = async () => {
+    if(!iaPrompt.trim()){alert("Escribe tu pregunta");return;}
+    setIaLoading(true); setIaResp("");
+    try {
+      const contexto = `Cultivo: ${CROPS[crop]?.name}. Etapa: ${etapa}.
+Volumen: ${volume}L. Costo total: $${n(costoTotal,2)}. Costo/litro: $${costoPorLitro}.
+Objetivo iones (meq/L): ${JSON.stringify(target)}.
+Agua riego: ${JSON.stringify(water)}.
+Aportes a complementar: ${JSON.stringify(aportes)}.
+Fertilizantes activos: ${ferts.filter(f=>f.active&&f.meq>0).map(f=>`${f.nombre}=${f.meq}meq`).join(", ")}.
+Balance final: ${JSON.stringify(Object.fromEntries(ALL_IONS.map(i=>[i,balance[i]?.aportado])))}.
+
+Pregunta del usuario: ${iaPrompt}`;
+      const res = await fetch("/api/analyzeNutricion", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({prompt: contexto})
+      });
+      const r = await res.json();
+      if(r.error) throw new Error(r.error);
+      setIaResp(r.response||r.text||"Sin respuesta");
+    } catch(e){
+      setIaResp("⚠ Error: " + e.message);
+    }
+    setIaLoading(false);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null); setSaveName(""); setSaveNotes("");
+  };
+
   const thS={padding:"6px 8px",fontSize:11,fontWeight:500,color:"#aaa",textAlign:"center",borderBottom:"1px solid #f0f0f0",background:"#fafafa",whiteSpace:"nowrap"};
   const tdS={padding:"5px 7px",textAlign:"center",fontSize:12,borderBottom:"1px solid #fafafa"};
+  const INP_F={padding:"6px 8px",border:"1px solid #ddd",borderRadius:6,fontSize:12,width:70,textAlign:"center",background:"#fff",color:"#111",WebkitTextFillColor:"#111",colorScheme:"light",fontFamily:"'Courier New',monospace"};
+
   return(
     <div>
+      {savedAlert&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:"10px 14px",marginBottom:14,color:"#27ae60",fontWeight:600,fontSize:13}}>✓ Fórmula {editingId?"actualizada":"guardada"} en Firebase — accesible en pestaña Guardadas</div>}
+      {editingId&&<div style={{background:"#fff3cd",border:"1px solid #ffc10744",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#856404",display:"flex",alignItems:"center",gap:10}}>✎ Editando fórmula existente<button onClick={cancelEdit} style={{marginLeft:"auto",background:"transparent",border:"none",cursor:"pointer",color:"#aaa",fontSize:14,fontWeight:600}}>✕ Cancelar</button></div>}
+
       <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px",marginBottom:12}}>
         <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"flex-end"}}>
           <div>
             <div style={{fontSize:11,color:"#aaa",marginBottom:6,fontFamily:"'Courier New',monospace"}}>CULTIVO</div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(CROPS).map(([k,c])=>(<button key={k} onClick={()=>{setCrop(k);setTarget({...CROP_NUT[k]});}} style={{padding:"7px 14px",border:`1px solid ${crop===k?c.color:"#e0e0e0"}`,borderRadius:20,background:crop===k?c.color+"18":"transparent",color:crop===k?c.color:"#666",cursor:"pointer",fontSize:12,fontWeight:crop===k?700:400}}>{c.emoji} {c.name}</button>))}</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {Object.entries(CROPS).map(([k,c])=>(
+                <button key={k} onClick={()=>{setCrop(k);setTarget({...CROP_NUT[k]});}}
+                  style={{padding:"7px 14px",border:`1px solid ${crop===k?c.color:"#e0e0e0"}`,borderRadius:20,background:crop===k?c.color+"18":"transparent",color:crop===k?c.color:"#666",cursor:"pointer",fontSize:12,fontWeight:crop===k?700:400}}>
+                  {c.emoji} {c.name}
+                </button>
+              ))}
+            </div>
           </div>
           <div>
             <div style={{fontSize:11,color:"#aaa",marginBottom:6,fontFamily:"'Courier New',monospace"}}>ETAPA FENOLÓGICA</div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{ETAPAS.map(e=>(<button key={e} onClick={()=>setEtapa(e)} style={{padding:"7px 14px",border:`1px solid ${etapa===e?"#2c3e50":"#e0e0e0"}`,borderRadius:20,background:etapa===e?"#2c3e50":"transparent",color:etapa===e?"#fff":"#666",cursor:"pointer",fontSize:12,fontWeight:etapa===e?700:400}}>{e}</button>))}</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {ETAPAS.map(e=>(
+                <button key={e} onClick={()=>setEtapa(e)}
+                  style={{padding:"7px 14px",border:`1px solid ${etapa===e?"#2c3e50":"#e0e0e0"}`,borderRadius:20,background:etapa===e?"#2c3e50":"transparent",color:etapa===e?"#fff":"#666",cursor:"pointer",fontSize:12,fontWeight:etapa===e?700:400}}>{e}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:"#aaa",marginBottom:6,fontFamily:"'Courier New',monospace"}}>VOLUMEN (L)</div>
+            <input type="number" min="1" value={volume} onChange={e=>setVolume(parseFloat(e.target.value)||1000)} style={{...INP_F,width:100,fontSize:13}}/>
           </div>
         </div>
       </div>
-      <div style={{display:"flex",gap:4,marginBottom:12,background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:4}}>
-        {[["tabla","📋 Iones"],["dosis","⚖️ Dosis"],["costos","💰 Costos"],["balance","📊 Balance"],["ia_nut","🤖 IA"],["guardadas",`📁 (${saved.length})`]].map(([k,l])=>(<button key={k} onClick={()=>setSub(k)} style={{flex:1,padding:"7px 6px",border:"none",borderRadius:8,background:sub===k?"#f0f4ff":"transparent",color:sub===k?"#2c3e50":"#888",cursor:"pointer",fontSize:11,fontWeight:sub===k?600:400}}>{l}</button>))}
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:12,background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:10,padding:4,overflowX:"auto"}}>
+        {[["tabla","🧪 Iones"],["dosis","⚖ Dosis"],["costos","💰 Costos"],["balance","📊 Balance"],["ia_nut","🤖 IA"],["guardadas",`💾 Guardadas (${savedFormulas.length})`]].map(([k,l])=>(
+          <button key={k} onClick={()=>setSub(k)}
+            style={{padding:"7px 12px",border:"none",borderRadius:8,background:sub===k?"#27ae60":"transparent",color:sub===k?"#fff":"#888",cursor:"pointer",fontSize:11,fontWeight:sub===k?700:400,whiteSpace:"nowrap"}}>{l}</button>
+        ))}
       </div>
 
+      {/* TABLA IONES */}
       {sub==="tabla"&&(
-        <>
-          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14,marginBottom:12}}>
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
-                <thead><tr><th style={{...thS,textAlign:"left",minWidth:100}}>Parámetro</th>{ANIONS.map(ion=><th key={ion} style={{...thS,color:"#2471a3"}}>{ION_LABELS[ion]}</th>)}{CATIONS.map(ion=><th key={ion} style={{...thS,color:"#1e8449"}}>{ION_LABELS[ion]}</th>)}<th style={thS}>Σ</th></tr></thead>
-                <tbody>
-                  {[{label:"Agua",data:water,setter:setWater,color:"#2980b9"},{label:`Objetivo · ${etapa}`,data:target,setter:setTarget,color:CROPS[crop].color}].map(row=>(
-                    <tr key={row.label}><td style={{...tdS,textAlign:"left",fontWeight:600,color:row.color}}>{row.label}</td>
-                    {ALL_IONS.map(ion=><td key={ion} style={tdS}><input type="number" step="0.1" min="0" value={row.data[ion]} onChange={e=>row.setter(p=>({...p,[ion]:parseFloat(e.target.value)||0}))} style={{width:52,textAlign:"center",border:"1px solid #e8e8e8",borderRadius:5,padding:3,fontSize:11,fontFamily:"'Courier New',monospace"}}/></td>)}
-                    <td style={{...tdS,fontFamily:"'Courier New',monospace",fontWeight:700,color:row.color}}>{n(ALL_IONS.reduce((s,i)=>s+(row.data[i]||0),0))}</td></tr>
-                  ))}
-                  <tr style={{background:"#f9f9f9"}}><td style={{...tdS,textAlign:"left",fontWeight:600,color:"#555"}}>Aportes</td>{ALL_IONS.map(ion=><td key={ion} style={{...tdS,fontFamily:"'Courier New',monospace",fontWeight:700,color:aportes[ion]>0?"#2c3e50":"#ccc"}}>{n(aportes[ion])}</td>)}<td style={{...tdS,fontFamily:"'Courier New',monospace",fontWeight:700}}>{n(ALL_IONS.reduce((s,i)=>s+(aportes[i]||0),0))}</td></tr>
-                  <tr style={{background:"#f0faf5"}}><td style={{...tdS,textAlign:"left",fontWeight:600,color:"#27ae60"}}>Fertilizando</td>{ALL_IONS.map(ion=>{const h=fert[ion],need=aportes[ion];return<td key={ion} style={{...tdS,fontFamily:"'Courier New',monospace",fontWeight:700,color:h>need*1.05?"#e74c3c":h<need*0.95&&need>0?"#e67e22":h>0?"#27ae60":"#ccc"}}>{n(h)}{h>need*1.05?"↑":h<need*0.95&&need>0?"↓":""}</td>;})}
-                  <td style={{...tdS,fontFamily:"'Courier New',monospace",fontWeight:700,color:"#27ae60"}}>{n(ALL_IONS.reduce((s,i)=>s+(fert[i]||0),0))}</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14}}>
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",minWidth:420}}>
-                <thead><tr><th style={{...thS,width:32}}></th><th style={{...thS,textAlign:"left"}}>Fertilizante</th><th style={{...thS,width:80}}>meq/L</th><th style={thS}>Aporta</th><th style={thS}>Tipo</th></tr></thead>
-                <tbody>{ferts.map(f=>(
-                  <tr key={f.id} style={{opacity:f.active?1:0.4}}>
-                    <td style={tdS}><input type="checkbox" checked={f.active} onChange={()=>setFerts(p=>p.map(x=>x.id===f.id?{...x,active:!x.active}:x))} style={{cursor:"pointer"}}/></td>
-                    <td style={{...tdS,textAlign:"left",fontWeight:f.active?600:400,color:"#333"}}>{f.name}</td>
-                    <td style={tdS}>{f.active&&<input type="number" step="0.1" min="0" value={f.meq} onChange={e=>setFerts(p=>p.map(x=>x.id===f.id?{...x,meq:parseFloat(e.target.value)||0}:x))} style={{width:60,textAlign:"center",border:"1px solid #e0e0e0",borderRadius:5,padding:3,fontSize:12,fontFamily:"'Courier New',monospace"}}/>}</td>
-                    <td style={tdS}><div style={{display:"flex",gap:3,justifyContent:"center",flexWrap:"wrap"}}>{Object.entries(f.ions).map(([ion,r])=><span key={ion} style={{background:ANIONS.includes(ion)?"#eaf4fb":"#eafbf0",color:ANIONS.includes(ion)?"#1a5276":"#1a5733",padding:"1px 5px",borderRadius:4,fontSize:10,fontFamily:"'Courier New',monospace"}}>{ION_LABELS[ion]}{r!==1?` ×${r}`:""}</span>)}</div></td>
-                    <td style={{...tdS,fontSize:11,color:f.type==="liquid"?"#8e44ad":"#aaa"}}>{f.type==="liquid"?"Líquido":"Sólido"}</td>
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead>
+                <tr>
+                  <th style={{...thS,textAlign:"left",paddingLeft:12}}>Ion</th>
+                  <th style={thS}>Objetivo</th>
+                  <th style={thS}>Agua</th>
+                  <th style={thS}>A aportar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ALL_IONS.map(ion=>(
+                  <tr key={ion}>
+                    <td style={{...tdS,textAlign:"left",paddingLeft:12,fontWeight:600,color:"#27ae60",fontFamily:"'Courier New',monospace"}}>{ion}</td>
+                    <td style={tdS}><input type="number" step="0.1" value={target[ion]||0} onChange={e=>setTarget(p=>({...p,[ion]:parseFloat(e.target.value)||0}))} style={INP_F}/></td>
+                    <td style={tdS}><input type="number" step="0.1" value={water[ion]||0} onChange={e=>setWater(p=>({...p,[ion]:parseFloat(e.target.value)||0}))} style={INP_F}/></td>
+                    <td style={{...tdS,fontWeight:700,color:"#c0392b",fontFamily:"'Courier New',monospace"}}>{aportes[ion]}</td>
                   </tr>
-                ))}</tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </>
+        </div>
       )}
 
+      {/* DOSIS */}
       {sub==="dosis"&&(
-        <>
-          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px",marginBottom:12,display:"flex",alignItems:"center",gap:20,flexWrap:"wrap"}}>
-            <div><div style={{fontSize:11,color:"#aaa",marginBottom:4,fontFamily:"'Courier New',monospace"}}>VOLUMEN (L)</div><input type="number" step="100" min="100" value={volume} onChange={e=>setVolume(parseFloat(e.target.value)||1000)} style={{width:120,fontFamily:"'Courier New',monospace",fontSize:16,fontWeight:700,textAlign:"center",border:"1px solid #e0e0e0",borderRadius:8,padding:8}}/></div>
-            <div style={{fontSize:12,color:"#aaa"}}>Para <strong style={{color:"#333"}}>{volume.toLocaleString()} litros</strong> · Etapa: <strong style={{color:"#333"}}>{etapa}</strong></div>
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead>
+                <tr>
+                  <th style={{...thS,textAlign:"left"}}>Fertilizante</th>
+                  <th style={thS}>Activo</th>
+                  <th style={thS}>meq/L</th>
+                  <th style={thS}>g/m³</th>
+                  <th style={thS}>mL/m³</th>
+                  <th style={thS}>kg Total</th>
+                  <th style={thS}>mL Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dosis.map((f,i)=>(
+                  <tr key={i} style={{opacity:f.active?1:0.5}}>
+                    <td style={{...tdS,textAlign:"left",fontWeight:500}}>{f.nombre}</td>
+                    <td style={tdS}><input type="checkbox" checked={f.active} onChange={e=>setFerts(p=>p.map((x,j)=>j===i?{...x,active:e.target.checked}:x))}/></td>
+                    <td style={tdS}><input type="number" step="0.1" min="0" value={f.meq} onChange={e=>setFerts(p=>p.map((x,j)=>j===i?{...x,meq:parseFloat(e.target.value)||0}:x))} style={INP_F}/></td>
+                    <td style={{...tdS,fontFamily:"'Courier New',monospace",color:"#2980b9"}}>{f.grm3.toFixed(2)}</td>
+                    <td style={{...tdS,fontFamily:"'Courier New',monospace",color:"#8e44ad"}}>{f.mlm3?f.mlm3.toFixed(2):"—"}</td>
+                    <td style={{...tdS,fontFamily:"'Courier New',monospace",fontWeight:700,color:"#27ae60"}}>{f.kgTotal}</td>
+                    <td style={{...tdS,fontFamily:"'Courier New',monospace",fontWeight:700,color:"#27ae60"}}>{f.mlTotal||"—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14}}>
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",minWidth:480}}>
-                <thead><tr><th style={{...thS,textAlign:"left"}}>Fertilizante</th><th style={thS}>meq/L</th><th style={thS}>gr/m³</th><th style={thS}>ml/m³</th><th style={{...thS,color:"#333"}}>Para {volume.toLocaleString()} L</th></tr></thead>
-                <tbody>{dosis.filter(f=>f.active&&f.meq>0).map(f=>(
-                  <tr key={f.id}><td style={{...tdS,textAlign:"left",fontWeight:600}}>{f.name}</td><td style={{...tdS,fontFamily:"'Courier New',monospace"}}>{n(f.meq)}</td><td style={{...tdS,fontFamily:"'Courier New',monospace",color:"#aaa"}}>{f.type==="solid"?n(f.grm3):"—"}</td><td style={{...tdS,fontFamily:"'Courier New',monospace",color:"#8e44ad"}}>{f.type==="liquid"?n(f.mlm3):"—"}</td><td style={{...tdS,fontFamily:"'Courier New',monospace",fontWeight:700,color:"#2c3e50"}}>{f.type==="solid"?`${n(f.kgTotal*1000,0)} gr`:`${n(f.mlTotal,1)} ml`}</td></tr>
-                ))}</tbody>
-              </table>
-            </div>
-            <div style={{marginTop:12,background:"#fefdf0",borderRadius:8,padding:"10px 14px",fontSize:11,color:"#7d6608",border:"1px solid #f9e79f"}}>
-              <strong>Orden de mezcla:</strong> Ca(NO₃)₂ → KNO₃ → K₂SO₄ → MgSO₄ → KH₂PO₄ → ácidos al final. <strong>Nunca mezcles Ca con SO₄ o PO₄.</strong>
-            </div>
-          </div>
-        </>
+        </div>
       )}
 
+      {/* COSTOS */}
       {sub==="costos"&&(
         <div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:16}}>
-            <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px",textAlign:"center"}}><div style={{fontSize:11,color:"#aaa",marginBottom:4}}>Costo total fórmula</div><div style={{fontSize:26,fontWeight:700,color:"#2c3e50",fontFamily:"'Courier New',monospace"}}>${n(costoTotal,2)}</div><div style={{fontSize:11,color:"#aaa"}}>Para {volume.toLocaleString()} L</div></div>
-            <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px",textAlign:"center"}}><div style={{fontSize:11,color:"#aaa",marginBottom:4}}>Costo por litro</div><div style={{fontSize:26,fontWeight:700,color:"#27ae60",fontFamily:"'Courier New',monospace"}}>${costoPorLitro}</div><div style={{fontSize:11,color:"#aaa"}}>$/L de solución</div></div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginBottom:14}}>
+            <div style={{background:"#eafaf1",borderRadius:10,padding:14,textAlign:"center",border:"1px solid #a9dfbf"}}>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#27ae60"}}>${n(costoTotal,2)}</div>
+              <div style={{fontSize:11,color:"#888",marginTop:2}}>Costo total {volume}L</div>
+            </div>
+            <div style={{background:"#eaf4fb",borderRadius:10,padding:14,textAlign:"center",border:"1px solid #b5d4f4"}}>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#2980b9"}}>${costoPorLitro}</div>
+              <div style={{fontSize:11,color:"#888",marginTop:2}}>Costo / litro</div>
+            </div>
+            <div style={{background:"#f5eef8",borderRadius:10,padding:14,textAlign:"center",border:"1px solid #d2b4de"}}>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#8e44ad"}}>${costoPorM3}</div>
+              <div style={{fontSize:11,color:"#888",marginTop:2}}>Costo / m³</div>
+            </div>
           </div>
-          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:10}}>PRECIO POR FERTILIZANTE ($ / kg o L)</div>
-            {ferts.filter(f=>f.active&&f.meq>0).map(f=>(
-              <div key={f.id} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:"1px solid #f5f5f5"}}>
-                <div style={{flex:1,fontSize:13,fontWeight:500}}>{f.name}</div>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{fontSize:11,color:"#aaa"}}>$</span>
-                  <input type="number" min="0" step="1" value={f.precio||0} onChange={e=>setFerts(p=>p.map(x=>x.id===f.id?{...x,precio:parseFloat(e.target.value)||0}:x))} style={{width:80,padding:"6px 8px",border:"1px solid #e0e0e0",borderRadius:6,fontSize:13,fontFamily:"'Courier New',monospace",textAlign:"right"}}/>
-                </div>
-                <div style={{fontSize:12,color:"#27ae60",fontFamily:"'Courier New',monospace",minWidth:70,textAlign:"right"}}>= ${n(dosis.find(d=>d.id===f.id)?.costoTotal||0,2)}</div>
-              </div>
-            ))}
+          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead>
+                <tr>
+                  <th style={{...thS,textAlign:"left"}}>Fertilizante</th>
+                  <th style={thS}>$/kg</th>
+                  <th style={thS}>kg Total</th>
+                  <th style={thS}>Costo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dosis.filter(f=>f.active&&f.meq>0).map((f,i)=>(
+                  <tr key={i}>
+                    <td style={{...tdS,textAlign:"left"}}>{f.nombre}</td>
+                    <td style={tdS}><input type="number" step="0.01" min="0" value={f.precio||0} onChange={e=>setFerts(p=>p.map(x=>x.nombre===f.nombre?{...x,precio:parseFloat(e.target.value)||0}:x))} style={INP_F}/></td>
+                    <td style={{...tdS,fontFamily:"'Courier New',monospace"}}>{f.kgTotal}</td>
+                    <td style={{...tdS,fontFamily:"'Courier New',monospace",fontWeight:700,color:"#27ae60"}}>${f.costoTotal}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
+      {/* BALANCE */}
       {sub==="balance"&&(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          {[["Aniones",ANIONS,"#2471a3"],["Cationes",CATIONS,"#1e8449"]].map(([label,ions,color])=>(
-            <div key={label} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14}}>
-              <div style={{fontSize:11,fontWeight:700,color,marginBottom:12,fontFamily:"'Courier New',monospace"}}>{label.toUpperCase()}</div>
-              {ions.map(ion=>{const h=fert[ion]||0,need=aportes[ion]||0,pct=need>0?Math.min(h/need,1.5):0,bc=h>need*1.05?"#e74c3c":h<need*0.95&&need>0?"#e67e22":"#27ae60";return(
-                <div key={ion} style={{marginBottom:10}}>
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}><span style={{fontFamily:"'Courier New',monospace",color:"#666"}}>{ION_LABELS[ion]}</span><span style={{fontFamily:"'Courier New',monospace",color:bc,fontWeight:600}}>{n(h)}/{n(need)}</span></div>
-                  <div style={{background:"#f0f0f0",borderRadius:3,height:6,overflow:"hidden"}}><div style={{width:`${Math.min(pct*100,100)}%`,height:"100%",background:bc,borderRadius:3}}/></div>
-                </div>
-              );})}
-            </div>
-          ))}
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+          <div style={{fontSize:11,color:"#888",marginBottom:10}}>Verificación: comparación entre lo necesario y lo aportado por la fórmula.</div>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead>
+              <tr>
+                <th style={{...thS,textAlign:"left"}}>Ion</th>
+                <th style={thS}>Objetivo</th>
+                <th style={thS}>Aportado</th>
+                <th style={thS}>Diferencia</th>
+                <th style={thS}>%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ALL_IONS.map(ion=>{
+                const b = balance[ion];
+                const ok = b.pct>=90&&b.pct<=110;
+                const color = ok?"#27ae60":b.pct>110?"#f39c12":"#e74c3c";
+                return(
+                  <tr key={ion}>
+                    <td style={{...tdS,textAlign:"left",fontWeight:600,color:"#27ae60",fontFamily:"'Courier New',monospace"}}>{ion}</td>
+                    <td style={{...tdS,fontFamily:"'Courier New',monospace"}}>{b.objetivo.toFixed(2)}</td>
+                    <td style={{...tdS,fontFamily:"'Courier New',monospace"}}>{b.aportado.toFixed(2)}</td>
+                    <td style={{...tdS,fontFamily:"'Courier New',monospace",color}}>{b.delta>0?"+":""}{b.delta}</td>
+                    <td style={{...tdS,fontFamily:"'Courier New',monospace",fontWeight:700,color}}>{b.pct}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
+      {/* IA */}
       {sub==="ia_nut"&&(
-        <IaNutricion
-          cropName={CROPS[crop]?.name||crop}
-          etapa={etapa}
-          target={target}
-          water={water}
-          aportes={aportes}
-          fertilizando={fert}
-          ferts={ferts}
-          volume={volume}
-          costoTotal={costoTotal}
-          costoPorLitro={costoPorLitro}
-        />
-      )}
-
-      {sub==="guardadas"&&(
-        <div>
-          <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:14,marginBottom:12,display:"flex",gap:10,flexWrap:"wrap"}}>
-            <input value={saveName} onChange={e=>setSaveName(e.target.value)} placeholder={`Fórmula ${CROPS[crop].name} · ${etapa}`} style={{flex:1,minWidth:200,padding:"8px 12px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:13}}/>
-            <button onClick={()=>{if(saveName){setSaved(p=>[...p,{name:saveName,crop,etapa,target:{...target},water:{...water},ferts:ferts.map(f=>({id:f.id,meq:f.meq,active:f.active,precio:f.precio}))}]);setSaveName("");}}} style={{padding:"8px 20px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:12}}>Guardar</button>
-          </div>
-          {!saved.length&&<div style={{background:"#fff",borderRadius:12,padding:"2rem",textAlign:"center",color:"#aaa"}}>Sin fórmulas guardadas</div>}
-          {saved.map((f,i)=>(
-            <div key={i} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
-              <div><div style={{fontWeight:700,marginBottom:2}}>{f.name}</div><div style={{fontSize:11,color:"#aaa"}}>{CROPS[f.crop]?.emoji} {CROPS[f.crop]?.name} · {f.etapa} · {f.ferts?.filter(x=>x.active&&x.meq>0).length} fertilizantes</div></div>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>{setCrop(f.crop);setTarget({...f.target});setWater({...f.water});setEtapa(f.etapa||"Vegetativo");setFerts(p=>p.map(x=>{const s=f.ferts?.find(sf=>sf.id===x.id);return s?{...x,meq:s.meq,active:s.active,precio:s.precio||0}:x;}));setSub("tabla");}} style={{padding:"6px 14px",border:"1px solid #2980b9",borderRadius:8,background:"#eaf4fb",color:"#2980b9",cursor:"pointer",fontSize:12,fontWeight:600}}>Cargar</button>
-                <button onClick={()=>setSaved(p=>p.filter((_,j)=>j!==i))} style={{padding:"6px 14px",border:"1px solid #e0e0e0",borderRadius:8,background:"transparent",color:"#aaa",cursor:"pointer",fontSize:12}}>Eliminar</button>
-              </div>
-            </div>
-          ))}
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+          <div style={{fontSize:12,color:"#888",marginBottom:10}}>Pregunta a la IA sobre esta fórmula. El sistema envía automáticamente todos los datos actuales (cultivo, etapa, objetivos, aportes, balance, costos).</div>
+          <textarea value={iaPrompt} onChange={e=>setIaPrompt(e.target.value)} placeholder="Ej: ¿está balanceada para floración? ¿qué ajustaría para mejorar Ca?" style={{width:"100%",minHeight:80,padding:"10px 12px",border:"1px solid #ddd",borderRadius:8,fontSize:13,boxSizing:"border-box",resize:"vertical",fontFamily:"inherit",background:"#fff",color:"#111"}}/>
+          <button onClick={consultarIA} disabled={iaLoading} style={{marginTop:10,padding:"10px 20px",background:iaLoading?"#aaa":"#8e44ad",color:"#fff",border:"none",borderRadius:8,cursor:iaLoading?"not-allowed":"pointer",fontWeight:700,fontSize:13}}>
+            {iaLoading?"⏳ Analizando...":"🤖 Consultar IA"}
+          </button>
+          {iaResp&&<div style={{marginTop:14,background:"#f5eef8",border:"1px solid #d2b4de",borderRadius:10,padding:"12px 14px",fontSize:13,color:"#444",whiteSpace:"pre-wrap",lineHeight:1.5}}>{iaResp}</div>}
         </div>
       )}
+
+      {/* GUARDADAS */}
+      {sub==="guardadas"&&(
+        <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px"}}>
+          {savedFormulas.length===0 && <div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:13}}>No hay fórmulas guardadas. Crea una desde la sección de "Guardar" abajo.</div>}
+          {savedFormulas.map(f=>{
+            const c = CROPS[f.crop];
+            return(
+              <div key={f.id} style={{background:"#fafafa",border:"1px solid #e0e0e0",borderRadius:10,padding:"12px 16px",marginBottom:8,borderLeft:`4px solid ${c?.color||"#27ae60"}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+                  <span style={{fontSize:18}}>{c?.emoji}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:14,color:"#222"}}>{f.nombre}</div>
+                    <div style={{fontSize:11,color:"#888"}}>{c?.name} · {f.etapa} · {f.volume}L · ${(f.costoTotal||0).toFixed(2)} total</div>
+                  </div>
+                  <button onClick={()=>cargarFormula(f)} style={{padding:"6px 12px",background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:6,color:"#27ae60",cursor:"pointer",fontSize:11,fontWeight:700}}>📂 Cargar</button>
+                  <button onClick={()=>duplicarFormula(f)} style={{padding:"6px 10px",background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:6,color:"#2980b9",cursor:"pointer",fontSize:11}}>📋 Duplicar</button>
+                  <button onClick={()=>eliminarFormula(f.id)} style={{padding:"6px 10px",background:"#fdedec",border:"none",borderRadius:6,color:"#c0392b",cursor:"pointer",fontSize:11}}>✕</button>
+                </div>
+                {f.notas&&<div style={{fontSize:12,color:"#666",marginTop:6,padding:"6px 10px",background:"#fff",borderRadius:6,whiteSpace:"pre-wrap"}}>{f.notas}</div>}
+                <div style={{fontSize:10,color:"#aaa",marginTop:6}}>Creada: {(f.createdAt||"").slice(0,10)} {f.updatedAt!==f.createdAt&&` · Actualizada: ${(f.updatedAt||"").slice(0,10)}`}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* SAVE BOX */}
+      <div style={{background:"#fff",border:"2px solid #27ae6044",borderRadius:12,padding:"14px 18px",marginTop:14}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#27ae60",marginBottom:10}}>💾 GUARDAR FÓRMULA EN FIREBASE</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <input value={saveName} onChange={e=>setSaveName(e.target.value)} placeholder="Nombre de la fórmula *" style={{flex:"1 1 200px",padding:"8px 12px",border:"1px solid #ddd",borderRadius:8,fontSize:13,background:"#fff",color:"#111"}}/>
+          <input value={saveNotes} onChange={e=>setSaveNotes(e.target.value)} placeholder="Notas (opcional)" style={{flex:"2 1 300px",padding:"8px 12px",border:"1px solid #ddd",borderRadius:8,fontSize:13,background:"#fff",color:"#111"}}/>
+          <button onClick={guardarFormula} disabled={saving} style={{padding:"8px 20px",background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:saving?"not-allowed":"pointer",fontWeight:700,fontSize:13}}>
+            {saving?"Guardando...":(editingId?"✓ Actualizar":"💾 Guardar")}
+          </button>
+        </div>
+        <div style={{fontSize:11,color:"#888",marginTop:6}}>Se guarda con: cultivo, etapa, objetivos iónicos, agua, fertilizantes activos y costos. Todo accesible desde la pestaña Guardadas.</div>
+      </div>
     </div>
   );
 }
-
-// ─── INCIDENCIAS ADMIN ────────────────────────────────────────────────────────
 function IncidenciasAdmin(){
   const [data,setData]=useState([]);
   const [filter,setFilter]=useState("pendiente");
