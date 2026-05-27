@@ -1029,7 +1029,7 @@ function Formulador(){
         notas: saveNotes||"",
         crop, etapa, volume,
         target:{...target}, water:{...water},
-        ferts: ferts.map(f=>({nombre:f.nombre,type:f.type,active:f.active,meq:f.meq,Peq:f.Peq,density:f.density,richness:f.richness,precio:f.precio,ions:f.ions})),
+        ferts: ferts.map(f=>({id:f.id,name:f.name,type:f.type,active:f.active,meq:f.meq,Peq:f.Peq,density:f.density,richness:f.richness,precio:f.precio,ions:f.ions})),
         costoTotal: n(costoTotal,2),
         costoPorLitro: costoPorLitro,
         updatedAt: new Date().toISOString(),
@@ -1086,7 +1086,7 @@ Volumen: ${volume}L. Costo total: $${n(costoTotal,2)}. Costo/litro: $${costoPorL
 Objetivo iones (meq/L): ${JSON.stringify(target)}.
 Agua riego: ${JSON.stringify(water)}.
 Aportes a complementar: ${JSON.stringify(aportes)}.
-Fertilizantes activos: ${ferts.filter(f=>f.active&&f.meq>0).map(f=>`${f.nombre}=${f.meq}meq`).join(", ")}.
+Fertilizantes activos: ${ferts.filter(f=>f.active&&f.meq>0).map(f=>`${f.name}=${f.meq}meq`).join(", ")}.
 Balance final: ${JSON.stringify(Object.fromEntries(ALL_IONS.map(i=>[i,balance[i]?.aportado])))}.
 
 Pregunta del usuario: ${iaPrompt}`;
@@ -1200,7 +1200,7 @@ Pregunta del usuario: ${iaPrompt}`;
               <tbody>
                 {dosis.map((f,i)=>(
                   <tr key={i} style={{opacity:f.active?1:0.5}}>
-                    <td style={{...tdS,textAlign:"left",fontWeight:500}}>{f.nombre}</td>
+                    <td style={{...tdS,textAlign:"left",fontWeight:500}}>{f.name}</td>
                     <td style={tdS}><input type="checkbox" checked={f.active} onChange={e=>setFerts(p=>p.map((x,j)=>j===i?{...x,active:e.target.checked}:x))}/></td>
                     <td style={tdS}><input type="number" step="0.1" min="0" value={f.meq} onChange={e=>setFerts(p=>p.map((x,j)=>j===i?{...x,meq:parseFloat(e.target.value)||0}:x))} style={INP_F}/></td>
                     <td style={{...tdS,fontFamily:"'Courier New',monospace",color:"#2980b9"}}>{f.grm3.toFixed(2)}</td>
@@ -1245,8 +1245,8 @@ Pregunta del usuario: ${iaPrompt}`;
               <tbody>
                 {dosis.filter(f=>f.active&&f.meq>0).map((f,i)=>(
                   <tr key={i}>
-                    <td style={{...tdS,textAlign:"left"}}>{f.nombre}</td>
-                    <td style={tdS}><input type="number" step="0.01" min="0" value={f.precio||0} onChange={e=>setFerts(p=>p.map(x=>x.nombre===f.nombre?{...x,precio:parseFloat(e.target.value)||0}:x))} style={INP_F}/></td>
+                    <td style={{...tdS,textAlign:"left"}}>{f.name}</td>
+                    <td style={tdS}><input type="number" step="0.01" min="0" value={f.precio||0} onChange={e=>setFerts(p=>p.map(x=>x.id===f.id?{...x,precio:parseFloat(e.target.value)||0}:x))} style={INP_F}/></td>
                     <td style={{...tdS,fontFamily:"'Courier New',monospace"}}>{f.kgTotal}</td>
                     <td style={{...tdS,fontFamily:"'Courier New',monospace",fontWeight:700,color:"#27ae60"}}>${f.costoTotal}</td>
                   </tr>
@@ -1314,7 +1314,7 @@ Pregunta del usuario: ${iaPrompt}`;
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
                   <span style={{fontSize:18}}>{c?.emoji}</span>
                   <div style={{flex:1}}>
-                    <div style={{fontWeight:700,fontSize:14,color:"#222"}}>{f.nombre}</div>
+                    <div style={{fontWeight:700,fontSize:14,color:"#222"}}>{f.name}</div>
                     <div style={{fontSize:11,color:"#888"}}>{c?.name} · {f.etapa} · {f.volume}L · ${(f.costoTotal||0).toFixed(2)} total</div>
                   </div>
                   <button onClick={()=>cargarFormula(f)} style={{padding:"6px 12px",background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:6,color:"#27ae60",cursor:"pointer",fontSize:11,fontWeight:700}}>📂 Cargar</button>
