@@ -561,7 +561,9 @@ function ReportesVentas() {
   const totalKgCosechados = cosechasFilt.length>0
     ? cosechasFilt.reduce((s,c)=>s+(c.kgCosechados||0),0)
     : (lotes||[]).filter(l=>filterCrop==="all"||l.crop===filterCrop).reduce((s,l)=>s+(parseFloat(l.kgCosechados)||0),0);
-  const totalMerma = filtrarPeriodo(mermasData).filter(m=>filterCrop==="all"||m.crop===filterCrop).reduce((s,m)=>s+(m.kgMerma||0),0);
+  const totalMerma = filtrarPeriodo(mermasData).filter(m=>filterCrop==="all"||m.crop===filterCrop).reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0);
+  const totalSiniestro = siniestrosFilt.reduce((s,sn)=>s+(parseFloat(sn.kgSiniestro)||0),0);
+  const totalMontoSeguro = siniestrosFilt.reduce((s,sn)=>s+(parseFloat(sn.montoSeguro)||0),0);
   const precioPromedio = totalKgVendidos > 0 ? totalIngresos/totalKgVendidos : 0;
   const eficiencia = totalKgCosechados > 0 ? Math.min((totalKgVendidos/totalKgCosechados)*100, 100) : 0;
   const kgStock = Math.max(0, totalKgCosechados - totalKgVendidos);
