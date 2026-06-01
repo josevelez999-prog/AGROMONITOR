@@ -247,9 +247,10 @@ function GestionLotes() {
         const crop=CROPS[lote.crop];
         const trat=TRATAMIENTOS.find(t=>t.id===lote.tratamiento);
         const eficiencia=lote.kgEstimados>0?((lote.kgCosechados/lote.kgEstimados)*100).toFixed(1):null;
-        const kgVend = Number((ventasLote||[]).filter(v=>v.loteId===lote.id).reduce((s,v)=>s+(parseFloat(v.kgVendidos)||0),0));
-        const kgCos  = Number((cosechasLote||[]).filter(c=>c.loteId===lote.id).reduce((s,c)=>s+(parseFloat(c.kgCosechados)||0),0) || parseFloat(lote.kgCosechados) || 0);
-        const kgMerm = Number((mermasLote||[]).filter(m=>m.loteId===lote.id).reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0));
+        const kgVend = (ventasLote||[]).filter(x=>x.loteId===lote.id).reduce((s,x)=>s+(parseFloat(x.kgVendidos)||0),0);
+        const kgCosTrab = (cosechasLote||[]).filter(x=>x.loteId===lote.id).reduce((s,x)=>s+(parseFloat(x.kgCosechados)||0),0);
+        const kgCos = kgCosTrab > 0 ? kgCosTrab : (parseFloat(lote.kgCosechados)||0);
+        const kgMerm = (mermasLote||[]).filter(x=>x.loteId===lote.id).reduce((s,x)=>s+(parseFloat(x.kgMerma)||0),0);
         const kgDisp = Math.max(0, kgCos - kgVend);
         const pctVend = kgCos>0 ? Math.min((kgVend/kgCos)*100,100) : 0; // merma se muestra aparte
         return(

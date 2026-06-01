@@ -440,8 +440,9 @@ function RegistroCosecha({ worker }) {
                   <div style={{fontWeight:600,fontSize:14,color:sel?"#27ae60":"#222"}}>{lote.nombre}</div>
                   <div style={{fontSize:11,color:"#888"}}>{c?.name} · {lote.zona}</div>
                   {(()=>{
-                    const kgCos = Number((cosechasW||[]).filter(co=>co.loteId===lote.id).reduce((s,co)=>s+(parseFloat(co.kgCosechados)||0),0)) || parseFloat(lote.kgCosechados)||0;
-                    const kgVen = Number((ventasW||[]).filter(vt=>vt.loteId===lote.id).reduce((s,vt)=>s+(parseFloat(vt.kgVendidos)||0),0));
+                    const kgVen = (ventasW||[]).filter(x=>x.loteId===lote.id).reduce((s,x)=>s+(parseFloat(x.kgVendidos)||0),0);
+                    const kgCosTrab = (cosechasW||[]).filter(x=>x.loteId===lote.id).reduce((s,x)=>s+(parseFloat(x.kgCosechados)||0),0);
+                    const kgCos = kgCosTrab > 0 ? kgCosTrab : (parseFloat(lote.kgCosechados)||0);
                     const stock = Math.max(0, kgCos - kgVen);
                     return (
                       <div style={{display:"flex",gap:8,marginTop:4,fontSize:10,flexWrap:"wrap"}}>
