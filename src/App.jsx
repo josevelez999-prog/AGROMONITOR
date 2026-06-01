@@ -1028,10 +1028,11 @@ function Formulador(){
         nombre: saveName.trim(),
         notas: saveNotes||"",
         crop, etapa, volume,
-        target:{...target}, water:{...water},
-        ferts: ferts.map(f=>({id:f.id,name:f.name,type:f.type,active:f.active,meq:f.meq,Peq:f.Peq,density:f.density,richness:f.richness,precio:f.precio,ions:f.ions})),
-        costoTotal: n(costoTotal,2),
-        costoPorLitro: costoPorLitro,
+        target:Object.fromEntries(Object.entries(target).map(([k,v])=>[k,v||0])),
+        water:Object.fromEntries(Object.entries(water).map(([k,v])=>[k,v||0])),
+        ferts: ferts.map(f=>({id:f.id,name:f.name,type:f.type,active:!!f.active,meq:f.meq||0,Peq:f.Peq||0,density:f.density??null,richness:f.richness??null,precio:f.precio||0,ions:f.ions||{}})),
+        costoTotal: n(costoTotal||0,2),
+        costoPorLitro: costoPorLitro||0,
         updatedAt: new Date().toISOString(),
       };
       if(editingId){
