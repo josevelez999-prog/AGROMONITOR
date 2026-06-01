@@ -405,6 +405,7 @@ function RegistroCosecha({ worker }) {
   const [formC, setFormC] = useState({ loteId:"", kgCosechados:"", calidad:"primera", notas:"" });
   const [formV, setFormV] = useState({ loteId:"", comprador:"", canal:"Mercado local", calidad:"primera", kgVendidos:"", precioKg:"", factura:"", notas:"", fecha:new Date().toISOString().slice(0,10) });
   const [formVL, setFormVL] = useState({ loteId:"", etiqueta:"", kgValidados:"", precioVenta:"", observaciones:"", fecha:new Date().toISOString().slice(0,10) });
+  const [formSiniestro, setFormSiniestro] = useState({ loteId:"", kgSiniestro:"", montoSeguro:"", evento:"granizo", notas:"", fecha:new Date().toISOString().slice(0,10) });
   const [formMerma, setFormMerma] = useState({ loteId:"", kgMerma:"", causa:"", notas:"", fecha:new Date().toISOString().slice(0,10) });
 
   const CANALES_W = ["Mercado local","Central de abastos","Supermercado","Restaurante","Exportación","Venta directa","Agroindustria","Otro"];
@@ -550,15 +551,36 @@ function RegistroCosecha({ worker }) {
     setSaving(false);
   };
 
+  const submitSiniestro = async () => {
+    if (!formSiniestro.loteId||!formSiniestro.kgSiniestro||!formSiniestro.montoSeguro) { alert("Llena lote, kg siniestrados y monto del seguro"); return; }
+    setSaving(true);
+    try {
+      const lote=getLote(formSiniestro.loteId); const now=new Date();
+      await addDoc(collection(db,"siniestros"),{
+        ...formSiniestro,
+        kgSiniestro:parseFloat(formSiniestro.kgSiniestro)||0,
+        montoSeguro:parseFloat(formSiniestro.montoSeguro)||0,
+        worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
+        createdAt:now.toISOString(),loteName:lote?.nombre||"",
+        crop:lote?.crop||"",zona:lote?.zona||"",
+      });
+      setSaved("siniestro");
+      setFormSiniestro({loteId:"",kgSiniestro:"",montoSeguro:"",evento:"granizo",notas:"",fecha:now.toISOString().slice(0,10)});
+      setTimeout(()=>setSaved(""),4000);
+    } catch(e) { alert("Error: "+e.message); }
+    setSaving(false);
+  };
+
   return (
     <div>
       {saved==="cosecha"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>🧺 Cosecha registrada</div>}
       {saved==="venta"&&<div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:12,marginBottom:12,color:"#27ae60",fontWeight:600,textAlign:"center"}}>💰 Venta registrada</div>}
       {saved==="validacion"&&<div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:12,marginBottom:12,color:"#1a5276",fontWeight:600,textAlign:"center"}}>✓ Validación registrada</div>}
+      {saved==="siniestro"&&<div style={{background:"#eaf4fb",border:"1px solid #5dade2",borderRadius:10,padding:12,marginBottom:16,color:"#1f618d",fontWeight:600,textAlign:"center"}}>🌩 Siniestro registrado — el seguro lo cubre</div>}
       {saved==="merma"&&<div style={{background:"#fef9e7",border:"1px solid #f39c1244",borderRadius:10,padding:12,marginBottom:12,color:"#f39c12",fontWeight:600,textAlign:"center"}}>⚠ Merma registrada</div>}
 
       <div style={{display:"flex",gap:4,marginBottom:16,background:"#ebebeb",borderRadius:12,padding:4}}>
-        {[["cosecha","🧺 Cosecha"],["venta","💰 Venta"],["validacion","🏷️ Validar"],["merma","⚠ Merma"]].map(([k,l])=>(
+        {[["cosecha","🧺 Cosecha"],["venta","💰 Venta"],["validacion","🏷️ Validar"],["merma","⚠ Merma"],["siniestro","🌩 Siniestro"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSubtab(k)}
             style={{flex:1,padding:"10px 4px",border:"none",borderRadius:10,background:subtab===k?"#27ae60":"transparent",color:subtab===k?"#fff":"#555",cursor:"pointer",fontSize:12,fontWeight:subtab===k?700:500}}>
             {l}
@@ -749,6 +771,66 @@ function RegistroCosecha({ worker }) {
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {subtab==="siniestro"&&(
+        <div>
+          <div style={{background:"#eaf4fb",border:"1px solid #5dade2",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1f618d"}}>
+            🌩 Registra producto siniestrado por granizo u otro evento climático que el seguro pagará. Estos kg <strong>sí cuentan</strong> como producción y el monto del seguro <strong>se suma a ingresos</strong>.
+          </div>
+          <LoteSelector value={formSiniestro.loteId} onChange={id=>setFormSiniestro(p=>({...p,loteId:id}))}/>
+          {formSiniestro.loteId&&(()=>{
+            const lote=getLote(formSiniestro.loteId);
+            if(!lote) return null;
+            return(
+              <>
+                <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:16,marginBottom:14}}>
+                  <div style={{fontSize:11,color:"#888",marginBottom:4}}>Lote seleccionado</div>
+                  <div style={{fontWeight:700,color:"#1f618d"}}>{lote.nombre}</div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                  <div>
+                    <label style={LBL}>Kg siniestrados *</label>
+                    <input type="number" step="0.1" min="0" value={formSiniestro.kgSiniestro}
+                      onChange={e=>setFormSiniestro(p=>({...p,kgSiniestro:e.target.value}))}
+                      placeholder="Ej: 45.5" style={{...INP,fontSize:18,fontWeight:700,color:"#1f618d"}}/>
+                  </div>
+                  <div>
+                    <label style={LBL}>💰 Monto seguro $ *</label>
+                    <input type="number" step="0.01" min="0" value={formSiniestro.montoSeguro}
+                      onChange={e=>setFormSiniestro(p=>({...p,montoSeguro:e.target.value}))}
+                      placeholder="Ej: 4500" style={{...INP,fontSize:18,fontWeight:700,color:"#27ae60"}}/>
+                  </div>
+                </div>
+                <div style={{marginBottom:14}}>
+                  <label style={LBL}>Tipo de evento *</label>
+                  <select value={formSiniestro.evento} onChange={e=>setFormSiniestro(p=>({...p,evento:e.target.value}))} style={INP}>
+                    <option value="granizo">🌩 Granizo</option>
+                    <option value="helada">❄️ Helada</option>
+                    <option value="viento">💨 Viento fuerte</option>
+                    <option value="inundacion">🌊 Inundación</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+                <div style={{marginBottom:14}}>
+                  <label style={LBL}>📅 Fecha del siniestro</label>
+                  <input type="date" value={formSiniestro.fecha}
+                    onChange={e=>setFormSiniestro(p=>({...p,fecha:e.target.value}))} style={INP}/>
+                </div>
+                <div style={{marginBottom:14}}>
+                  <label style={LBL}>Notas</label>
+                  <textarea value={formSiniestro.notas} onChange={e=>setFormSiniestro(p=>({...p,notas:e.target.value}))}
+                    placeholder="Folio de seguro, descripción del evento..."
+                    style={{...INP,minHeight:60,fontFamily:"inherit",resize:"vertical"}}/>
+                </div>
+                <button onClick={submitSiniestro} disabled={saving}
+                  style={{width:"100%",background:saving?"#aaa":"#2980b9",color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+                  {saving?"Guardando...":"🌩 Registrar siniestro"}
+                </button>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

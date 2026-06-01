@@ -525,6 +525,7 @@ function ReportesVentas() {
   const [cosechas, setCosechas] = useState([]);
   const [lotes, setLotes] = useState([]);
   const [mermasData, setMermasData] = useState([]);
+  const [siniestrosData, setSiniestrosData] = useState([]);
   const [filterCrop, setFilterCrop] = useState("all");
   const [filterPeriodo, setFilterPeriodo] = useState("todo");
 
@@ -534,10 +535,11 @@ function ReportesVentas() {
     const q2 = query(collection(db,"lotes"), orderBy("createdAt","desc"));
     const unsub2 = onSnapshot(q2, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
     const q3 = query(collection(db,"cosechas_trabajador"), orderBy("createdAt","desc"));
+    const unsubS = onSnapshot(query(collection(db,"siniestros")), s=>setSiniestrosData(s.docs.map(d=>({id:d.id,...d.data()}))));
     const unsub3 = onSnapshot(q3, snap => setCosechas(snap.docs.map(d=>({id:d.id,...d.data()}))));
     const q4 = query(collection(db,"mermas"), orderBy("createdAt","desc"));
     const unsub4 = onSnapshot(q4, snap => setMermasData(snap.docs.map(d=>({id:d.id,...d.data()}))));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsubS(); };
   }, []);
 
   // Filtro por periodo
@@ -551,9 +553,10 @@ function ReportesVentas() {
 
   const ventasFilt = filtrarPeriodo(ventas).filter(v => filterCrop === "all" || v.crop === filterCrop);
   const cosechasFilt = filtrarPeriodo(cosechas).filter(c => filterCrop === "all" || c.crop === filterCrop);
+  const siniestrosFilt = filtrarPeriodo(siniestrosData).filter(s => filterCrop === "all" || s.crop === filterCrop);
 
   // ── KPIs globales ──
-  const totalIngresos = ventasFilt.reduce((s,v)=>s+v.totalVenta,0);
+  const totalIngresos = ventasFilt.reduce((s,v)=>s+(v.totalVenta||0),0) + siniestrosFilt.reduce((s,sn)=>s+(parseFloat(sn.montoSeguro)||0),0);
   const totalKgVendidos = ventasFilt.reduce((s,v)=>s+v.kgVendidos,0);
   const totalKgCosechados = cosechasFilt.length>0
     ? cosechasFilt.reduce((s,c)=>s+(c.kgCosechados||0),0)
@@ -699,19 +702,23 @@ function ReportesVentas() {
 
   const exportCSVCosechas = () => {
     const lines = [];
-    lines.push(["TIPO","Fecha","Cultivo","Lote","Zona","Calidad/Causa","Kg","Trabajador","Notas"].join(","));
+    lines.push(["TIPO","Fecha","Cultivo","Lote","Zona","Calidad/Causa","Kg","Monto $","Trabajador","Notas"].join(","));
     const cosechasFiltCSV = filtrarPeriodo(cosechas).filter(c => filterCrop==="all" || c.crop===filterCrop);
     [...cosechasFiltCSV].sort((a,b)=>b.date?.localeCompare(a.date)||b.createdAt?.localeCompare(a.createdAt)).forEach(c => {
       const crop = CROPS[c.crop];
-      lines.push(["COSECHA",c.date||"",crop?.name||c.crop||"",c.loteName||"",c.zona||"",c.calidad||"",c.kgCosechados||0,c.worker||"",c.notas||""].map(x=>`"${x}"`).join(","));
+      lines.push(["COSECHA",c.date||"",crop?.name||c.crop||"",c.loteName||"",c.zona||"",c.calidad||"",c.kgCosechados||0,"",c.worker||"",c.notas||""].map(x=>`"${x}"`).join(","));
     });
     const mermasFiltCSV = mermasData.filter(m => filterCrop==="all" || m.crop===filterCrop);
     [...mermasFiltCSV].sort((a,b)=>b.date?.localeCompare(a.date)||b.createdAt?.localeCompare(a.createdAt)).forEach(m => {
       const crop = CROPS[m.crop];
-      lines.push(["MERMA",m.date||"",crop?.name||m.crop||"",m.loteName||"",m.zona||"",m.causa||"",m.kgMerma||0,m.worker||"",m.notas||""].map(x=>`"${x}"`).join(","));
+      lines.push(["MERMA",m.date||"",crop?.name||m.crop||"",m.loteName||"",m.zona||"",m.causa||"",m.kgMerma||0,"",m.worker||"",m.notas||""].map(x=>`"${x}"`).join(","));
+    });
+    [...siniestrosFilt].sort((a,b)=>b.date?.localeCompare(a.date)||b.createdAt?.localeCompare(a.createdAt)).forEach(s => {
+      const crop = CROPS[s.crop];
+      lines.push(["SINIESTRO",s.date||"",crop?.name||s.crop||"",s.loteName||"",s.zona||"",s.evento||"",s.kgSiniestro||0,s.montoSeguro||0,s.worker||"",s.notas||""].map(x=>`"${x}"`).join(","));
     });
     const blob = new Blob(["\uFEFF",lines.join("\n")],{type:"text/csv;charset=utf-8;"});
-    const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`cosechas_mermas_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`cosechas_mermas_siniestros_${new Date().toISOString().slice(0,10)}.csv`; a.click();
   };
 
   const fmt = v => Number(v||0).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -745,9 +752,11 @@ function ReportesVentas() {
           {icon:"📊",label:"Precio promedio/kg",v:`$${fmt(precioPromedio)}`,c:"#e67e22"},
           {icon:"🎯",label:"Eficiencia venta",v:`${eficiencia.toFixed(1)}%`,c:eficiencia>=80?"#27ae60":eficiencia>=60?"#f39c12":"#e74c3c"},
           {icon:"📬",label:"Kg por vender",v:`${fmt(kgStock)} kg`,c:kgStock>0?"#f39c12":"#27ae60"},
-          {icon:"📦",label:"Producción Total",v:`${fmt(totalKgCosechados+totalMerma)} kg`,c:"#8e44ad"},
+          {icon:"📦",label:"Producción Total",v:`${fmt(totalKgCosechados+totalMerma+totalSiniestro)} kg`,c:"#8e44ad"},
           {icon:"🏷️",label:"Transacciones",v:ventasFilt.length,c:"#7f8c8d"},
           {icon:"⚠️",label:"Kg merma",v:`${fmt(totalMerma)} kg`,c:totalMerma>0?"#f39c12":"#aaa"},
+          {icon:"🌩",label:"Kg siniestro",v:`${fmt(totalSiniestro)} kg`,c:totalSiniestro>0?"#2980b9":"#aaa"},
+          {icon:"💼",label:"Pago seguro",v:`$${totalMontoSeguro.toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}`,c:totalMontoSeguro>0?"#2980b9":"#aaa"},
         ].map(k=>(
           <div key={k.label} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 16px"}}>
             <div style={{fontSize:20}}>{k.icon}</div>
@@ -825,7 +834,7 @@ function ReportesVentas() {
             </div>
             <div style={{background:"#f5eef8",borderRadius:10,padding:"14px",textAlign:"center",border:"2px solid #8e44ad44"}}>
               <div style={{fontSize:28,marginBottom:4}}>📦</div>
-              <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#8e44ad"}}>{fmt(totalKgCosechados+totalMerma)}</div>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:22,fontWeight:700,color:"#8e44ad"}}>{fmt(totalKgCosechados+totalMerma+totalSiniestro)}</div>
               <div style={{fontSize:11,color:"#8e44ad",marginTop:2,fontWeight:600}}>Producción Total</div>
               <div style={{fontSize:10,color:"#aaa"}}>cosechado + merma</div>
             </div>
