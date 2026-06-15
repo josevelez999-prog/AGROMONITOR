@@ -1,92 +1,71 @@
-// Serverless function: SNIIM - Sistema Nacional de Información de Mercados
-// Múltiples endpoints conocidos y fallback nacional cuando Morelia no disponible
-
-const CROPS_SNIIM = {
-  jitomate:  { keywords: ["jitomate","tomate saladette","tomate bola"] },
-  fresa:     { keywords: ["fresa","frutilla"] },
-  arandano:  { keywords: ["arándano","arandano","blueberry"] },
-  zarzamora: { keywords: ["zarzamora","mora"] },
+// SNIIM optimizado: paralelo, timeouts cortos, foco Michoacán
+const CROPS = {
+  jitomate:  ["jitomate","tomate saladette","tomate bola"],
+  fresa:     ["fresa","frutilla"],
+  arandano:  ["arándano","arandano","blueberry"],
+  zarzamora: ["zarzamora","mora"],
 };
 
-const ENDPOINTS_SNIIM = [
-  // Reportes diarios
-  () => "http://www.economia-sniim.gob.mx/SNIIM-AN/Frutas/Frutas.asp",
-  () => "http://www.economia-sniim.gob.mx/Sniim-anANT/e_SelFrutas.asp",
-  () => "http://www.economia-sniim.gob.mx/sniimtomate.asp",
-  () => "http://www.economia-sniim.gob.mx/SNIIM-AN/jiss2.asp",
-  () => "http://www.economia-sniim.gob.mx/Precios_de_Hortalizas_en_Mexico.htm",
+const MICHOACAN_KW = ["morelia","michoacan","michoacán","uruapan","zamora","jacona","apatzingan","lazaro cardenas","patzcuaro"];
+
+const SNIIM_URLS = [
+  "http://www.economia-sniim.gob.mx/SNIIM-AN/Frutas/Frutas.asp",
+  "http://www.economia-sniim.gob.mx/sniimtomate.asp",
+  "http://www.economia-sniim.gob.mx/SNIIM-AN/jiss2.asp",
+  "http://www.economia-sniim.gob.mx/Precios_de_Hortalizas_en_Mexico.htm",
 ];
 
-async function fetchEndpoint(url) {
+async function tryFetch(url, timeoutMs=4000) {
   try {
     const resp = await fetch(url, {
-      method: "GET",
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; AgromonitorBot/1.0)",
-        "Accept": "text/html,*/*",
-      },
-      signal: AbortSignal.timeout(8000),
+      headers: { "User-Agent":"Mozilla/5.0 AgromonitorBot/1.0","Accept":"text/html,*/*" },
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) return null;
     return await resp.text();
   } catch (e) { return null; }
 }
 
-function extractPrices(html, keywords) {
+function extractFromHTML(html, keywords) {
   if (!html || typeof html !== "string") return [];
   if (html.toLowerCase().includes("mantenimiento")) return [];
-
-  const matches = [];
+  const out = [];
   const lower = html.toLowerCase();
-
   for (const kw of keywords) {
-    const kwLower = kw.toLowerCase();
-    let idx = lower.indexOf(kwLower);
-    while (idx !== -1 && matches.length < 50) {
+    let idx = lower.indexOf(kw.toLowerCase());
+    let attempts = 0;
+    while (idx !== -1 && out.length < 40 && attempts < 20) {
+      attempts++;
       const ventana = html.slice(Math.max(0,idx-200), idx+800);
-      const lowerVentana = ventana.toLowerCase();
-
-      // Buscar precios (decimales realistas $5-$200/kg)
-      const precioRegex = /\$?\s*(\d{1,3}\.\d{1,2})|\s(\d{2,3})\s/g;
-      const allMatches = [...ventana.matchAll(precioRegex)];
-
-      for (const m of allMatches.slice(0, 6)) {
-        const numStr = m[1] || m[2];
-        const p = parseFloat(numStr);
-        if (p > 5 && p < 200) {
-          const isMorelia = lowerVentana.includes("morelia") || lowerVentana.includes("michoac");
-          matches.push({
-            nombre: kw,
-            ciudad: isMorelia ? "morelia" : "nacional",
-            precio: p,
-            esMorelia: isMorelia,
-          });
+      const lowerV = ventana.toLowerCase();
+      const esMichoacan = MICHOACAN_KW.some(c => lowerV.includes(c));
+      const precios = ventana.match(/\$?\s*(\d{1,3}\.\d{1,2})/g);
+      if (precios) {
+        for (const p of precios.slice(0,4)) {
+          const num = parseFloat(p.replace(/[\$\s]/g,""));
+          if (num > 5 && num < 300) out.push({ precio:num, esMichoacan });
         }
       }
-      idx = lower.indexOf(kwLower, idx + kwLower.length);
+      idx = lower.indexOf(kw.toLowerCase(), idx + kw.length);
     }
   }
-  return matches;
+  return out;
 }
 
-function calcularEstadisticas(matches, soloMorelia=false) {
-  let filtrados = matches;
-  if (soloMorelia) filtrados = matches.filter(m => m.esMorelia);
-  if (!filtrados.length) filtrados = matches;
-
-  const precios = filtrados.map(m => m.precio).sort((a,b)=>a-b);
-  // Quitar outliers
-  const start = Math.floor(precios.length * 0.1);
-  const end = Math.ceil(precios.length * 0.9);
-  const limpios = precios.slice(start, end);
-  if (!limpios.length) return null;
-
+function calcStats(matches) {
+  if (!matches.length) return null;
+  const mich = matches.filter(m => m.esMichoacan);
+  const usar = mich.length >= 2 ? mich : matches;
+  const precios = usar.map(m => m.precio).sort((a,b)=>a-b);
+  const s = Math.floor(precios.length*0.1), e = Math.ceil(precios.length*0.9);
+  const clean = precios.slice(s,e);
+  if (!clean.length) return null;
   return {
-    min: Number(Math.min(...limpios).toFixed(2)),
-    max: Number(Math.max(...limpios).toFixed(2)),
-    prom: Number((limpios.reduce((s,p)=>s+p,0) / limpios.length).toFixed(2)),
-    muestras: limpios.length,
-    cobertura: soloMorelia && filtrados.length === matches.filter(m=>m.esMorelia).length ? "morelia" : "nacional",
+    min:  Number(Math.min(...clean).toFixed(2)),
+    max:  Number(Math.max(...clean).toFixed(2)),
+    prom: Number((clean.reduce((a,b)=>a+b,0)/clean.length).toFixed(2)),
+    muestras: clean.length,
+    cobertura: mich.length >= 2 ? "michoacan" : "nacional",
   };
 }
 
@@ -94,51 +73,36 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Cache-Control", "public, s-maxage=21600, stale-while-revalidate=86400");
 
-  const debug = req.query?.debug === "1";
-  const log = [];
-  const prices = {};
-  let inMaintenance = false;
-
   try {
-    // Recolectar HTML de todos los endpoints
-    const allHtml = [];
-    for (const endpointFn of ENDPOINTS_SNIIM) {
-      const url = endpointFn();
-      const html = await fetchEndpoint(url);
-      if (html) {
-        if (html.toLowerCase().includes("mantenimiento")) {
-          inMaintenance = true;
-          log.push(`${url} → MANTENIMIENTO`);
-        } else {
-          allHtml.push(html);
-          log.push(`${url} → ${html.length} bytes`);
-        }
-      } else {
-        log.push(`${url} → falló`);
-      }
-    }
+    const debug = req.query?.debug === "1";
+    const log = [];
 
-    if (!allHtml.length) {
+    const htmls = await Promise.all(SNIIM_URLS.map(async url => {
+      const html = await tryFetch(url, 4000);
+      if (!html) { log.push(`${url} → fail`); return null; }
+      if (html.toLowerCase().includes("mantenimiento")) { log.push(`${url} → MANTENIMIENTO`); return null; }
+      log.push(`${url} → ${html.length} bytes`);
+      return html;
+    }));
+
+    const validos = htmls.filter(Boolean);
+    if (!validos.length) {
       return res.status(200).json({
         success: false,
-        message: inMaintenance
-          ? "SNIIM está en mantenimiento. Intenta más tarde o captura manualmente."
-          : "SNIIM no respondió. Captura manualmente.",
+        message: "SNIIM en mantenimiento o sin respuesta. Captura manualmente o intenta más tarde.",
         prices: {},
         timestamp: new Date().toISOString(),
         ...(debug && { log }),
       });
     }
 
-    const combinedHtml = allHtml.join("\n");
-    for (const cropKey of Object.keys(CROPS_SNIIM)) {
-      const config = CROPS_SNIIM[cropKey];
-      const allMatches = extractPrices(combinedHtml, config.keywords);
-      if (allMatches.length) {
-        let stats = calcularEstadisticas(allMatches, true);
-        if (!stats || stats.muestras < 2) stats = calcularEstadisticas(allMatches, false);
-        if (stats) prices[cropKey] = stats;
-      }
+    const combined = validos.join("\n");
+    const prices = {};
+    for (const [cropKey, keywords] of Object.entries(CROPS)) {
+      const matches = extractFromHTML(combined, keywords);
+      const stats = calcStats(matches);
+      if (stats) prices[cropKey] = stats;
+      log.push(`${cropKey}: ${matches.length} matches → ${stats?"OK":"sin precios"}`);
     }
 
     if (!Object.keys(prices).length) {
@@ -155,13 +119,13 @@ export default async function handler(req, res) {
       success: true,
       prices,
       timestamp: new Date().toISOString(),
-      source: "SNIIM - Sistema Nacional",
+      source: "SNIIM - Michoacán",
       ...(debug && { log }),
     });
   } catch (e) {
     return res.status(200).json({
       success: false,
-      message: e.message,
+      message: "Error interno: " + (e?.message || String(e)),
       prices: {},
       timestamp: new Date().toISOString(),
     });
