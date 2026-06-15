@@ -519,7 +519,184 @@ function RegistroVentas() {
   );
 }
 
-// ─── REPORTES DE VENTAS ───────────────────────────────────────────────────────
+// ─── MONITOR PRECIOS DE MERCADO (PROFECO + SNIIM) ────────────────────────────
+function MonitorPrecios({ precioPromedioPropio = {} }) {
+  const [profecoData, setProfecoData] = useState(null);
+  const [sniimData, setSniimData] = useState(null);
+  const [loading, setLoading] = useState({ profeco:false, sniim:false });
+  const [manualPrices, setManualPrices] = useState({ profeco:{}, sniim:{} });
+  const [editMode, setEditMode] = useState({ profeco:false, sniim:false });
+
+  useEffect(() => {
+    const unsubP = onSnapshot(doc(db, "config", "profeco_prices"), snap => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setProfecoData(data);
+        setManualPrices(p => ({...p, profeco: data.prices || {}}));
+      }
+    });
+    const unsubS = onSnapshot(doc(db, "config", "sniim_prices"), snap => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setSniimData(data);
+        setManualPrices(p => ({...p, sniim: data.prices || {}}));
+      }
+    });
+    return () => { unsubP(); unsubS(); };
+  }, []);
+
+  const fetchFuente = async (fuente) => {
+    setLoading(p => ({...p, [fuente]:true}));
+    try {
+      const resp = await fetch(`/api/${fuente}`);
+      const data = await resp.json();
+      if (data.success && Object.keys(data.prices).length > 0) {
+        await setDoc(doc(db, "config", `${fuente}_prices`), {
+          prices: data.prices,
+          timestamp: data.timestamp,
+          source: data.source,
+          updatedBy: "auto",
+        });
+        alert(`✓ ${fuente.toUpperCase()} actualizado`);
+      } else {
+        alert(`⚠ ${fuente.toUpperCase()} sin datos hoy. Captura manualmente.`);
+        setEditMode(p => ({...p, [fuente]:true}));
+      }
+    } catch (e) {
+      alert(`Error ${fuente}: ` + e.message);
+      setEditMode(p => ({...p, [fuente]:true}));
+    }
+    setLoading(p => ({...p, [fuente]:false}));
+  };
+
+  const saveManual = async (fuente) => {
+    try {
+      await setDoc(doc(db, "config", `${fuente}_prices`), {
+        prices: manualPrices[fuente],
+        timestamp: new Date().toISOString(),
+        source: `Captura manual (${fuente.toUpperCase()})`,
+        updatedBy: "admin",
+      });
+      setEditMode(p => ({...p, [fuente]:false}));
+      alert(`✓ Precios ${fuente.toUpperCase()} guardados`);
+    } catch (e) { alert("Error: " + e.message); }
+  };
+
+  const updateManual = (fuente, crop, field, val) => {
+    const value = parseFloat(val) || 0;
+    setManualPrices(p => ({
+      ...p,
+      [fuente]: { ...p[fuente], [crop]: { ...(p[fuente][crop] || {}), [field]: value } },
+    }));
+  };
+
+  const renderFuente = (fuente, data, colorBase) => {
+    const prices = data?.prices || {};
+    const lastUpdate = data?.timestamp;
+    const isStale = lastUpdate && (Date.now() - new Date(lastUpdate).getTime()) > 2 * 86400000;
+    const titulo = fuente === "profeco" ? "🛒 PROFECO" : "🏛 SNIIM";
+    const subtitulo = fuente === "profeco" ? "Quién es Quién en los Precios" : "Sistema Nacional";
+    const editF = editMode[fuente];
+    const loadF = loading[fuente];
+
+    return (
+      <div style={{background:"#fff",border:`2px solid ${colorBase}22`,borderRadius:12,padding:"14px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:6}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:colorBase}}>{titulo}</div>
+            <div style={{fontSize:10,color:"#888"}}>{subtitulo} — Morelia</div>
+          </div>
+          <div style={{display:"flex",gap:4}}>
+            <button onClick={()=>fetchFuente(fuente)} disabled={loadF}
+              style={{padding:"5px 10px",border:`1px solid ${colorBase}`,borderRadius:14,background:loadF?"#f5f5f5":"#fff",color:colorBase,cursor:loadF?"wait":"pointer",fontSize:10,fontWeight:600}}>
+              {loadF ? "⏳" : "🔄"}
+            </button>
+            <button onClick={()=>setEditMode(p=>({...p,[fuente]:!editF}))}
+              style={{padding:"5px 10px",border:"1px solid #8e44ad",borderRadius:14,background:editF?"#f5eef8":"transparent",color:"#8e44ad",cursor:"pointer",fontSize:10,fontWeight:600}}>
+              {editF ? "✓" : "✎"}
+            </button>
+            {editF && <button onClick={()=>saveManual(fuente)}
+              style={{padding:"5px 10px",border:"none",borderRadius:14,background:"#27ae60",color:"#fff",cursor:"pointer",fontSize:10,fontWeight:700}}>💾</button>}
+          </div>
+        </div>
+        {lastUpdate && (
+          <div style={{fontSize:9,color:isStale?"#e74c3c":"#aaa",marginBottom:8,fontWeight:isStale?600:400}}>
+            {isStale && "⚠ "}Actualizado: {new Date(lastUpdate).toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"2-digit",hour:"2-digit",minute:"2-digit"})}
+          </div>
+        )}
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {Object.entries(CROPS).map(([k,c]) => {
+            const p = prices[k] || manualPrices[fuente]?.[k] || {};
+            const tiene = p.min || p.max || p.prom;
+            const propio = precioPromedioPropio[k] || 0;
+            const diff = propio && p.prom ? ((propio - p.prom) / p.prom) * 100 : null;
+
+            return (
+              <div key={k} style={{background:"#fafafa",borderRadius:8,padding:"8px 10px",borderLeft:`3px solid ${c.color}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:editF?6:4}}>
+                  <span style={{fontSize:14}}>{c.emoji}</span>
+                  <span style={{fontWeight:600,fontSize:12,color:c.color,flex:1}}>{c.name}</span>
+                  {!editF && diff !== null && (
+                    <span style={{padding:"1px 6px",borderRadius:5,background:diff>=0?"#eafaf1":"#fdedec",color:diff>=0?"#27ae60":"#c0392b",fontWeight:700,fontSize:10}}>
+                      {diff >= 0 ? "+" : ""}{diff.toFixed(1)}%
+                    </span>
+                  )}
+                </div>
+                {editF ? (
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
+                    {["min","prom","max"].map(field => (
+                      <input key={field} type="number" step="0.01" min="0"
+                        value={manualPrices[fuente]?.[k]?.[field] ?? ""}
+                        onChange={e=>updateManual(fuente, k, field, e.target.value)}
+                        placeholder={field}
+                        style={{padding:"4px 6px",border:"1px solid #ddd",borderRadius:5,fontSize:11,boxSizing:"border-box",background:"#fff",color:"#111",fontFamily:"'Courier New',monospace",textAlign:"center"}}/>
+                    ))}
+                  </div>
+                ) : tiene ? (
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:4}}>
+                    <div style={{textAlign:"center",background:"#fff",borderRadius:4,padding:"2px 0"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#27ae60",fontFamily:"'Courier New',monospace"}}>${(p.min||0).toFixed(2)}</div>
+                      <div style={{fontSize:8,color:"#aaa"}}>Min</div>
+                    </div>
+                    <div style={{textAlign:"center",background:c.color+"11",borderRadius:4,padding:"2px 0"}}>
+                      <div style={{fontSize:12,fontWeight:700,color:c.color,fontFamily:"'Courier New',monospace"}}>${(p.prom||0).toFixed(2)}</div>
+                      <div style={{fontSize:8,color:"#aaa"}}>Prom</div>
+                    </div>
+                    <div style={{textAlign:"center",background:"#fff",borderRadius:4,padding:"2px 0"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#e74c3c",fontFamily:"'Courier New',monospace"}}>${(p.max||0).toFixed(2)}</div>
+                      <div style={{fontSize:8,color:"#aaa"}}>Max</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{textAlign:"center",padding:"6px 0",color:"#aaa",fontSize:10}}>Sin datos</div>
+                )}
+                {!editF && propio > 0 && tiene && (
+                  <div style={{marginTop:4,fontSize:9,color:"#888",textAlign:"right"}}>
+                    Tu precio: <strong style={{color:"#222",fontFamily:"'Courier New',monospace"}}>${propio.toFixed(2)}</strong>/kg
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{marginBottom:16}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#444",marginBottom:10}}>📊 PRECIOS DE MERCADO — Comparativa por fuente</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(340px,1fr))",gap:12}}>
+        {renderFuente("profeco", profecoData, "#27ae60")}
+        {renderFuente("sniim",   sniimData,   "#2980b9")}
+      </div>
+      <div style={{marginTop:10,padding:"8px 12px",background:"#fef9e7",border:"1px solid #f9e79f",borderRadius:8,fontSize:11,color:"#856404"}}>
+        💡 <strong>PROFECO</strong> está activo (datos de supermercados). <strong>SNIIM</strong> es del gobierno y a veces está en mantenimiento. Si una fuente falla, captura manualmente con ✎ o usa solo la otra. Los datos se conservan en Firebase.
+      </div>
+    </div>
+  );
+}
+
 function ReportesVentas() {
   const [ventas, setVentas] = useState([]);
   const [cosechas, setCosechas] = useState([]);
@@ -749,8 +926,18 @@ function ReportesVentas() {
 
   const fmt = v => Number(v||0).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});
 
+  // Precio promedio propio por cultivo para comparar con SNIIM
+  const precioPromedioPorCultivo = useMemo(() => {
+    const res = {};
+    Object.entries(porCultivoV).forEach(([k, d]) => {
+      if (d.kg > 0) res[k] = d.total / d.kg;
+    });
+    return res;
+  }, [porCultivoV]);
+
   return (
     <div>
+      <MonitorPrecios precioPromedioPropio={precioPromedioPorCultivo}/>
       {/* ── FILTROS ── */}
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
         <select value={filterCrop} onChange={e=>setFilterCrop(e.target.value)} style={{...INP,padding:"8px 14px",borderRadius:20,fontSize:12,width:"auto"}}>

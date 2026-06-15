@@ -1,9 +1,11 @@
 {
   "functions": {
-    "api/analyzeSuelo.js": { "maxDuration": 30 },
-    "api/analyze.js": { "maxDuration": 30 },
+    "api/analyzeSuelo.js":     { "maxDuration": 30 },
+    "api/analyze.js":          { "maxDuration": 30 },
     "api/analyzeNutricion.js": { "maxDuration": 30 },
-    "api/asistente.js": { "maxDuration": 30 }
+    "api/asistente.js":        { "maxDuration": 30 },
+    "api/sniim.js":            { "maxDuration": 25 },
+    "api/profeco.js":          { "maxDuration": 25 }
   },
   "headers": [
     {
