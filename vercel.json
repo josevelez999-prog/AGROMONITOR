@@ -4,8 +4,6 @@
     "api/analyze.js":          { "maxDuration": 30 },
     "api/analyzeNutricion.js": { "maxDuration": 30 },
     "api/asistente.js":        { "maxDuration": 30 },
-    "api/sniim.js":            { "maxDuration": 15 },
-    "api/profeco.js":          { "maxDuration": 15 },
     "api/preciosIA.js":        { "maxDuration": 60 }
   },
   "headers": [

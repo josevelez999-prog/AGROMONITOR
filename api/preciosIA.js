@@ -24,18 +24,25 @@ export default async function handler(req, res) {
 3. Arándano (blueberry)
 4. Zarzamora
 
-Busca en fuentes confiables: SNIIM, PROFECO, Central de Abastos, Mercado Juárez Toluca, Walmart, Soriana, reportes de noticias agrícolas recientes (última semana). Promedia precios de menudeo en $MXN por kilogramo.
+Busca en fuentes confiables: SNIIM, PROFECO, Central de Abastos, Mercado Juárez Toluca, Walmart, Soriana, Bodega Aurrera, Chedraui, reportes de noticias agrícolas recientes (última semana). Promedia precios de menudeo en $MXN por kilogramo.
 
 Responde ÚNICAMENTE con un JSON válido en este formato exacto, sin texto adicional, sin markdown:
 
 {
-  "jitomate": { "min": 25.0, "prom": 35.0, "max": 50.0, "fuente": "descripción breve", "cobertura": "morelia|michoacan|nacional" },
-  "fresa":    { "min": 40.0, "prom": 60.0, "max": 90.0, "fuente": "...", "cobertura": "..." },
-  "arandano": { "min": 80.0, "prom": 120.0, "max": 180.0, "fuente": "...", "cobertura": "..." },
-  "zarzamora":{ "min": 60.0, "prom": 90.0, "max": 130.0, "fuente": "...", "cobertura": "..." }
+  "prices": {
+    "jitomate": { "min": 25.0, "prom": 35.0, "max": 50.0, "cobertura": "morelia|michoacan|nacional" },
+    "fresa":    { "min": 40.0, "prom": 60.0, "max": 90.0, "cobertura": "..." },
+    "arandano": { "min": 80.0, "prom": 120.0, "max": 180.0, "cobertura": "..." },
+    "zarzamora":{ "min": 60.0, "prom": 90.0, "max": 130.0, "cobertura": "..." }
+  },
+  "fuentes": [
+    { "nombre": "Nombre publicación o medio", "url": "https://...", "fecha": "DD-MM-YYYY", "tipo": "noticia|gobierno|supermercado|mercado" },
+    { "nombre": "...", "url": "...", "fecha": "...", "tipo": "..." }
+  ],
+  "resumen": "Breve resumen de 1-2 líneas sobre la tendencia general de precios hoy"
 }
 
-Si no encuentras un cultivo, omítelo del JSON (no inventes precios). Solo responde el JSON, nada más.`;
+Si no encuentras un cultivo, omítelo del bloque prices (no inventes precios). Incluye TODAS las fuentes web que consultaste con su URL real. Solo responde el JSON, nada más.`;
 
     const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -95,25 +102,39 @@ Si no encuentras un cultivo, omítelo del JSON (no inventes precios). Solo respo
       });
     }
 
+    // Extraer estructura: { prices, fuentes, resumen }
+    const pricesObj = prices.prices || prices; // backwards compatible
+    const fuentes   = Array.isArray(prices.fuentes) ? prices.fuentes : [];
+    const resumen   = String(prices.resumen || "").slice(0, 500);
+
     // Validar y limpiar precios
     const valid = {};
-    for (const [k, v] of Object.entries(prices)) {
+    for (const [k, v] of Object.entries(pricesObj)) {
       if (v && typeof v === "object" && (v.min || v.prom || v.max)) {
         valid[k] = {
           min:  Number(parseFloat(v.min  || v.prom || 0).toFixed(2)),
           prom: Number(parseFloat(v.prom || (((v.min||0)+(v.max||0))/2)).toFixed(2)),
           max:  Number(parseFloat(v.max  || v.prom || 0).toFixed(2)),
-          fuente: String(v.fuente || "IA").slice(0,200),
           cobertura: v.cobertura || "nacional",
         };
       }
     }
+
+    // Sanitizar fuentes
+    const fuentesLimpias = fuentes.slice(0, 10).map(f => ({
+      nombre: String(f.nombre || f.name || "Fuente").slice(0,150),
+      url:    String(f.url || "").slice(0,400),
+      fecha:  String(f.fecha || f.date || "").slice(0,30),
+      tipo:   String(f.tipo || f.type || "noticia").slice(0,30),
+    })).filter(f => f.nombre);
 
     if (!Object.keys(valid).length) {
       return res.status(200).json({
         success: false,
         message: "Claude no encontró precios verificables hoy",
         prices: {},
+        fuentes: fuentesLimpias,
+        resumen,
         timestamp: new Date().toISOString(),
       });
     }
@@ -121,6 +142,8 @@ Si no encuentras un cultivo, omítelo del JSON (no inventes precios). Solo respo
     return res.status(200).json({
       success: true,
       prices: valid,
+      fuentes: fuentesLimpias,
+      resumen,
       timestamp: new Date().toISOString(),
       source: "Claude AI + Web Search",
     });
