@@ -527,6 +527,7 @@ function ReportesVentas() {
   const [mermasData, setMermasData] = useState([]);
   const [siniestrosData, setSiniestrosData] = useState([]);
   const [filterCrop, setFilterCrop] = useState("all");
+  const [filterInv, setFilterInv] = useState("all");
   const [filterPeriodo, setFilterPeriodo] = useState("todo");
 
   useEffect(() => {
@@ -551,17 +552,35 @@ function ReportesVentas() {
     return arr.filter(x => (x[campo]||"") >= desde);
   };
 
-  const ventasFilt = filtrarPeriodo(ventas).filter(v => filterCrop === "all" || v.crop === filterCrop);
-  const cosechasFilt = filtrarPeriodo(cosechas).filter(c => filterCrop === "all" || c.crop === filterCrop);
-  const siniestrosFilt = filtrarPeriodo(siniestrosData).filter(s => filterCrop === "all" || s.crop === filterCrop);
+  // Lista dinámica de invernaderos según lotes existentes
+  const invernaderosDisponibles = useMemo(()=>{
+    const set = new Set();
+    (lotes||[]).forEach(l => { if(l.zona) set.add(l.zona); });
+    return ["all", ...Array.from(set).sort()];
+  }, [lotes]);
+
+  // Set de loteIds que coinciden con el invernadero filtrado
+  const loteIdsFiltrados = useMemo(()=>{
+    if(filterInv==="all") return null;
+    return new Set((lotes||[]).filter(l=>l.zona===filterInv).map(l=>l.id));
+  }, [lotes, filterInv]);
+
+  const matchInv = (item) => {
+    if(!loteIdsFiltrados) return true;
+    return loteIdsFiltrados.has(item.loteId);
+  };
+
+  const ventasFilt = filtrarPeriodo(ventas).filter(v => (filterCrop === "all" || v.crop === filterCrop) && matchInv(v));
+  const cosechasFilt = filtrarPeriodo(cosechas).filter(c => (filterCrop === "all" || c.crop === filterCrop) && matchInv(c));
+  const siniestrosFilt = filtrarPeriodo(siniestrosData).filter(s => (filterCrop === "all" || s.crop === filterCrop) && matchInv(s));
 
   // ── KPIs globales ──
   const totalIngresos = ventasFilt.reduce((s,v)=>s+(v.totalVenta||0),0) + siniestrosFilt.reduce((s,sn)=>s+(parseFloat(sn.montoSeguro)||0),0);
   const totalKgVendidos = ventasFilt.reduce((s,v)=>s+v.kgVendidos,0);
   const totalKgCosechados = cosechasFilt.length>0
     ? cosechasFilt.reduce((s,c)=>s+(c.kgCosechados||0),0)
-    : (lotes||[]).filter(l=>filterCrop==="all"||l.crop===filterCrop).reduce((s,l)=>s+(parseFloat(l.kgCosechados)||0),0);
-  const totalMerma = filtrarPeriodo(mermasData).filter(m=>filterCrop==="all"||m.crop===filterCrop).reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0);
+    : (lotes||[]).filter(l=>(filterCrop==="all"||l.crop===filterCrop)&&(filterInv==="all"||l.zona===filterInv)).reduce((s,l)=>s+(parseFloat(l.kgCosechados)||0),0);
+  const totalMerma = filtrarPeriodo(mermasData).filter(m=>(filterCrop==="all"||m.crop===filterCrop)&&matchInv(m)).reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0);
   const totalSiniestro = siniestrosFilt.reduce((s,sn)=>s+(parseFloat(sn.kgSiniestro)||0),0);
   const totalMontoSeguro = siniestrosFilt.reduce((s,sn)=>s+(parseFloat(sn.montoSeguro)||0),0);
   const precioPromedio = totalKgVendidos > 0 ? totalIngresos/totalKgVendidos : 0;
@@ -733,6 +752,13 @@ function ReportesVentas() {
           <option value="all">🌱 Todos los cultivos</option>
           {Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}
         </select>
+        {invernaderosDisponibles.length>1&&(
+          <select value={filterInv} onChange={e=>setFilterInv(e.target.value)} style={{...INP,padding:"8px 14px",borderRadius:20,fontSize:12,width:"auto",cursor:"pointer"}}>
+            {invernaderosDisponibles.map(inv=>(
+              <option key={inv} value={inv}>{inv==="all"?"🏠 Todos los invernaderos":`🏠 ${inv}`}</option>
+            ))}
+          </select>
+        )}
         <select value={filterPeriodo} onChange={e=>setFilterPeriodo(e.target.value)} style={{...INP,padding:"8px 14px",borderRadius:20,fontSize:12,width:"auto"}}>
           <option value="todo">📅 Todo el tiempo</option>
           <option value="7d">Últimos 7 días</option>
