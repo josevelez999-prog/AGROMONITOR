@@ -1,5 +1,5 @@
-// Serverless function: Usa Claude API con web search para investigar
-// precios actuales de cultivos en Michoacán
+// Serverless function: Inteligencia de Mercado con Claude AI + Web Search
+// Investiga precios actuales en Michoacán y devuelve precios + fuentes + resumen
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -26,23 +26,11 @@ export default async function handler(req, res) {
 
 Busca en fuentes confiables: SNIIM, PROFECO, Central de Abastos, Mercado Juárez Toluca, Walmart, Soriana, Bodega Aurrera, Chedraui, reportes de noticias agrícolas recientes (última semana). Promedia precios de menudeo en $MXN por kilogramo.
 
-Responde ÚNICAMENTE con un JSON válido en este formato exacto, sin texto adicional, sin markdown:
+Responde ÚNICAMENTE con un JSON válido en este formato exacto, sin texto adicional, sin markdown, sin comentarios. Usa SOLO comillas dobles. No incluyas comas finales:
 
-{
-  "prices": {
-    "jitomate": { "min": 25.0, "prom": 35.0, "max": 50.0, "cobertura": "morelia|michoacan|nacional" },
-    "fresa":    { "min": 40.0, "prom": 60.0, "max": 90.0, "cobertura": "..." },
-    "arandano": { "min": 80.0, "prom": 120.0, "max": 180.0, "cobertura": "..." },
-    "zarzamora":{ "min": 60.0, "prom": 90.0, "max": 130.0, "cobertura": "..." }
-  },
-  "fuentes": [
-    { "nombre": "Nombre publicación o medio", "url": "https://...", "fecha": "DD-MM-YYYY", "tipo": "noticia|gobierno|supermercado|mercado" },
-    { "nombre": "...", "url": "...", "fecha": "...", "tipo": "..." }
-  ],
-  "resumen": "Breve resumen de 1-2 líneas sobre la tendencia general de precios hoy"
-}
+{"prices":{"jitomate":{"min":25.0,"prom":35.0,"max":50.0,"cobertura":"morelia"},"fresa":{"min":40.0,"prom":60.0,"max":90.0,"cobertura":"nacional"},"arandano":{"min":80.0,"prom":120.0,"max":180.0,"cobertura":"nacional"},"zarzamora":{"min":60.0,"prom":90.0,"max":130.0,"cobertura":"nacional"}},"fuentes":[{"nombre":"Nombre publicacion","url":"https://...","fecha":"DD-MM-YYYY","tipo":"noticia"}],"resumen":"Breve resumen 1-2 lineas"}
 
-Si no encuentras un cultivo, omítelo del bloque prices (no inventes precios). Incluye TODAS las fuentes web que consultaste con su URL real. Solo responde el JSON, nada más.`;
+Si no encuentras un cultivo, omitelo del bloque prices (no inventes precios). Incluye TODAS las fuentes web reales que consultaste con su URL. Solo JSON, nada mas.`;
 
     const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -53,11 +41,11 @@ Si no encuentras un cultivo, omítelo del bloque prices (no inventes precios). I
       },
       body: JSON.stringify({
         model: "claude-opus-4-6",
-        max_tokens: 1500,
+        max_tokens: 2000,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
         messages: [{ role: "user", content: prompt }],
       }),
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(50000),
     });
 
     if (!claudeResp.ok) {
@@ -71,7 +59,6 @@ Si no encuentras un cultivo, omítelo del bloque prices (no inventes precios). I
     }
 
     const data = await claudeResp.json();
-    // Buscar el bloque de texto final en la respuesta de Claude
     let textoFinal = "";
     if (Array.isArray(data.content)) {
       for (const block of data.content) {
@@ -79,35 +66,73 @@ Si no encuentras un cultivo, omítelo del bloque prices (no inventes precios). I
       }
     }
 
-    // Extraer JSON del texto (puede venir con texto antes/después)
+    // Helper: intentar parsear JSON
+    const tryParse = (str) => { try { return JSON.parse(str); } catch { return null; } };
+
+    // Extraer JSON del texto
     const jsonMatch = textoFinal.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return res.status(200).json({
         success: false,
-        message: "Claude no devolvió JSON parseable. Respuesta: " + textoFinal.slice(0,300),
+        message: "Claude no devolvio JSON. Respuesta: " + textoFinal.slice(0,300),
         prices: {},
         timestamp: new Date().toISOString(),
       });
     }
 
-    let prices;
-    try {
-      prices = JSON.parse(jsonMatch[0]);
-    } catch (e) {
+    let raw = jsonMatch[0];
+    let parsed = tryParse(raw);
+
+    // Reparaciones progresivas si el JSON está malformado
+    if (!parsed) {
+      // 1. Quitar comentarios
+      let r = raw.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+      parsed = tryParse(r);
+      // 2. Quitar comas finales
+      if (!parsed) { r = r.replace(/,(\s*[\]}])/g, "$1"); parsed = tryParse(r); }
+      // 3. Quitar saltos de línea dentro de strings (escape errado)
+      if (!parsed) { r = r.replace(/\n\s*\"/g, " \""); parsed = tryParse(r); }
+    }
+
+    // Último recurso: extraer cultivos manualmente con regex
+    if (!parsed) {
+      const extracted = {};
+      const cropPattern = /\"(jitomate|fresa|arandano|arándano|zarzamora)\"\s*:\s*\{[^{}]*?\"min\"\s*:\s*([\d.]+)[^{}]*?\"prom\"\s*:\s*([\d.]+)[^{}]*?\"max\"\s*:\s*([\d.]+)[^{}]*?(?:\"cobertura\"\s*:\s*\"([^\"]+)\")?/g;
+      let m;
+      while ((m = cropPattern.exec(raw)) !== null) {
+        const key = m[1].replace("á","a");
+        extracted[key] = {
+          min: parseFloat(m[2]),
+          prom: parseFloat(m[3]),
+          max: parseFloat(m[4]),
+          cobertura: m[5] || "nacional",
+        };
+      }
+      if (Object.keys(extracted).length) {
+        // Intentar extraer fuentes también con regex
+        const fuentes = [];
+        const fuentePattern = /\"nombre\"\s*:\s*\"([^\"]+)\"[^{}]*?\"url\"\s*:\s*\"([^\"]+)\"/g;
+        let fm;
+        while ((fm = fuentePattern.exec(raw)) !== null) {
+          fuentes.push({ nombre: fm[1], url: fm[2], fecha: "", tipo: "noticia" });
+        }
+        parsed = { prices: extracted, fuentes, resumen: "Datos recuperados parcialmente" };
+      }
+    }
+
+    if (!parsed) {
       return res.status(200).json({
         success: false,
-        message: "JSON inválido de Claude: " + e.message,
+        message: "JSON malformado no recuperable. Inicio: " + raw.slice(0,200),
         prices: {},
         timestamp: new Date().toISOString(),
       });
     }
 
-    // Extraer estructura: { prices, fuentes, resumen }
-    const pricesObj = prices.prices || prices; // backwards compatible
-    const fuentes   = Array.isArray(prices.fuentes) ? prices.fuentes : [];
-    const resumen   = String(prices.resumen || "").slice(0, 500);
+    const pricesObj = parsed.prices || parsed;
+    const fuentes   = Array.isArray(parsed.fuentes) ? parsed.fuentes : [];
+    const resumen   = String(parsed.resumen || "").slice(0, 500);
 
-    // Validar y limpiar precios
     const valid = {};
     for (const [k, v] of Object.entries(pricesObj)) {
       if (v && typeof v === "object" && (v.min || v.prom || v.max)) {
@@ -120,7 +145,6 @@ Si no encuentras un cultivo, omítelo del bloque prices (no inventes precios). I
       }
     }
 
-    // Sanitizar fuentes
     const fuentesLimpias = fuentes.slice(0, 10).map(f => ({
       nombre: String(f.nombre || f.name || "Fuente").slice(0,150),
       url:    String(f.url || "").slice(0,400),
