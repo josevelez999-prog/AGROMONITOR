@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { db, auth } from "./firebase";
-import { collection, addDoc, onSnapshot, query, where, orderBy, doc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, where, orderBy, doc, updateDoc } from "firebase/firestore";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { signOut } from "firebase/auth";
 
@@ -110,13 +110,36 @@ function Registro({ worker }) {
     ph:"", ce:"", drenaje:"", volumenEntrada:"", notes:"",
     ca:"", no3:"", k:"", fe:"",
   });
+
+  const [weeklyRangos, setWeeklyRangos] = useState({});
+  useEffect(()=>{
+    const unsub = onSnapshot(doc(db,"config","rangos_semanales"), snap=>{
+      if(snap.exists()) setWeeklyRangos(snap.data());
+    });
+    return()=>unsub();
+  },[]);
   const [imgFile, setImgFile] = useState(null);
   const [imgPreview, setImgPreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const fileRef = useRef();
   const crop = CROPS[form.crop];
-  const rangos = form.tipo === "entrada" ? crop.entrada : crop.salida;
+  const rangos = (()=>{
+    const defRng = form.tipo === "entrada" ? crop.entrada : crop.salida;
+    if(!defRng) return defRng;
+    // Buscar rango semanal: cultivo_invernadero_tipo o cultivo_tipo
+    const invKey = (form.invernadero||"").replace(" ","");
+    const key = invKey ? `${form.crop}_${invKey}_${form.tipo}` : `${form.crop}_${form.tipo}`;
+    const wr = weeklyRangos[key];
+    if(wr){
+      const phMin = wr.phMin!==undefined ? wr.phMin : defRng.ph.min;
+      const phMax = wr.phMax!==undefined ? wr.phMax : defRng.ph.max;
+      const ceMin = wr.ceMin!==undefined ? wr.ceMin : defRng.ce.min;
+      const ceMax = wr.ceMax!==undefined ? wr.ceMax : defRng.ce.max;
+      return {ph:{min:phMin,max:phMax},ce:{min:ceMin,max:ceMax},_custom:true};
+    }
+    return defRng;
+  })();
 
   const handleImage = e => {
     const file = e.target.files[0]; if (!file) return;
@@ -229,7 +252,7 @@ function Registro({ worker }) {
 
       <div style={{background:"#f0faf5",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:12,color:"#555",border:`1px solid ${crop.color}33`}}>
         <strong style={{color:crop.color}}>{crop.emoji} {crop.name} — {form.tipo==="entrada"?"Entrada":"Salida"}</strong>
-        <span style={{marginLeft:10}}>pH: <strong>{rangos.ph.min}–{rangos.ph.max}</strong></span>
+        <span style={{marginLeft:10}}>pH: <strong>{rangos.ph.min}–{rangos.ph.max}</strong>{rangos._custom&&<span style={{marginLeft:4,fontSize:9,padding:"1px 5px",borderRadius:5,background:"#8e44ad22",color:"#8e44ad",fontWeight:700}}>📋 ajuste semanal</span>}</span>
         <span style={{marginLeft:10}}>CE: <strong>{rangos.ce.min}–{rangos.ce.max} mS/cm</strong></span>
       </div>
 
@@ -360,8 +383,8 @@ function MiHistorial({ worker }) {
   useEffect(()=>{
     const q = query(collection(db,"readings"),where("worker","==",worker),orderBy("createdAt","desc"));
     const unsub = onSnapshot(q,snap=>{setReadings(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);},()=>setLoading(false));
-    return()=>unsub();
-  },[worker]);
+    return()=>{unsub();rangosUnsub();};
+  },[worker,weeklyRangos]);
   if(loading) return <div style={{textAlign:"center",padding:"2rem",color:"#aaa"}}>Cargando...</div>;
   if(!readings.length) return <div style={{textAlign:"center",padding:"2rem",color:"#aaa"}}><div style={{fontSize:36,marginBottom:8}}>📋</div><div>Aún no tienes registros</div></div>;
   return (
@@ -1174,7 +1197,11 @@ export default function Worker({ user }) {
   );
 }function MisAlertasActivas({ worker }) {
   const [alertas, setAlertas] = useState([]);
+  const [weeklyRangos, setWeeklyRangos] = useState({});
   useEffect(()=>{
+    const rangosUnsub = onSnapshot(doc(db,"config","rangos_semanales"), snap=>{
+      if(snap.exists()) setWeeklyRangos(snap.data());
+    });
     const q = query(collection(db,"readings"), where("worker","==",worker), orderBy("createdAt","desc"));
     const unsub = onSnapshot(q, snap=>{
       const recent = snap.docs.slice(0,10).map(d=>({id:d.id,...d.data()}));
@@ -1182,7 +1209,13 @@ export default function Worker({ user }) {
         if(r.resolved||r.dismissed) return false;
         if((r.tipo||"entrada")!=="entrada") return false;
         const c = CROPS[r.crop]; if(!c) return false;
-        const ph = c.entrada?.ph||c.ph; const ce = c.entrada?.ce||c.ce;
+        const defPh = c.entrada?.ph||c.ph; const defCe = c.entrada?.ce||c.ce;
+        // Aplicar rangos semanales si existen
+        const invKey = (r.invernadero||"").replace(" ","");
+        const key = invKey ? `${r.crop}_${invKey}_entrada` : `${r.crop}_entrada`;
+        const wr = weeklyRangos[key] || {};
+        const ph = {min: wr.phMin!==undefined?wr.phMin:defPh.min, max: wr.phMax!==undefined?wr.phMax:defPh.max};
+        const ce = {min: wr.ceMin!==undefined?wr.ceMin:defCe.min, max: wr.ceMax!==undefined?wr.ceMax:defCe.max};
         const phOut = r.ph<ph.min||r.ph>ph.max;
         const ceOut = r.ce<ce.min||r.ce>ce.max;
         return phOut||ceOut;
