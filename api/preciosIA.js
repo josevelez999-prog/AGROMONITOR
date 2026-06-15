@@ -40,12 +40,12 @@ Si no encuentras un cultivo, omitelo del bloque prices (no inventes precios). In
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-opus-4-6",
+        model: "claude-haiku-4-5",
         max_tokens: 2000,
-        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
         messages: [{ role: "user", content: prompt }],
       }),
-      signal: AbortSignal.timeout(50000),
+      signal: AbortSignal.timeout(110000),
     });
 
     if (!claudeResp.ok) {
