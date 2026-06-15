@@ -17,20 +17,22 @@ export default async function handler(req, res) {
 
     const fechaHoy = new Date().toLocaleDateString("es-MX", { day:"numeric", month:"long", year:"numeric" });
 
-    const prompt = `Necesito los precios actuales de mercado para hoy ${fechaHoy} de estos 4 cultivos en Michoacán (preferentemente Morelia, sino estado completo, sino promedio nacional México):
+    const prompt = `Eres un analista de mercado agrícola para México. Investiga rangos de precios RECIENTES (últimas 4 semanas) de estos cultivos en Michoacán/Morelia o nacional si no hay datos locales:
 
-1. Jitomate (saladette o bola)
+1. Jitomate (saladette/bola)
 2. Fresa
-3. Arándano (blueberry)
+3. Arándano
 4. Zarzamora
 
-Busca en fuentes confiables: SNIIM, PROFECO, Central de Abastos, Mercado Juárez Toluca, Walmart, Soriana, Bodega Aurrera, Chedraui, reportes de noticias agrícolas recientes (última semana). Promedia precios de menudeo en $MXN por kilogramo.
+Busca en: SNIIM, PROFECO, Central de Abastos, Walmart, Soriana, Chedraui, noticias agrícolas, reportes de mercado. NO necesitas el precio exacto de hoy — usa rangos representativos de las últimas semanas con base en las fuentes disponibles. Esto es INTELIGENCIA DE MERCADO, no consulta de precios oficiales.
 
-Responde ÚNICAMENTE con un JSON válido en este formato exacto, sin texto adicional, sin markdown, sin comentarios. Usa SOLO comillas dobles. No incluyas comas finales:
+IMPORTANTE: Aunque los datos sean de hace días o no sean exactos del día actual, devuelve rangos representativos. Es mejor un rango aproximado que nada.
 
-{"prices":{"jitomate":{"min":25.0,"prom":35.0,"max":50.0,"cobertura":"morelia"},"fresa":{"min":40.0,"prom":60.0,"max":90.0,"cobertura":"nacional"},"arandano":{"min":80.0,"prom":120.0,"max":180.0,"cobertura":"nacional"},"zarzamora":{"min":60.0,"prom":90.0,"max":130.0,"cobertura":"nacional"}},"fuentes":[{"nombre":"Nombre publicacion","url":"https://...","fecha":"DD-MM-YYYY","tipo":"noticia"}],"resumen":"Breve resumen 1-2 lineas"}
+Responde SOLO con este JSON en una línea, sin markdown, sin comentarios, sin comas finales, todas comillas dobles:
 
-Si no encuentras un cultivo, omitelo del bloque prices (no inventes precios). Incluye TODAS las fuentes web reales que consultaste con su URL. Solo JSON, nada mas.`;
+{"prices":{"jitomate":{"min":25,"prom":35,"max":50,"cobertura":"michoacan"},"fresa":{"min":40,"prom":60,"max":90,"cobertura":"nacional"},"arandano":{"min":80,"prom":120,"max":180,"cobertura":"nacional"},"zarzamora":{"min":60,"prom":90,"max":130,"cobertura":"nacional"}},"fuentes":[{"nombre":"Medio o sitio","url":"https://url-real","fecha":"DD-MM-YYYY","tipo":"noticia"}],"resumen":"Resumen de tendencia 1-2 lineas"}
+
+Cobertura: usa "morelia" si encontraste Morelia específico, "michoacan" si es del estado, "nacional" si solo hay promedios México. Incluye 3-6 fuentes reales con URLs. Solo JSON.`;
 
     const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -120,10 +122,40 @@ Si no encuentras un cultivo, omitelo del bloque prices (no inventes precios). In
       }
     }
 
+    // Recurso final: extraer precios de prosa (ej: "jitomate $25-$80 pesos/kg")
+    if (!parsed) {
+      const extracted = {};
+      const crops = ["jitomate","fresa","arandano","arándano","zarzamora"];
+      for (const crop of crops) {
+        const regex = new RegExp(`${crop}[\\s\\S]{0,300}?\\$?(\\d{1,3}(?:\\.\\d+)?)\\s*[-aA]\\s*\\$?(\\d{1,3}(?:\\.\\d+)?)`, "i");
+        const m = textoFinal.match(regex);
+        if (m) {
+          const min = parseFloat(m[1]);
+          const max = parseFloat(m[2]);
+          if (min > 5 && max < 500 && max > min) {
+            const key = crop.replace("á","a");
+            extracted[key] = {
+              min: min,
+              max: max,
+              prom: Number(((min+max)/2).toFixed(2)),
+              cobertura: "nacional",
+            };
+          }
+        }
+      }
+      if (Object.keys(extracted).length) {
+        parsed = {
+          prices: extracted,
+          fuentes: [],
+          resumen: "Datos extraídos del análisis de Claude (no devolvió JSON estructurado)",
+        };
+      }
+    }
+
     if (!parsed) {
       return res.status(200).json({
         success: false,
-        message: "JSON malformado no recuperable. Inicio: " + raw.slice(0,200),
+        message: "Claude no devolvió datos parseables. Respuesta: " + textoFinal.slice(0,400),
         prices: {},
         timestamp: new Date().toISOString(),
       });
