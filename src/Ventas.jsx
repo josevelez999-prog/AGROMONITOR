@@ -637,22 +637,27 @@ function ReportesVentas() {
 
   // ── RBC (Relación Beneficio/Costo) ──
   const rbcData = useMemo(() => {
-    const lotesFilt = (lotes||[]).filter(l => filterCrop==="all" || l.crop===filterCrop);
+    // Lotes filtrados respetan cultivo Y invernadero
+    const lotesFilt = (lotes||[]).filter(l =>
+      (filterCrop==="all" || l.crop===filterCrop) &&
+      (filterInv==="all" || l.zona===filterInv)
+    );
     const costoTotal = lotesFilt.reduce((s,l)=>s+(parseFloat(l.costoCiclo)||0),0);
-    const ingresoTotal = totalIngresos;
+    const ingresoTotal = totalIngresos; // ya filtrado por cultivo+inv
     const rbcGlobal = costoTotal>0?(ingresoTotal/costoTotal):0;
     const gNeta = ingresoTotal - costoTotal;
+    // RBC por cultivo: solo cultivos que están en los lotes filtrados
     const porCultivo = {};
-    (lotes||[]).forEach(l => {
+    lotesFilt.forEach(l => {
       if(!porCultivo[l.crop]) porCultivo[l.crop] = {costo:0,ingresos:0};
       porCultivo[l.crop].costo += parseFloat(l.costoCiclo)||0;
     });
-    Object.keys(porCultivoV).forEach(k => {
-      if(!porCultivo[k]) porCultivo[k] = {costo:0,ingresos:0};
+    // Ingresos por cultivo: solo de cultivos en los lotes filtrados
+    Object.keys(porCultivo).forEach(k => {
       porCultivo[k].ingresos = porCultivoV[k]?.total||0;
     });
     return { rbcGlobal, costoTotal, ingresoTotal, gNeta, porCultivo };
-  }, [lotes, totalIngresos, porCultivoV, filterCrop]);
+  }, [lotes, totalIngresos, porCultivoV, filterCrop, filterInv]);
 
   // ── Por canal ──
   const porCanal = useMemo(() => {
