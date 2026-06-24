@@ -5,11 +5,24 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   try {
-    const apiKey = process.env.ANTHROPIC_KEY || process.env.VITE_ANTHROPIC_API_KEY;
+    // Aceptar múltiples nombres de variable
+    const apiKey = process.env.ANTHROPIC_KEY 
+                || process.env.ANTHROPIC_API_KEY
+                || process.env.VITE_ANTHROPIC_API_KEY 
+                || process.env.VITE_ANTHROPIC_KEY;
     if (!apiKey) {
       return res.status(200).json({
         success: false,
-        message: "ANTHROPIC_KEY no configurada en Vercel",
+        message: "⚠ ANTHROPIC_KEY no configurada en Vercel. Ve a Settings → Environment Variables, agrega ANTHROPIC_KEY con tu clave de Anthropic, marca Sensitive y vuelve a hacer deploy.",
+        prices: {},
+        timestamp: new Date().toISOString(),
+      });
+    }
+    // Validar formato básico (debe empezar con sk-ant-)
+    if (!apiKey.startsWith("sk-ant-")) {
+      return res.status(200).json({
+        success: false,
+        message: "⚠ ANTHROPIC_KEY parece inválida (debe empezar con sk-ant-). Verifica en https://console.anthropic.com/settings/keys",
         prices: {},
         timestamp: new Date().toISOString(),
       });
@@ -52,9 +65,16 @@ Cobertura: usa "morelia" si encontraste Morelia específico, "michoacan" si es d
 
     if (!claudeResp.ok) {
       const errText = await claudeResp.text();
+      let userMessage = "Error API Claude " + claudeResp.status;
+      // Errores comunes con mensajes amigables
+      if (claudeResp.status === 401) userMessage = "🔑 API Key inválida o expirada. Regenera la clave en console.anthropic.com y actualiza ANTHROPIC_KEY en Vercel.";
+      else if (claudeResp.status === 429) userMessage = "⏱ Demasiadas consultas. Espera 1 minuto e intenta de nuevo.";
+      else if (claudeResp.status === 529) userMessage = "🔧 Anthropic está sobrecargado temporalmente. Intenta en 30 segundos.";
+      else if (claudeResp.status === 500) userMessage = "🔧 Error interno de Anthropic. Reintentar más tarde.";
+      else if (claudeResp.status === 400) userMessage = "📝 Error en la petición: " + errText.slice(0,200);
       return res.status(200).json({
         success: false,
-        message: "Error API Claude: " + claudeResp.status + " " + errText.slice(0,200),
+        message: userMessage,
         prices: {},
         timestamp: new Date().toISOString(),
       });

@@ -507,7 +507,9 @@ function RegistroCosecha({ worker }) {
       await addDoc(collection(db,"cosechas_trabajador"),{
         ...formC,kgCosechados:parseFloat(formC.kgCosechados),worker,
         date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
-        createdAt:now.toISOString(),loteName:lote?.nombre||"",crop:lote?.crop||"",tratamiento:lote?.tratamiento||"",
+        createdAt:now.toISOString(),loteName:lote?.nombre||"",crop:lote?.crop||"",
+        zona:lote?.zona||"", invernadero:lote?.zona||"",
+        tratamiento:lote?.tratamiento||"",
       });
       setSaved("cosecha"); setFormC({loteId:"",kgCosechados:"",calidad:"primera",notas:""});
       setTimeout(()=>setSaved(""),4000);

@@ -773,7 +773,11 @@ function ReportesVentas() {
 
   const matchInv = (item) => {
     if(!loteIdsFiltrados) return true;
-    return loteIdsFiltrados.has(item.loteId);
+    // 1) Primero por loteId (más confiable)
+    if(item.loteId && loteIdsFiltrados.has(item.loteId)) return true;
+    // 2) Si el registro tiene zona o invernadero guardada, comparar directo (registros nuevos)
+    if((item.zona && item.zona===filterInv) || (item.invernadero && item.invernadero===filterInv)) return true;
+    return false;
   };
 
   const ventasFilt = filtrarPeriodo(ventas).filter(v => (filterCrop === "all" || v.crop === filterCrop) && matchInv(v));
@@ -783,9 +787,29 @@ function ReportesVentas() {
   // ── KPIs globales ──
   const totalIngresos = ventasFilt.reduce((s,v)=>s+(v.totalVenta||0),0) + siniestrosFilt.reduce((s,sn)=>s+(parseFloat(sn.montoSeguro)||0),0);
   const totalKgVendidos = ventasFilt.reduce((s,v)=>s+v.kgVendidos,0);
-  const totalKgCosechados = cosechasFilt.length>0
-    ? cosechasFilt.reduce((s,c)=>s+(c.kgCosechados||0),0)
-    : (lotes||[]).filter(l=>(filterCrop==="all"||l.crop===filterCrop)&&(filterInv==="all"||l.zona===filterInv)).reduce((s,l)=>s+(parseFloat(l.kgCosechados)||0),0);
+  const totalKgCosechados = useMemo(()=>{
+    // Para cada lote filtrado: usar suma de cosechas trabajador si existen, sino lote.kgCosechados
+    const lotesFiltrados = (lotes||[]).filter(l=>
+      (filterCrop==="all"||l.crop===filterCrop) &&
+      (filterInv==="all"||l.zona===filterInv)
+    );
+    let total = 0;
+    const loteIdsConCosecha = new Set();
+    // Sumar cosechas de trabajadores por lote (evita doble conteo)
+    cosechasFilt.forEach(c=>{
+      if(c.loteId && lotesFiltrados.find(l=>l.id===c.loteId)){
+        total += parseFloat(c.kgCosechados)||0;
+        loteIdsConCosecha.add(c.loteId);
+      }
+    });
+    // Para lotes SIN cosecha de trabajador, usar el kg manual del lote
+    lotesFiltrados.forEach(l=>{
+      if(!loteIdsConCosecha.has(l.id)){
+        total += parseFloat(l.kgCosechados)||0;
+      }
+    });
+    return total;
+  },[cosechasFilt,lotes,filterCrop,filterInv]);
   const totalMerma = filtrarPeriodo(mermasData).filter(m=>(filterCrop==="all"||m.crop===filterCrop)&&matchInv(m)).reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0);
   const totalSiniestro = siniestrosFilt.reduce((s,sn)=>s+(parseFloat(sn.kgSiniestro)||0),0);
   const totalMontoSeguro = siniestrosFilt.reduce((s,sn)=>s+(parseFloat(sn.montoSeguro)||0),0);
