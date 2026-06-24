@@ -1,65 +1,138 @@
+// Diagnóstico visual de plantas (foto + datos)
+// Mejorado con validación robusta de API key y mensajes claros
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Solo se acepta POST" });
+  }
 
   try {
-    const { imgBase64, cropName, ph, ce, zone, notes, cropNutRef } = req.body;
+    const apiKey = process.env.ANTHROPIC_KEY 
+                || process.env.ANTHROPIC_API_KEY
+                || process.env.VITE_ANTHROPIC_API_KEY 
+                || process.env.VITE_ANTHROPIC_KEY;
+    
+    if (!apiKey) {
+      return res.status(200).json({
+        error: "🔑 ANTHROPIC_KEY no configurada en Vercel. Ve a Settings → Environment Variables, agrega ANTHROPIC_KEY con tu clave de Anthropic, marca Sensitive y vuelve a hacer deploy."
+      });
+    }
+    if (!apiKey.startsWith("sk-ant-")) {
+      return res.status(200).json({
+        error: "🔑 ANTHROPIC_KEY inválida (debe empezar con sk-ant-). Regenera la clave en console.anthropic.com/settings/keys"
+      });
+    }
 
-    const prompt = "Eres un ingeniero agrónomo mexicano especialista en producción protegida e hidroponía con 20 años de experiencia en cultivos de jitomate, fresa, arándano y zarzamora bajo invernadero y sistemas mixtos.\n\n"
-      + "Tienes conocimiento profundo en:\n"
-      + "- Nutrición vegetal y formulación de soluciones nutritivas (método meq/L)\n"
-      + "- Fisiología vegetal y etapas fenológicas\n"
-      + "- Fitopatología: enfermedades fúngicas, bacterianas y virales\n"
-      + "- Entomología agrícola: plagas comunes en cultivos protegidos de México\n"
-      + "- Manejo integrado de plagas y enfermedades (MIP)\n"
-      + "- Condiciones climáticas del centro-occidente de México\n\n"
-      + "Datos del registro actual:\n"
-      + "- Cultivo: " + cropName + "\n"
-      + "- pH medido: " + (ph || "no registrado") + "\n"
-      + "- CE medida: " + (ce || "no registrada") + " mS/cm\n"
-      + "- Zona: " + (zone || "no especificada") + "\n"
-      + "- Observaciones del trabajador: " + (notes || "ninguna") + "\n"
-      + "- Referencia nutricional: " + cropNutRef + "\n\n"
-      + "Analiza la imagen adjunta considerando todos estos datos. Da un diagnóstico preciso y práctico, orientado a un productor mexicano con recursos limitados.\n\n"
-      + 'Responde SOLO en este formato JSON sin markdown ni texto adicional:\n'
-      + '{"diagnostico":"nombre técnico del problema en español","severidad":"baja|media|alta",'
-      + '"causas":["causa 1","causa 2"],"acciones":["acción inmediata 1","acción a mediano plazo 2","acción preventiva 3"],'
-      + '"productos_sugeridos":["producto disponible en México 1","alternativa 2"],'
-      + '"ajuste_ph":"subir|bajar|mantener","ajuste_ce":"subir|bajar|mantener",'
-      + '"urgencia":"mensaje directo de una línea para el encargado"}';
+    const { crop, zone, worker, ph, ce, notes, imageBase64, imageMediaType } = req.body || {};
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    if (!crop) {
+      return res.status(400).json({ error: "Falta el campo 'crop'" });
+    }
+
+    const fechaHoy = new Date().toLocaleDateString("es-MX", { day:"numeric", month:"long", year:"numeric" });
+
+    const textoPrompt = `Eres un fitopatólogo experto en cultivos hidropónicos en México. Diagnóstica el estado de esta planta basándote en la foto (si la hay) y los datos:
+
+📅 Fecha: ${fechaHoy}
+🌱 Cultivo: ${crop}
+${zone ? `📍 Zona: ${zone}` : ""}
+${worker ? `👤 Trabajador: ${worker}` : ""}
+${ph ? `🧪 pH: ${ph}` : ""}
+${ce ? `⚡ CE: ${ce} mS/cm` : ""}
+${notes ? `📝 Observaciones: ${notes}` : ""}
+
+Analiza considerando deficiencias nutricionales, exceso de fertilización, plagas, enfermedades fúngicas/bacterianas/virales comunes en este cultivo, y problemas de pH/CE.
+
+Responde con esta estructura:
+
+🔍 DIAGNÓSTICO PRINCIPAL
+[2-3 líneas con el problema más probable y su causa]
+
+🎯 CAUSAS PROBABLES
+• [Causa 1 con explicación breve]
+• [Causa 2]
+• [Causa 3]
+
+💊 ACCIONES INMEDIATAS (próximas 24-48 horas)
+1. [Acción concreta]
+2. [Acción concreta]
+3. [Acción concreta]
+
+🛡 PREVENCIÓN A FUTURO
+[2-3 líneas de prevención]
+
+⚠ NIVEL DE URGENCIA: [Bajo | Medio | Alto | Crítico]
+
+Sé directo, práctico y específico. Si la foto está borrosa o no muestra el problema, dilo.`;
+
+    const content = [];
+    if (imageBase64) {
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: imageMediaType || "image/jpeg",
+          data: imageBase64,
+        },
+      });
+    }
+    content.push({ type: "text", text: textoPrompt });
+
+    const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_KEY,
+        "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: imgBase64 } },
-            { type: "text", text: prompt }
-          ]
-        }]
+        model: "claude-sonnet-4-6",
+        max_tokens: 1500,
+        messages: [{ role: "user", content }],
       }),
+      signal: AbortSignal.timeout(45000),
     });
 
-    const data = await response.json();
-    if (data.error) return res.status(400).json({ error: data.error.message });
+    if (!claudeResp.ok) {
+      const errText = await claudeResp.text();
+      let userMessage = "Error API Claude " + claudeResp.status;
+      if (claudeResp.status === 401) userMessage = "🔑 API Key inválida o expirada. Regenera la clave en console.anthropic.com y actualiza ANTHROPIC_KEY en Vercel.";
+      else if (claudeResp.status === 429) userMessage = "⏱ Demasiadas consultas. Espera 1 minuto e intenta de nuevo.";
+      else if (claudeResp.status === 529) userMessage = "🔧 Anthropic está sobrecargado temporalmente. Intenta en 30 segundos.";
+      else if (claudeResp.status === 500) userMessage = "🔧 Error interno de Anthropic. Reintentar más tarde.";
+      else if (claudeResp.status === 400) {
+        try {
+          const j = JSON.parse(errText);
+          userMessage = "📝 " + (j.error?.message || errText.slice(0,200));
+        } catch {
+          userMessage = "📝 Error en la petición: " + errText.slice(0,200);
+        }
+      }
+      return res.status(200).json({ error: userMessage });
+    }
 
-    const text = data.content?.find(b => b.type === "text")?.text || "";
-    const result = JSON.parse(text.replace(/```json|```/g, "").trim());
-    res.status(200).json(result);
+    const data = await claudeResp.json();
+    let textoFinal = "";
+    if (Array.isArray(data.content)) {
+      for (const block of data.content) {
+        if (block.type === "text") textoFinal += block.text;
+      }
+    }
+    
+    if (!textoFinal) {
+      return res.status(200).json({ error: "Claude no devolvió texto. Intenta de nuevo." });
+    }
+
+    return res.status(200).json({ 
+      response: textoFinal,
+      text: textoFinal,
+      timestamp: new Date().toISOString(),
+    });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: e.message });
+    if (e.name === "TimeoutError" || e.name === "AbortError") {
+      return res.status(200).json({ error: "⏱ La consulta tardó demasiado. Intenta de nuevo o reduce el tamaño de la foto." });
+    }
+    return res.status(200).json({ error: "Error interno: " + (e?.message || String(e)) });
   }
 }
