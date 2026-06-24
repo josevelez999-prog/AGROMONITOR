@@ -101,6 +101,68 @@ const LBL = {
 };
 
 
+// ─── MIS ALERTAS ACTIVAS ─────────────────────────────────────────────────────
+function MisAlertasActivas({ worker }) {
+  const [alertas, setAlertas] = useState([]);
+  const [weeklyRangos, setWeeklyRangos] = useState({});
+  useEffect(()=>{
+    const rangosUnsub = onSnapshot(doc(db,"config","rangos_semanales"), snap=>{
+      if(snap.exists()) setWeeklyRangos(snap.data());
+    });
+    const q = query(collection(db,"readings"), where("worker","==",worker), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap=>{
+      const recent = snap.docs.slice(0,10).map(d=>({id:d.id,...d.data()}));
+      const conAlerta = recent.filter(r=>{
+        if(r.resolved||r.dismissed) return false;
+        if((r.tipo||"entrada")!=="entrada") return false;
+        const c = CROPS[r.crop]; if(!c) return false;
+        const defPh = c.entrada?.ph||c.ph; const defCe = c.entrada?.ce||c.ce;
+        if(!defPh||!defCe) return false;
+        const invKey = (r.invernadero||"").replace(" ","");
+        const key = invKey ? `${r.crop}_${invKey}_entrada` : `${r.crop}_entrada`;
+        const wr = weeklyRangos?.[key] || {};
+        const ph = {min: wr.phMin!==undefined?wr.phMin:defPh.min, max: wr.phMax!==undefined?wr.phMax:defPh.max};
+        const ce = {min: wr.ceMin!==undefined?wr.ceMin:defCe.min, max: wr.ceMax!==undefined?wr.ceMax:defCe.max};
+        const phOut = r.ph<ph.min||r.ph>ph.max;
+        const ceOut = r.ce<ce.min||r.ce>ce.max;
+        return phOut||ceOut;
+      });
+      setAlertas(conAlerta);
+    });
+    return()=>{unsub();rangosUnsub();};
+  },[worker,weeklyRangos]);
+
+  const resolver = async (id) => {
+    if(!window.confirm("¿Marcar esta medición como resuelta? Se quitará la alerta del admin y de tu pantalla.")) return;
+    setAlertas(prev => prev.filter(a => a.id !== id));
+    try {
+      await updateDoc(doc(db,"readings",id),{resolved:true,resolvedAt:new Date().toISOString(),resolvedBy:worker});
+    } catch(e) {
+      alert("⚠ Error al guardar: "+e.message);
+    }
+  };
+
+  if(!alertas.length) return null;
+  return(
+    <div style={{background:"#fdedec",border:"1.5px solid #e74c3c",borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+      <div style={{fontSize:12,fontWeight:700,color:"#c0392b",marginBottom:8}}>⚠ Tienes {alertas.length} medición(es) con alerta. Si ya las corregiste, márcalas como resueltas:</div>
+      {alertas.map(r=>{
+        const c = CROPS[r.crop];
+        return(
+          <div key={r.id} style={{background:"#fff",borderRadius:8,padding:"8px 12px",marginBottom:6,display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:18}}>{c?.emoji}</span>
+            <div style={{flex:1,fontSize:12}}>
+              <div style={{fontWeight:600,color:"#222"}}>{c?.name} · {r.invernadero||"—"} · {r.zone||r.tinaco||"—"}</div>
+              <div style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#888"}}>pH {r.ph} · CE {r.ce} · {r.date} {r.time||""}</div>
+            </div>
+            <button onClick={()=>resolver(r.id)} style={{padding:"6px 12px",background:"#27ae60",border:"none",borderRadius:6,color:"#fff",cursor:"pointer",fontSize:11,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>✓ Resuelto</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── REGISTRO pH/CE ────────────────────────────────────────────────────────────
 function Registro({ worker }) {
   const [form, setForm] = useState({
