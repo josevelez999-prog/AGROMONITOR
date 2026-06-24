@@ -125,12 +125,14 @@ function Registro({ worker }) {
   const fileRef = useRef();
   const crop = CROPS[form.crop];
   const rangos = (()=>{
-    const defRng = form.tipo === "entrada" ? crop.entrada : crop.salida;
-    if(!defRng) return defRng;
+    const fallback = {ph:{min:0,max:14},ce:{min:0,max:10}};
+    if(!crop) return fallback;
+    const defRng = (form.tipo === "entrada" ? crop.entrada : crop.salida) || crop.entrada || fallback;
+    if(!defRng?.ph || !defRng?.ce) return fallback;
     // Buscar rango semanal: cultivo_invernadero_tipo o cultivo_tipo
     const invKey = (form.invernadero||"").replace(" ","");
     const key = invKey ? `${form.crop}_${invKey}_${form.tipo}` : `${form.crop}_${form.tipo}`;
-    const wr = weeklyRangos[key];
+    const wr = weeklyRangos?.[key];
     if(wr){
       const phMin = wr.phMin!==undefined ? wr.phMin : defRng.ph.min;
       const phMax = wr.phMax!==undefined ? wr.phMax : defRng.ph.max;
