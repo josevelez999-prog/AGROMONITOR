@@ -1051,213 +1051,180 @@ const SUGERENCIAS = [
 ];
 
 function AsistenteIA() {
-  const [messages,setMessages]=useState([{role:"assistant",content:"¡Hola! Soy tu asistente agrónomo 🌿\n\nPuedo ayudarte con:\n• Dudas sobre tus cultivos\n• Diagnóstico de enfermedades o plagas\n• Interpretar análisis de suelo\n\nEscríbeme o sube una foto."}]);
-  const [input,setInput]=useState("");
-  const [loading,setLoading]=useState(false);
-  const [imgPreview,setImgPreview]=useState(null);
-  const [imgBase64,setImgBase64]=useState(null);
-  const [imgType,setImgType]=useState(null);
-  const [mode,setMode]=useState("chat");
-  const bottomRef=useRef(null);
-  const fileRef=useRef(null);
-  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,loading]);
-  const handleFile=e=>{
-    const file=e.target.files[0];if(!file)return;setImgType(file.type);
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      if(file.type.includes("image")){
-        const img=new Image();
-        img.onload=()=>{
-          const canvas=document.createElement("canvas");const MAX=1024;let w=img.width,h=img.height;
-          if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
-          canvas.width=w;canvas.height=h;canvas.getContext("2d").drawImage(img,0,0,w,h);
-          setImgBase64(canvas.toDataURL("image/jpeg",0.8).split(",")[1]);
-          setImgPreview(canvas.toDataURL("image/jpeg",0.8));setImgType("image/jpeg");
-        };img.src=ev.target.result;
-      }else{setImgBase64(ev.target.result.split(",")[1]);setImgPreview(null);}
-    };reader.readAsDataURL(file);
+  const [messages, setMessages] = useState([
+    { role:"assistant", content:"¡Hola! Soy tu asistente agrónomo 🌿\n\nPuedo ayudarte con:\n• Diagnóstico de plantas (sube una foto 📸)\n• Análisis de suelo (sube un PDF 📄)\n• Cualquier duda sobre tus cultivos 💬\n\nEscríbeme o adjunta lo que quieras analizar." },
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [attachment, setAttachment] = useState(null); // {base64, type, name, preview}
+  const bottomRef = useRef(null);
+  const fileRef = useRef(null);
+
+  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); }, [messages, loading]);
+
+  const handleFile = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    
+    if (file.type.startsWith("image/")) {
+      // Imagen: redimensionar a max 1024px
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX = 1024;
+          let nw = img.width, nh = img.height;
+          if (nw > MAX || nh > MAX) {
+            if (nw > nh) { nh = Math.round(nh * MAX / nw); nw = MAX; }
+            else { nw = Math.round(nw * MAX / nh); nh = MAX; }
+          }
+          canvas.width = nw; canvas.height = nh;
+          canvas.getContext("2d").drawImage(img, 0, 0, nw, nh);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+          setAttachment({
+            base64: dataUrl.split(",")[1],
+            type: "image/jpeg",
+            name: file.name,
+            preview: dataUrl,
+            kind: "image",
+          });
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    } else if (file.type === "application/pdf") {
+      reader.onload = ev => {
+        setAttachment({
+          base64: ev.target.result.split(",")[1],
+          type: "application/pdf",
+          name: file.name,
+          preview: null,
+          kind: "pdf",
+        });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      alert("Solo imágenes (JPG, PNG) o PDF son válidos.");
+    }
+    e.target.value = ""; // permitir re-seleccionar mismo archivo
   };
-  const send=async text=>{
-    const userMsg=text||input.trim();if(!userMsg&&!imgBase64)return;
-    setInput("");setLoading(true);
-    const newMsg={role:"user",content:userMsg||(mode==="planta"?"Analiza esta imagen de la planta":"Analiza este análisis de suelo")};
-    const updated=[...messages,newMsg];setMessages(updated);
-    try{
-      const res=await fetch("/api/asistente",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:updated.slice(-8),imgBase64:imgBase64||null,imgType:imgType||null,mode:imgBase64?mode:"chat"})});
-      const data=await res.json();if(data.error)throw new Error(data.error);
-      setMessages(p=>[...p,{role:"assistant",content:data.text}]);
-      setImgBase64(null);setImgPreview(null);setImgType(null);
-    }catch(e){setMessages(p=>[...p,{role:"assistant",content:"❌ Error: "+e.message}]);}
+
+  const removeAttachment = () => setAttachment(null);
+
+  const send = async () => {
+    const userMsg = input.trim();
+    if (!userMsg && !attachment) return;
+
+    setInput(""); setLoading(true);
+    
+    // Texto descriptivo según lo que adjunte
+    const descripcionAuto = attachment?.kind === "image"
+      ? "Analiza esta foto de la planta y dime qué problema tiene."
+      : attachment?.kind === "pdf"
+        ? "Interpreta este documento (análisis de suelo, ficha técnica u otro) y dame recomendaciones."
+        : "";
+
+    const contenidoFinal = userMsg || descripcionAuto;
+    const newMsg = { role:"user", content: contenidoFinal, _attachment: attachment };
+    const updated = [...messages, newMsg];
+    setMessages(updated);
+
+    try {
+      const body = {
+        messages: updated.slice(-8).map(m => ({ role:m.role, content:m.content })),
+      };
+      if (attachment?.kind === "image") {
+        body.imgBase64 = attachment.base64;
+        body.imgType = attachment.type;
+      } else if (attachment?.kind === "pdf") {
+        body.fileBase64 = attachment.base64;
+        body.fileType = attachment.type;
+        body.fileName = attachment.name;
+      }
+
+      const res = await fetch("/api/asistente", {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      
+      setMessages(p => [...p, { role:"assistant", content: data.response || data.text || "Sin respuesta" }]);
+      setAttachment(null);
+    } catch (e) {
+      setMessages(p => [...p, { role:"assistant", content: "❌ Error: " + e.message }]);
+    }
     setLoading(false);
   };
-  return(
-    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 130px)"}}>
-      <div style={{display:"flex",gap:6,paddingBottom:10}}>
-        {[["chat","💬 Preguntar"],["planta","🌿 Foto planta"],["suelo","🌍 Análisis suelo"]].map(([m,l])=>(
-          <button key={m} onClick={()=>setMode(m)} style={{flex:1,padding:"7px 4px",border:`1.5px solid ${mode===m?"#27ae60":"#e0e0e0"}`,borderRadius:20,background:mode===m?"#eafaf1":"#fff",color:mode===m?"#27ae60":"#888",cursor:"pointer",fontSize:11,fontWeight:mode===m?700:400}}>{l}</button>
-        ))}
-      </div>
-      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,paddingBottom:8}}>
-        {messages.map((msg,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
-            <div style={{maxWidth:"85%",background:msg.role==="user"?"#27ae60":"#fff",color:msg.role==="user"?"#fff":"#333",borderRadius:msg.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"10px 14px",fontSize:13,lineHeight:1.6,border:msg.role==="user"?"none":"1px solid #e0e0e0",whiteSpace:"pre-wrap"}}>
-              {msg.role==="assistant"&&<span style={{fontSize:14,marginRight:4}}>🌿</span>}{msg.content}
-            </div>
-          </div>
-        ))}
-        {loading&&<div style={{display:"flex",justifyContent:"flex-start"}}><div style={{background:"#fff",borderRadius:"18px 18px 18px 4px",padding:"10px 16px",border:"1px solid #e0e0e0",color:"#27ae60",fontSize:13}}>🌿 Analizando...</div></div>}
-        <div ref={bottomRef}/>
-      </div>
-      {messages.length<=1&&(<div style={{display:"flex",gap:6,flexWrap:"wrap",paddingBottom:8}}>{SUGERENCIAS.map((s,i)=>(<button key={i} onClick={()=>send(s)} style={{background:"#fff",border:"1px solid #d5e8d4",borderRadius:16,padding:"6px 12px",fontSize:11,color:"#27ae60",cursor:"pointer"}}>{s}</button>))}</div>)}
-      {imgPreview&&<div style={{paddingBottom:6}}><img src={imgPreview} alt="" style={{height:60,borderRadius:8,border:"2px solid #27ae60"}}/><button onClick={()=>{setImgBase64(null);setImgPreview(null);}} style={{marginLeft:6,background:"#e74c3c",border:"none",borderRadius:"50%",color:"#fff",width:20,height:20,cursor:"pointer",fontSize:11}}>✕</button></div>}
-      {imgBase64&&!imgPreview&&<div style={{paddingBottom:6}}><span style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:8,padding:"5px 12px",fontSize:12,color:"#27ae60",fontWeight:600}}>📄 PDF listo</span><button onClick={()=>{setImgBase64(null);}} style={{marginLeft:6,background:"none",border:"none",color:"#aaa",cursor:"pointer"}}>✕</button></div>}
-      <div style={{background:"#fff",borderTop:"1px solid #e0e0e0",paddingTop:10}}>
-        <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-          <button onClick={()=>fileRef.current.click()} style={{width:42,height:42,borderRadius:12,background:"#f0faf5",border:"1px solid #a9dfbf",color:"#27ae60",cursor:"pointer",fontSize:18,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>📎</button>
-          <input ref={fileRef} type="file" accept="image/*,application/pdf" capture={mode==="planta"?"environment":undefined} style={{display:"none"}} onChange={handleFile}/>
-          <textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
-            placeholder="Escribe tu pregunta..." rows={1}
-            style={{flex:1,padding:"10px 14px",border:"1px solid #e0e0e0",borderRadius:12,fontSize:14,resize:"none",outline:"none",background:"#fff",color:"#222",WebkitTextFillColor:"#222",colorScheme:"light",lineHeight:1.4,maxHeight:100,overflowY:"auto"}}/>
-          <button onClick={()=>send()} disabled={loading||(!input.trim()&&!imgBase64)}
-            style={{width:42,height:42,borderRadius:12,background:loading||(!input.trim()&&!imgBase64)?"#e0e0e0":"#27ae60",color:"#fff",border:"none",cursor:"pointer",fontSize:18,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            {loading?"⏳":"➤"}
-          </button>
-        </div>
-        {messages.length>2&&<button onClick={()=>setMessages([{role:"assistant",content:"¡Hola de nuevo! ¿En qué te puedo ayudar? 🌿"}])} style={{marginTop:6,width:"100%",padding:5,background:"transparent",border:"none",color:"#bbb",cursor:"pointer",fontSize:11}}>Limpiar conversación</button>}
-      </div>
-    </div>
-  );
-}
 
-// ─── MAIN WORKER ──────────────────────────────────────────────────────────────
-const TABS = [
-  { id:"registro",     label:"Registrar", icon:"📊" },
-  { id:"cosecha",      label:"Cosecha",   icon:"🧺" },
-  { id:"tareas",       label:"Tareas",    icon:"✅" },
-  { id:"asistente",    label:"IA",        icon:"🤖" },
-  { id:"incidencias",  label:"Incidencia",icon:"⚠️" },
-  { id:"instrucciones",label:"Info",      icon:"📋" },
-];
-
-export default function Worker({ user }) {
-  const [tab, setTab] = useState("registro");
-  // Nombre del trabajador desde Firebase Auth o Firestore
-  const [workerName, setWorkerName] = useState("");
-
-  useEffect(()=>{
-    if(!user) return;
-    // Extraer nombre del email: carlos.garcia@greenlog.app → Carlos Garcia
-    const emailUser = user.email?.split("@")[0] || "trabajador";
-    const nombre = user.displayName ||
-      emailUser.split(".").map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(" ");
-    setWorkerName(nombre);
-    // Buscar nombre real en Firestore
-    import("firebase/firestore").then(({query:q,collection:col,where,getDocs})=>{
-      getDocs(q(col(db,"usuarios"),where("email","==",user.email))).then(snap=>{
-        if(!snap.empty) setWorkerName(snap.docs[0].data().nombre);
-      }).catch(()=>{});
-    });
-  },[user]);
-
-  const worker = workerName || user?.email?.split("@")[0] || "Trabajador";
-
-  const CONTENT = {
-    registro:      <Registro worker={worker}/>,
-    cosecha:       <RegistroCosecha worker={worker}/>,
-    tareas:        <Tareas worker={worker}/>,
-    asistente:     <AsistenteIA/>,
-    incidencias:   <Incidencias worker={worker}/>,
-    instrucciones: <InstruccionesDia/>,
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
   return (
-    <div style={{minHeight:"100vh",background:"#f4f5f7",paddingBottom:76}}>
-      <div style={{background:"#fff",borderBottom:"1px solid #e0e0e0",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:22}}>🌿</span>
-          <div>
-            <div style={{fontWeight:700,color:"#27ae60",fontSize:16}}>GreenLog</div>
-            <div style={{fontSize:10,color:"#aaa",fontFamily:"'Courier New',monospace"}}>Hola, {worker}</div>
-          </div>
-        </div>
-        <button onClick={()=>signOut(auth)}
-          style={{background:"none",border:"1px solid #e0e0e0",borderRadius:8,color:"#aaa",cursor:"pointer",fontSize:12,padding:"4px 10px"}}>
-          Salir
-        </button>
-      </div>
-      <div style={{padding:"16px 16px 0"}}>{CONTENT[tab]}</div>
-      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #e0e0e0",display:"flex",zIndex:10,paddingBottom:"env(safe-area-inset-bottom)"}}>
-        {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)}
-            style={{flex:1,padding:"8px 2px",border:"none",background:"transparent",color:tab===t.id?"#27ae60":"#bbb",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:1,borderTop:tab===t.id?"2.5px solid #27ae60":"2.5px solid transparent"}}>
-            <span style={{fontSize:17}}>{t.icon}</span>
-            <span style={{fontSize:9,fontWeight:tab===t.id?700:400}}>{t.label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}function MisAlertasActivas({ worker }) {
-  const [alertas, setAlertas] = useState([]);
-  const [weeklyRangos, setWeeklyRangos] = useState({});
-  useEffect(()=>{
-    const rangosUnsub = onSnapshot(doc(db,"config","rangos_semanales"), snap=>{
-      if(snap.exists()) setWeeklyRangos(snap.data());
-    });
-    const q = query(collection(db,"readings"), where("worker","==",worker), orderBy("createdAt","desc"));
-    const unsub = onSnapshot(q, snap=>{
-      const recent = snap.docs.slice(0,10).map(d=>({id:d.id,...d.data()}));
-      const conAlerta = recent.filter(r=>{
-        if(r.resolved||r.dismissed) return false;
-        if((r.tipo||"entrada")!=="entrada") return false;
-        const c = CROPS[r.crop]; if(!c) return false;
-        const defPh = c.entrada?.ph||c.ph; const defCe = c.entrada?.ce||c.ce;
-        // Aplicar rangos semanales si existen
-        const invKey = (r.invernadero||"").replace(" ","");
-        const key = invKey ? `${r.crop}_${invKey}_entrada` : `${r.crop}_entrada`;
-        const wr = weeklyRangos[key] || {};
-        const ph = {min: wr.phMin!==undefined?wr.phMin:defPh.min, max: wr.phMax!==undefined?wr.phMax:defPh.max};
-        const ce = {min: wr.ceMin!==undefined?wr.ceMin:defCe.min, max: wr.ceMax!==undefined?wr.ceMax:defCe.max};
-        const phOut = r.ph<ph.min||r.ph>ph.max;
-        const ceOut = r.ce<ce.min||r.ce>ce.max;
-        return phOut||ceOut;
-      });
-      setAlertas(conAlerta);
-    });
-    return()=>unsub();
-  },[worker]);
-
-  const resolver = async (id) => {
-    if(!window.confirm("¿Marcar esta medición como resuelta? Se quitará la alerta del admin y de tu pantalla.")) return;
-    // Optimistic UI: quita la alerta inmediatamente de la pantalla
-    setAlertas(prev => prev.filter(a => a.id !== id));
-    try {
-      await updateDoc(doc(db,"readings",id),{resolved:true,resolvedAt:new Date().toISOString(),resolvedBy:worker});
-    } catch(e) {
-      alert("⚠ Error al guardar: "+e.message);
-      // Si falla, la alerta volverá a aparecer en el siguiente snapshot
-    }
-  };
-
-  if(!alertas.length) return null;
-  return(
-    <div style={{background:"#fdedec",border:"1.5px solid #e74c3c",borderRadius:10,padding:"10px 14px",marginBottom:14}}>
-      <div style={{fontSize:12,fontWeight:700,color:"#c0392b",marginBottom:8}}>⚠ Tienes {alertas.length} medición(es) con alerta. Si ya las corregiste, márcalas como resueltas:</div>
-      {alertas.map(r=>{
-        const c = CROPS[r.crop];
-        return(
-          <div key={r.id} style={{background:"#fff",borderRadius:8,padding:"8px 12px",marginBottom:6,display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:18}}>{c?.emoji}</span>
-            <div style={{flex:1,fontSize:12}}>
-              <div style={{fontWeight:600,color:"#222"}}>{c?.name} · {r.invernadero||"—"} · {r.zone||r.tinaco||"—"}</div>
-              <div style={{fontFamily:"'Courier New',monospace",fontSize:11,color:"#888"}}>pH {r.ph} · CE {r.ce} · {r.date} {r.time||""}</div>
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 130px)"}}>
+      {/* Mensajes */}
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,paddingBottom:8}}>
+        {messages.map((msg, i) => (
+          <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
+            <div style={{maxWidth:"85%",background:msg.role==="user"?"#27ae60":"#fff",color:msg.role==="user"?"#fff":"#333",borderRadius:msg.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"10px 14px",fontSize:13,lineHeight:1.5,whiteSpace:"pre-wrap",boxShadow:msg.role==="assistant"?"0 1px 2px rgba(0,0,0,0.05)":"none",border:msg.role==="assistant"?"1px solid #eee":"none"}}>
+              {msg._attachment?.kind === "image" && msg._attachment.preview && (
+                <img src={msg._attachment.preview} alt="" style={{maxWidth:"100%",borderRadius:10,marginBottom:6,maxHeight:200,objectFit:"cover"}}/>
+              )}
+              {msg._attachment?.kind === "pdf" && (
+                <div style={{background:"#fff2",borderRadius:8,padding:"6px 10px",marginBottom:6,fontSize:11,display:"flex",alignItems:"center",gap:6}}>
+                  📄 {msg._attachment.name}
+                </div>
+              )}
+              {msg.content}
             </div>
-            <button onClick={()=>resolver(r.id)} style={{padding:"6px 12px",background:"#27ae60",border:"none",borderRadius:6,color:"#fff",cursor:"pointer",fontSize:11,fontWeight:700,flexShrink:0}}>✓ Resuelto</button>
           </div>
-        );
-      })}
+        ))}
+        {loading && (
+          <div style={{display:"flex",justifyContent:"flex-start"}}>
+            <div style={{background:"#fff",border:"1px solid #eee",borderRadius:"18px 18px 18px 4px",padding:"10px 14px",fontSize:13,color:"#888"}}>
+              ⏳ Analizando...
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Preview del adjunto antes de enviar */}
+      {attachment && (
+        <div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:10,padding:"8px 12px",marginBottom:6,display:"flex",alignItems:"center",gap:10}}>
+          {attachment.kind === "image" ? (
+            <img src={attachment.preview} alt="" style={{width:46,height:46,objectFit:"cover",borderRadius:6}}/>
+          ) : (
+            <div style={{width:46,height:46,background:"#fff",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>📄</div>
+          )}
+          <div style={{flex:1,fontSize:12,color:"#27ae60",fontWeight:600}}>
+            {attachment.kind === "image" ? "📸 Foto lista para analizar" : `📄 ${attachment.name}`}
+          </div>
+          <button onClick={removeAttachment} style={{background:"transparent",border:"none",fontSize:18,cursor:"pointer",color:"#888"}}>✕</button>
+        </div>
+      )}
+
+      {/* Input */}
+      <div style={{display:"flex",gap:6,alignItems:"flex-end",padding:"8px 0",borderTop:"1px solid #eee"}}>
+        <button onClick={()=>fileRef.current?.click()} disabled={loading}
+          style={{padding:"10px 14px",border:"1.5px solid #27ae60",borderRadius:"50%",background:"#fff",cursor:loading?"wait":"pointer",fontSize:18,flexShrink:0,width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center"}}
+          title="Adjuntar foto o PDF">📎</button>
+        <input ref={fileRef} type="file" accept="image/*,application/pdf,.pdf" onChange={handleFile} style={{display:"none"}}/>
+        
+        <textarea
+          value={input}
+          onChange={e=>setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={attachment ? "Pregunta algo sobre el archivo (opcional)..." : "Escribe tu pregunta o adjunta una foto/PDF..."}
+          disabled={loading}
+          style={{flex:1,padding:"10px 14px",border:"1.5px solid #ddd",borderRadius:20,fontSize:13,resize:"none",fontFamily:"inherit",maxHeight:100,minHeight:42,background:"#fff",color:"#111",WebkitTextFillColor:"#111",colorScheme:"light",outline:"none"}}/>
+        
+        <button onClick={send} disabled={loading || (!input.trim() && !attachment)}
+          style={{padding:"10px 16px",border:"none",borderRadius:"50%",background:(loading||(!input.trim()&&!attachment))?"#aaa":"#27ae60",color:"#fff",cursor:(loading||(!input.trim()&&!attachment))?"not-allowed":"pointer",fontSize:18,flexShrink:0,width:42,height:42,display:"flex",alignItems:"center",justifyContent:"center"}}>➤</button>
+      </div>
     </div>
   );
 }
-
-
