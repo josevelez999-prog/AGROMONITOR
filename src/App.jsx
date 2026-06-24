@@ -776,7 +776,7 @@ function DiagnosticoIA(){
     try{
       const res=await fetch("/api/analyze",{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({imgBase64,cropName:crop.name,ph:form.ph,ce:form.ce,zone:form.zone,notes:form.notes})
+        body:JSON.stringify({imageBase64:imgBase64,imageMediaType:"image/jpeg",crop:crop.name,worker:form.worker,ph:form.ph,ce:form.ce,zone:form.zone,notes:form.notes})
       });
       const result=await res.json();
       if(result.error) throw new Error(result.error);
@@ -785,7 +785,11 @@ function DiagnosticoIA(){
       try{ await addDoc(collection(db,"diagnosticos"),diagData); }catch(e){ console.warn("No se pudo guardar diagnóstico:",e.message); }
       setDiagnoses(p=>[{id,imgPreview,...diagData},...p]);
       setSel(id);setView("historial");setForm({crop:"jitomate",zone:"",worker:"",ph:"",ce:"",notes:""});setImgPreview(null);setImgBase64(null);
-    }catch{alert("Error al analizar. Verifica la API key.");}
+    }catch(e){
+      const msg = e?.message || "Error desconocido";
+      alert("Error al analizar:\n\n" + msg);
+      console.error("DiagnosticoIA error:", e);
+    }
     setLoading(false);
   };
   return(
