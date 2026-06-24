@@ -1228,3 +1228,63 @@ function AsistenteIA() {
     </div>
   );
 }
+
+
+// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
+export default function Worker({ user, onLogout }) {
+  const workerName = user?.nombre || user?.email || "Trabajador";
+  const [tab, setTab] = useState("registrar");
+
+  const TABS = [
+    { id:"registrar", label:"📊 Registrar", emoji:"📊" },
+    { id:"cosecha",   label:"🧺 Cosecha",   emoji:"🧺" },
+    { id:"tareas",    label:"✅ Tareas",    emoji:"✅" },
+    { id:"ia",        label:"🤖 IA",        emoji:"🤖" },
+    { id:"incidencia",label:"⚠️ Incidencia",emoji:"⚠️" },
+    { id:"info",      label:"📋 Info",      emoji:"📋" },
+  ];
+
+  const renderTab = () => {
+    switch(tab) {
+      case "registrar":  return <Registro worker={workerName} />;
+      case "cosecha":    return <RegistroCosecha worker={workerName} />;
+      case "tareas":     return <Tareas worker={workerName} />;
+      case "ia":         return <AsistenteIA />;
+      case "incidencia": return <Incidencias worker={workerName} />;
+      case "info":       return <InstruccionesDia />;
+      default:           return <Registro worker={workerName} />;
+    }
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:"#fafafa",paddingBottom:80}}>
+      {/* Header */}
+      <div style={{background:"#fff",borderBottom:"1px solid #e0e0e0",padding:"12px 16px",position:"sticky",top:0,zIndex:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{fontSize:18,fontWeight:700,color:"#27ae60"}}>🌿 GreenLog</div>
+          <div style={{fontSize:11,color:"#888"}}>👤 {workerName}</div>
+        </div>
+        <button onClick={async()=>{ try{ await signOut(auth); onLogout?.(); }catch(e){ console.error(e); } }}
+          style={{background:"transparent",border:"1px solid #ddd",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"#888"}}>
+          Salir
+        </button>
+      </div>
+
+      {/* Contenido */}
+      <div style={{padding:"16px"}}>
+        {renderTab()}
+      </div>
+
+      {/* Bottom Nav */}
+      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #e0e0e0",display:"flex",justifyContent:"space-around",padding:"6px 0",boxShadow:"0 -2px 8px rgba(0,0,0,0.05)",zIndex:10}}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            style={{flex:1,background:"transparent",border:"none",padding:"6px 2px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:tab===t.id?"#27ae60":"#888"}}>
+            <span style={{fontSize:20}}>{t.emoji}</span>
+            <span style={{fontSize:9,fontWeight:tab===t.id?700:400}}>{t.label.replace(t.emoji,"").trim()}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
