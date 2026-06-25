@@ -54,6 +54,23 @@ function MobileDashboardInner({ user, onLogout, onSwitchToDesktop }) {
   const [tasks, setTasks] = useState([]);
   const [tab, setTab] = useState("kpis");
   const [filterCrop, setFilterCrop] = useState("all");
+  const [filterInv, setFilterInv] = useState("all");
+
+  // Lista única de invernaderos disponibles (basada en filtro de cultivo)
+  const invernaderosList = useMemo(()=>{
+    const set = new Set();
+    lotes.forEach(l => {
+      if((filterCrop==="all" || l.crop===filterCrop) && l.zona) set.add(l.zona);
+    });
+    return Array.from(set).sort();
+  },[lotes, filterCrop]);
+
+  // Reset filterInv si el cultivo cambia y el invernadero ya no existe
+  useEffect(()=>{
+    if(filterInv !== "all" && !invernaderosList.includes(filterInv)) {
+      setFilterInv("all");
+    }
+  },[filterCrop, invernaderosList, filterInv]);
 
   useEffect(()=>{
     const subs = [
@@ -69,11 +86,24 @@ function MobileDashboardInner({ user, onLogout, onSwitchToDesktop }) {
 
   // ─── DATOS CALCULADOS ──
   const data = useMemo(()=>{
-    const ventasFilt    = ventas.filter(v => filterCrop==="all" || v.crop===filterCrop);
-    const cosechasFilt  = cosechas.filter(c => filterCrop==="all" || c.crop===filterCrop);
-    const mermasFilt    = mermas.filter(m => filterCrop==="all" || m.crop===filterCrop);
-    const siniestrosF   = siniestros.filter(s => filterCrop==="all" || s.crop===filterCrop);
-    const lotesFilt     = lotes.filter(l => filterCrop==="all" || l.crop===filterCrop);
+    // Set de loteIds del invernadero filtrado
+    const loteIdsInv = filterInv === "all" ? null : new Set(
+      lotes.filter(l => l.zona === filterInv).map(l => l.id)
+    );
+    
+    // Helper para verificar si un item pertenece al invernadero filtrado
+    const matchInv = (item) => {
+      if(!loteIdsInv) return true;
+      if(item.loteId && loteIdsInv.has(item.loteId)) return true;
+      if((item.zona && item.zona===filterInv) || (item.invernadero && item.invernadero===filterInv)) return true;
+      return false;
+    };
+    
+    const ventasFilt    = ventas.filter(v => (filterCrop==="all" || v.crop===filterCrop) && matchInv(v));
+    const cosechasFilt  = cosechas.filter(c => (filterCrop==="all" || c.crop===filterCrop) && matchInv(c));
+    const mermasFilt    = mermas.filter(m => (filterCrop==="all" || m.crop===filterCrop) && matchInv(m));
+    const siniestrosF   = siniestros.filter(s => (filterCrop==="all" || s.crop===filterCrop) && matchInv(s));
+    const lotesFilt     = lotes.filter(l => (filterCrop==="all" || l.crop===filterCrop) && (filterInv==="all" || l.zona===filterInv));
 
     const totalIngresos = ventasFilt.reduce((s,v)=>s+(parseFloat(v.totalVenta)||0),0)
                        + siniestrosF.reduce((s,x)=>s+(parseFloat(x.montoSeguro)||0),0);
@@ -92,11 +122,12 @@ function MobileDashboardInner({ user, onLogout, onSwitchToDesktop }) {
     const totalMerma = mermasFilt.reduce((s,m)=>s+(parseFloat(m.kgMerma)||0),0);
     const totalSiniestro = siniestrosF.reduce((s,x)=>s+(parseFloat(x.kgSiniestro)||0),0);
 
-    // Stock disponible por cultivo
+    // Stock disponible por cultivo (respeta filterInv)
     const stockPorCultivo = {};
     Object.keys(CROPS).forEach(k => stockPorCultivo[k] = { kgCos:0, kgVen:0, stock:0 });
     lotes.forEach(l => {
       if(!stockPorCultivo[l.crop]) return;
+      if(filterInv !== "all" && l.zona !== filterInv) return;
       const cosTrab = cosechas.filter(c=>c.loteId===l.id).reduce((s,c)=>s+(parseFloat(c.kgCosechados)||0),0);
       const kgCos = cosTrab > 0 ? cosTrab : (parseFloat(l.kgCosechados)||0);
       const kgVen = ventas.filter(v=>v.loteId===l.id).reduce((s,v)=>s+(parseFloat(v.kgVendidos)||0),0);
@@ -136,7 +167,7 @@ function MobileDashboardInner({ user, onLogout, onSwitchToDesktop }) {
       ventasHoy: ventasHoy.length, ingresosHoy,
       tareasPendientes, tareasCompletadas, tareasVencidas,
     };
-  },[ventas, cosechas, lotes, mermas, siniestros, tasks, filterCrop]);
+  },[ventas, cosechas, lotes, mermas, siniestros, tasks, filterCrop, filterInv]);
 
   const TABS = [
     { id:"kpis",   emoji:"📊", label:"KPIs"   },
@@ -170,7 +201,7 @@ function MobileDashboardInner({ user, onLogout, onSwitchToDesktop }) {
       </div>
 
       {/* Filtro de cultivo */}
-      <div style={{padding:"10px 12px",display:"flex",gap:5,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+      <div style={{padding:"10px 12px 6px",display:"flex",gap:5,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         <button onClick={()=>setFilterCrop("all")} style={{padding:"6px 12px",border:`1px solid ${filterCrop==="all"?"#27ae60":"#ddd"}`,borderRadius:20,background:filterCrop==="all"?"#eafaf1":"#fff",color:filterCrop==="all"?"#27ae60":"#666",cursor:"pointer",fontSize:11,fontWeight:filterCrop==="all"?700:400,whiteSpace:"nowrap",flexShrink:0}}>
           🌱 Todos
         </button>
@@ -180,6 +211,30 @@ function MobileDashboardInner({ user, onLogout, onSwitchToDesktop }) {
           </button>
         ))}
       </div>
+
+      {/* Filtro de invernadero - solo si hay invernaderos disponibles */}
+      {invernaderosList.length > 0 && (
+        <div style={{padding:"0 12px 10px",display:"flex",gap:5,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+          <button onClick={()=>setFilterInv("all")} style={{padding:"5px 11px",border:`1px solid ${filterInv==="all"?"#2980b9":"#ddd"}`,borderRadius:18,background:filterInv==="all"?"#eaf4fb":"#fff",color:filterInv==="all"?"#2980b9":"#666",cursor:"pointer",fontSize:10,fontWeight:filterInv==="all"?700:400,whiteSpace:"nowrap",flexShrink:0}}>
+            🏭 Todos invernaderos
+          </button>
+          {invernaderosList.map(inv=>(
+            <button key={inv} onClick={()=>setFilterInv(inv)} style={{padding:"5px 11px",border:`1px solid ${filterInv===inv?"#2980b9":"#ddd"}`,borderRadius:18,background:filterInv===inv?"#eaf4fb":"#fff",color:filterInv===inv?"#2980b9":"#666",cursor:"pointer",fontSize:10,fontWeight:filterInv===inv?700:400,whiteSpace:"nowrap",flexShrink:0}}>
+              📍 {inv}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Indicador del filtro activo */}
+      {(filterCrop !== "all" || filterInv !== "all") && (
+        <div style={{padding:"0 12px",marginBottom:6,fontSize:10,color:"#666",fontWeight:600,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+          <span>📊 Mostrando:</span>
+          {filterCrop !== "all" && <span style={{background:CROPS[filterCrop].color+"20",color:CROPS[filterCrop].color,padding:"3px 8px",borderRadius:10}}>{CROPS[filterCrop].emoji} {CROPS[filterCrop].name}</span>}
+          {filterInv !== "all" && <span style={{background:"#eaf4fb",color:"#2980b9",padding:"3px 8px",borderRadius:10}}>📍 {filterInv}</span>}
+          <button onClick={()=>{setFilterCrop("all");setFilterInv("all");}} style={{background:"transparent",border:"none",color:"#888",fontSize:11,cursor:"pointer",textDecoration:"underline",marginLeft:"auto"}}>Limpiar</button>
+        </div>
+      )}
 
       {/* CONTENIDO */}
       <div style={{padding:"0 12px",display:"flex",flexDirection:"column",gap:10}}>
