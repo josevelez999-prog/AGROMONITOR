@@ -15,23 +15,34 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
-      // Registrar Service Worker para soporte offline
+      // Registrar Service Worker
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
           navigator.serviceWorker.register("/sw.js")
             .then(reg => {
               console.log("✓ SW registrado", reg.scope);
-              // Auto-actualizar si hay nueva versión
+              // Forzar verificar si hay nueva versión
+              reg.update();
+              // Auto-recargar si hay nueva versión
               reg.addEventListener("updatefound", () => {
                 const sw = reg.installing;
                 sw?.addEventListener("statechange", () => {
                   if (sw.state === "installed" && navigator.serviceWorker.controller) {
-                    console.log("Nueva versión disponible, recargar");
+                    console.log("Nueva versión SW disponible, recargando...");
+                    window.location.reload();
                   }
                 });
               });
             })
             .catch(err => console.warn("SW falló:", err));
+
+          // Escuchar mensajes del SW
+          navigator.serviceWorker.addEventListener("message", e => {
+            if (e.data?.type === "SW_UPDATED") {
+              console.log("SW actualizado, recargando...");
+              window.location.reload();
+            }
+          });
         });
       }
     </script>
