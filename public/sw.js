@@ -1,18 +1,16 @@
-// Service Worker - Permite que la app se abra sin internet
-const CACHE_NAME = "agromonitor-v1";
-const RUNTIME_CACHE = "agromonitor-runtime-v1";
-
-// Recursos críticos que se cachean al instalar
-const CORE_ASSETS = [
-  "/",
-  "/index.html",
-  "/manifest.json",
-];
+// Service Worker robusto - app funcional 100% offline después del primer load
+const CACHE_NAME = "agromonitor-v2";
+const RUNTIME_CACHE = "agromonitor-runtime-v2";
 
 self.addEventListener("install", event => {
+  // Skip waiting para activarse inmediatamente
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(CORE_ASSETS))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then(cache => cache.addAll([
+      "/",
+      "/index.html",
+      "/manifest.json",
+    ]).catch(()=>null))
   );
 });
 
@@ -28,10 +26,9 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   const { request } = event;
   if (request.method !== "GET") return;
-
   const url = new URL(request.url);
 
-  // No interceptar peticiones a Firebase ni Anthropic
+  // NO interceptar Firebase ni Anthropic ni /api/ - esos necesitan red real
   if (url.hostname.includes("firebaseio.com") ||
       url.hostname.includes("googleapis.com") ||
       url.hostname.includes("firestore.googleapis.com") ||
@@ -40,18 +37,44 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  // Stale-while-revalidate: sirve del caché y actualiza en background
-  event.respondWith(
-    caches.match(request).then(cached => {
-      const networkFetch = fetch(request).then(response => {
-        if (response && response.status === 200 && response.type === "basic") {
+  // Para navegación (cuando el usuario abre la app): network-first con fallback a index.html
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          // Cachear la respuesta de navegación
           const clone = response.clone();
           caches.open(RUNTIME_CACHE).then(cache => cache.put(request, clone));
+          return response;
+        })
+        .catch(() => 
+          caches.match(request).then(cached => 
+            cached || caches.match("/index.html") || caches.match("/")
+          )
+        )
+    );
+    return;
+  }
+
+  // Para assets (JS, CSS, imágenes): cache-first con network fallback + cache update
+  event.respondWith(
+    caches.match(request).then(cached => {
+      const fetchPromise = fetch(request).then(response => {
+        // Cachear cualquier respuesta exitosa (incluyendo opaque cross-origin)
+        if (response && (response.status === 200 || response.type === "opaque")) {
+          const clone = response.clone();
+          caches.open(RUNTIME_CACHE).then(cache => cache.put(request, clone)).catch(()=>null);
         }
         return response;
-      }).catch(() => cached || caches.match("/index.html"));
+      }).catch(() => cached);
 
-      return cached || networkFetch;
+      // Si hay caché lo retorna inmediato, sino espera la red
+      return cached || fetchPromise;
     })
   );
+});
+
+// Mensaje del cliente para forzar update del SW
+self.addEventListener("message", event => {
+  if (event.data === "skipWaiting") self.skipWaiting();
 });

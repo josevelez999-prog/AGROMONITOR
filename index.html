@@ -2,9 +2,6 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#27ae60" />
@@ -22,7 +19,18 @@
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
           navigator.serviceWorker.register("/sw.js")
-            .then(reg => console.log("SW registrado", reg.scope))
+            .then(reg => {
+              console.log("✓ SW registrado", reg.scope);
+              // Auto-actualizar si hay nueva versión
+              reg.addEventListener("updatefound", () => {
+                const sw = reg.installing;
+                sw?.addEventListener("statechange", () => {
+                  if (sw.state === "installed" && navigator.serviceWorker.controller) {
+                    console.log("Nueva versión disponible, recargar");
+                  }
+                });
+              });
+            })
             .catch(err => console.warn("SW falló:", err));
         });
       }
