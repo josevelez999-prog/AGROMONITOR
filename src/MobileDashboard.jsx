@@ -1,7 +1,7 @@
 // Vista móvil compacta para admin/observador
 // Muestra KPIs, stock, RBC y tareas en cards optimizadas para teléfono
 
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { db, auth } from "./firebase";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { signOut } from "firebase/auth";
@@ -17,7 +17,35 @@ const n = (v, d=2) => Number((v||0).toFixed(d));
 const fmt = (v) => Number(v||0).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtInt = (v) => Number(v||0).toLocaleString("es-MX");
 
-export default function MobileDashboard({ user, onLogout, onSwitchToDesktop }) {
+class MobileErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state={hasError:false,error:null}; }
+  static getDerivedStateFromError(error){ return {hasError:true,error}; }
+  componentDidCatch(error,info){ console.error("MobileDashboard error:",error,info); }
+  render(){
+    if(this.state.hasError){
+      return (
+        <div style={{padding:20,margin:20,background:"#fff",border:"2px solid #e74c3c",borderRadius:12}}>
+          <div style={{fontSize:18,fontWeight:700,color:"#c0392b",marginBottom:10}}>⚠ Error en vista móvil</div>
+          <div style={{fontSize:12,marginBottom:14,whiteSpace:"pre-wrap",fontFamily:"monospace",background:"#fdedec",padding:10,borderRadius:8,maxHeight:200,overflow:"auto",color:"#c0392b"}}>
+            {String(this.state.error?.message||this.state.error||"Error desconocido")}
+            {this.state.error?.stack ? "\n\n" + String(this.state.error.stack).slice(0,500) : ""}
+          </div>
+          <button onClick={()=>this.setState({hasError:false,error:null})}
+            style={{padding:"10px 20px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,marginRight:8}}>
+            🔄 Reintentar
+          </button>
+          <button onClick={()=>window.location.reload()}
+            style={{padding:"10px 20px",background:"#888",color:"#fff",border:"none",borderRadius:8,cursor:"pointer"}}>
+            ↻ Recargar
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function MobileDashboardInner({ user, onLogout, onSwitchToDesktop }) {
   const [ventas, setVentas] = useState([]);
   const [cosechas, setCosechas] = useState([]);
   const [lotes, setLotes] = useState([]);
@@ -381,4 +409,9 @@ export default function MobileDashboard({ user, onLogout, onSwitchToDesktop }) {
       </div>
     </div>
   );
+}
+
+
+export default function MobileDashboard(props) {
+  return <MobileErrorBoundary><MobileDashboardInner {...props}/></MobileErrorBoundary>;
 }
