@@ -1777,8 +1777,12 @@ export default function App(){
   const esObservador = userRole==="observador";
   
   // Detectar móvil automáticamente
-  const [isMobile, setIsMobile] = useState(typeof window!=="undefined" && window.innerWidth < 768);
-  const [forceDesktop, setForceDesktop] = useState(typeof window!=="undefined" && localStorage.getItem("forceDesktop")==="1");
+  const [isMobile, setIsMobile] = useState(()=>{
+    try { return typeof window!=="undefined" && window.innerWidth < 768; } catch { return false; }
+  });
+  const [forceDesktop, setForceDesktop] = useState(()=>{
+    try { return typeof window!=="undefined" && localStorage.getItem("forceDesktop")==="1"; } catch { return false; }
+  });
   useEffect(()=>{
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", handleResize);
@@ -1831,11 +1835,28 @@ export default function App(){
 
   // Admin/observador en MÓVIL: vista compacta dashboard
   if((userRole==="admin"||userRole==="observador") && isMobile && !forceDesktop) {
-    return <MobileDashboard 
-      user={currentUser} 
-      onLogout={()=>setCurrentUser(null)}
-      onSwitchToDesktop={()=>{ localStorage.setItem("forceDesktop","1"); setForceDesktop(true); }}
-    />;
+    try {
+      return <MobileDashboard 
+        user={currentUser} 
+        onLogout={()=>setCurrentUser(null)}
+        onSwitchToDesktop={()=>{ try{ localStorage.setItem("forceDesktop","1"); }catch{} setForceDesktop(true); }}
+      />;
+    } catch(e) {
+      return (
+        <div style={{padding:20,margin:20,background:"#fff",border:"2px solid #e74c3c",borderRadius:12}}>
+          <div style={{fontSize:18,fontWeight:700,color:"#c0392b",marginBottom:10}}>⚠ Error cargando vista móvil</div>
+          <div style={{fontSize:12,marginBottom:14,fontFamily:"monospace",background:"#fdedec",padding:10,borderRadius:8,color:"#c0392b"}}>
+            {String(e?.message || e)}
+          </div>
+          <button onClick={()=>{setForceDesktop(true);}} style={{padding:"10px 20px",background:"#2980b9",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,marginRight:8}}>
+            🖥 Ver versión escritorio
+          </button>
+          <button onClick={()=>window.location.reload()} style={{padding:"10px 20px",background:"#888",color:"#fff",border:"none",borderRadius:8,cursor:"pointer"}}>
+            ↻ Recargar
+          </button>
+        </div>
+      );
+    }
   }
 
   // Data loading for admin

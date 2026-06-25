@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Reset GreenLog</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 30px 20px; max-width: 500px; margin: 0 auto; background: #fafafa; color: #333; }
+    h1 { color: #27ae60; font-size: 22px; margin-bottom: 6px; }
+    .sub { color: #888; font-size: 13px; margin-bottom: 22px; }
+    button { display: block; width: 100%; padding: 14px; margin: 10px 0; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
+    .btn-primary { background: #e74c3c; color: white; }
+    .btn-go { background: #27ae60; color: white; }
+    #log { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-top: 14px; font-family: monospace; font-size: 11px; min-height: 80px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>🌿 GreenLog - Reset</h1>
+  <div class="sub">Limpia el caché y Service Worker si la app no abre correctamente</div>
+  
+  <button class="btn-primary" onclick="resetAll()">🗑 LIMPIAR TODO (SW + caché)</button>
+  <button class="btn-go" onclick="location.href='/'">🚀 IR A LA APP</button>
+  
+  <div id="log">Estado: listo</div>
+  
+  <script>
+    const log = msg => {
+      const el = document.getElementById("log");
+      el.textContent += "\n" + msg;
+    };
+    
+    async function resetAll() {
+      const el = document.getElementById("log");
+      el.textContent = "Iniciando limpieza...";
+      
+      // 1. Desregistrar TODOS los service workers
+      if ("serviceWorker" in navigator) {
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          log(`Service Workers encontrados: ${regs.length}`);
+          for (const r of regs) {
+            await r.unregister();
+            log(`  ✓ Desregistrado: ${r.scope}`);
+          }
+        } catch(e) { log("Error SW: " + e.message); }
+      }
+      
+      // 2. Borrar TODOS los cachés
+      if ("caches" in window) {
+        try {
+          const keys = await caches.keys();
+          log(`Cachés encontrados: ${keys.length}`);
+          for (const k of keys) {
+            await caches.delete(k);
+            log(`  ✓ Borrado: ${k}`);
+          }
+        } catch(e) { log("Error cache: " + e.message); }
+      }
+      
+      // 3. Borrar localStorage
+      try {
+        localStorage.clear();
+        log("✓ localStorage limpio");
+      } catch(e) { log("Error localStorage: " + e.message); }
+      
+      // 4. Borrar sessionStorage
+      try {
+        sessionStorage.clear();
+        log("✓ sessionStorage limpio");
+      } catch(e) {}
+      
+      log("\n✅ TODO LIMPIO. Espera 2 segundos...");
+      
+      setTimeout(() => {
+        log("Recargando app...");
+        window.location.href = "/";
+      }, 2000);
+    }
+  </script>
+</body>
+</html>
