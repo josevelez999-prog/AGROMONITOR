@@ -238,10 +238,18 @@ function Registro({ worker }) {
     setSaving(true);
     let photoURL = "";
     try {
-      if (imgFile) {
-        const st = getStorage();
-        const r = sRef(st,`photos/${Date.now()}_${imgFile.name}`);
-        await uploadBytes(r,imgFile); photoURL = await getDownloadURL(r);
+      // Si hay imagen y hay conexión, subirla. Si no, guardar sin imagen
+      if (imgFile && navigator.onLine) {
+        try {
+          const st = getStorage();
+          const r = sRef(st,`photos/${Date.now()}_${imgFile.name}`);
+          await uploadBytes(r,imgFile); photoURL = await getDownloadURL(r);
+        } catch(imgErr) {
+          console.warn("No se pudo subir imagen:", imgErr.message);
+          // continúa sin imagen
+        }
+      } else if (imgFile && !navigator.onLine) {
+        console.warn("Sin conexión: guardando sin foto");
       }
       const now = new Date();
       const esTinaco = form.modo==="tinaco";
@@ -265,7 +273,11 @@ function Registro({ worker }) {
       setForm(p=>({...p,zone:"Zona 1",bandeja:"Bandeja 1",tinaco:"Tinaco 1",ph:"",ce:"",drenaje:"",volumenEntrada:"",notes:"",ca:"",no3:"",k:"",fe:""}));
       setImgFile(null); setImgPreview(null);
       setTimeout(()=>setSaved(false),4000);
-    } catch { alert("Error al guardar."); }
+    } catch(e) {
+      const offlineMsg = !navigator.onLine ? "\n\n📴 Estás sin conexión. El dato se guardará y enviará cuando vuelva la señal." : "";
+      alert("⚠ Error al guardar:\n" + (e?.message||"Error desconocido") + offlineMsg);
+      console.error("Submit error:", e);
+    }
     setSaving(false);
   };
 
@@ -577,7 +589,11 @@ function RegistroCosecha({ worker }) {
       });
       setSaved("cosecha"); setFormC({loteId:"",kgCosechados:"",calidad:"primera",notas:""});
       setTimeout(()=>setSaved(""),4000);
-    } catch(e) { alert("Error: "+e.message); }
+    } catch(e) { 
+      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
+      alert("⚠ Error al guardar:\n" + e.message + offline);
+      console.error(e);
+    }
     setSaving(false);
   };
 
@@ -598,7 +614,11 @@ function RegistroCosecha({ worker }) {
       setSaved("venta");
       setFormV({loteId:"",comprador:"",canal:"Mercado local",calidad:"primera",kgVendidos:"",precioKg:"",factura:"",notas:"",fecha:new Date().toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
-    } catch(e) { alert("Error: "+e.message); }
+    } catch(e) { 
+      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
+      alert("⚠ Error al guardar:\n" + e.message + offline);
+      console.error(e);
+    }
     setSaving(false);
   };
 
@@ -618,7 +638,11 @@ function RegistroCosecha({ worker }) {
       setSaved("validacion");
       setFormVL({loteId:"",etiqueta:"",kgValidados:"",precioVenta:"",observaciones:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
-    } catch(e) { alert("Error: "+e.message); }
+    } catch(e) { 
+      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
+      alert("⚠ Error al guardar:\n" + e.message + offline);
+      console.error(e);
+    }
     setSaving(false);
   };
 
@@ -636,7 +660,11 @@ function RegistroCosecha({ worker }) {
       setSaved("merma");
       setFormMerma({loteId:"",kgMerma:"",causa:"",notas:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
-    } catch(e) { alert("Error: "+e.message); }
+    } catch(e) { 
+      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
+      alert("⚠ Error al guardar:\n" + e.message + offline);
+      console.error(e);
+    }
     setSaving(false);
   };
 
@@ -656,7 +684,11 @@ function RegistroCosecha({ worker }) {
       setSaved("siniestro");
       setFormSiniestro({loteId:"",kgSiniestro:"",montoSeguro:"",evento:"granizo",notas:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
-    } catch(e) { alert("Error: "+e.message); }
+    } catch(e) { 
+      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
+      alert("⚠ Error al guardar:\n" + e.message + offline);
+      console.error(e);
+    }
     setSaving(false);
   };
 
@@ -1045,7 +1077,7 @@ function Incidencias({ worker }) {
       await addDoc(collection(db,"incidencias"),{...form,worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),createdAt:now.toISOString(),status:"pendiente",photoURL});
       setSaved(true);setForm({type:"plaga",zone:"",description:"",crop:"jitomate"});setImgFile(null);setImgPreview(null);
       setTimeout(()=>setSaved(false),4000);
-    }catch{alert("Error al enviar.");}
+    }catch{alert("⚠ Error al enviar:\n" + (e?.message||"Error desconocido") + (!navigator.onLine?"\n\n📴 Sin conexión":""));console.error("Incidencia error:",e);}
     setSaving(false);
   };
   return (
