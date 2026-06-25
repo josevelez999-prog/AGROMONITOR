@@ -71,11 +71,16 @@ const SYMPTOMS = {
     { name:"Manchas oscuras en tallos", icon:"🟫", cause:"Botrytis o cancro bacteriano", action:"Podar partes afectadas, aplicar fungicida cúprico", severity:"alta" },
   ],
 };
-const CALIDADES = [
+const CALIDADES_BASE = [
   { id:"primera", label:"Primera", color:"#27ae60", icon:"⭐" },
   { id:"segunda", label:"Segunda", color:"#f39c12", icon:"⚡" },
   { id:"tercera", label:"Tercera", color:"#e67e22", icon:"▲"  },
 ];
+const CALIDADES_EXTRA = {
+  jitomate: [{ id:"canica", label:"Canica", color:"#9b59b6", icon:"●" }],
+};
+const getCalidades = (crop) => [...CALIDADES_BASE, ...(CALIDADES_EXTRA[crop]||[])];
+const CALIDADES = [...CALIDADES_BASE, ...CALIDADES_EXTRA.jitomate];
 const CANALES = ["Mercado local","Central de abastos","Supermercado","Restaurante","Exportación","Venta directa","Agroindustria","Otro"];
 const SEV_COLOR = { alta:"#e74c3c", media:"#f39c12", baja:"#27ae60" };
 const SEV_BG    = { alta:"#fdedec", media:"#fef9e7", baja:"#eafaf1" };
@@ -560,20 +565,24 @@ function RegistroCosecha({ worker }) {
     </div>
   );
 
-  const CalidadSelector = ({ value, onChange }) => (
-    <div style={{marginBottom:16}}>
-      <label style={LBL}>Calidad del producto</label>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-        {CALIDADES.map(c=>(
-          <button key={c.id} onClick={()=>onChange(c.id)}
-            style={{padding:"10px 8px",border:`2px solid ${value===c.id?c.color:"#ddd"}`,borderRadius:12,background:value===c.id?c.color+"18":"#fff",cursor:"pointer",textAlign:"center"}}>
-            <div style={{fontSize:20,marginBottom:3}}>{c.icon}</div>
-            <div style={{fontWeight:600,fontSize:12,color:value===c.id?c.color:"#444"}}>{c.label}</div>
-          </button>
-        ))}
+  const CalidadSelector = ({ value, onChange, crop }) => {
+    const opciones = getCalidades(crop);
+    const cols = opciones.length >= 4 ? "1fr 1fr" : "1fr 1fr 1fr";
+    return (
+      <div style={{marginBottom:16}}>
+        <label style={LBL}>Calidad del producto</label>
+        <div style={{display:"grid",gridTemplateColumns:cols,gap:8}}>
+          {opciones.map(c=>(
+            <button key={c.id} onClick={()=>onChange(c.id)}
+              style={{padding:"10px 8px",border:`2px solid ${value===c.id?c.color:"#ddd"}`,borderRadius:12,background:value===c.id?c.color+"18":"#fff",cursor:"pointer",textAlign:"center"}}>
+              <div style={{fontSize:20,marginBottom:3}}>{c.icon}</div>
+              <div style={{fontWeight:600,fontSize:12,color:value===c.id?c.color:"#444"}}>{c.label}</div>
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const submitCosecha = async () => {
     if (!formC.loteId||!formC.kgCosechados) { alert("Selecciona lote y escribe los kg"); return; }
@@ -727,7 +736,7 @@ function RegistroCosecha({ worker }) {
                   onChange={e=>setFormC(p=>({...p,kgCosechados:e.target.value}))} placeholder="Ej: 45.5"
                   style={{...INP,fontSize:24,fontWeight:700,textAlign:"center",fontFamily:"'Courier New',monospace"}}/>
               </div>
-              <CalidadSelector value={formC.calidad} onChange={v=>setFormC(p=>({...p,calidad:v}))}/>
+              <CalidadSelector value={formC.calidad} onChange={v=>setFormC(p=>({...p,calidad:v}))} crop={getLote(formC.loteId)?.crop}/>
               <div style={{marginBottom:16}}>
                 <label style={LBL}>Observaciones</label>
                 <textarea value={formC.notas} onChange={e=>setFormC(p=>({...p,notas:e.target.value}))}
@@ -755,7 +764,7 @@ function RegistroCosecha({ worker }) {
               {CANALES_W.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <CalidadSelector value={formV.calidad} onChange={v=>{
+          <CalidadSelector crop={getLote(formV.loteId)?.crop} value={formV.calidad} onChange={v=>{
             const lote=getLote(formV.loteId);
             const sug=lote?getPrecio(lote.crop,v):null;
             setFormV(p=>({...p,calidad:v,...(sug?{precioKg:sug}:{})}));

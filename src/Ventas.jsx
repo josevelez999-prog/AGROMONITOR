@@ -46,12 +46,19 @@ function PreciosCalidad() {
     setSaving(false);
   };
 
-  const CALIDADES_P = [
+  const CALIDADES_P_BASE = [
     {id:"primera",label:"Primera ⭐",color:"#27ae60"},
     {id:"segunda",label:"Segunda ⚡",color:"#f39c12"},
     {id:"tercera",label:"Tercera ▲",color:"#e67e22"},
-    {id:"merma_venta",label:"Descarte ✕",color:"#e74c3c"},
   ];
+  const CALIDADES_P_EXTRA_JITOMATE = [{id:"canica",label:"Canica ●",color:"#9b59b6"}];
+  const CALIDADES_P_MERMA = [{id:"merma_venta",label:"Descarte ✕",color:"#e74c3c"}];
+  const getCalidadesPrecios = (crop) => [
+    ...CALIDADES_P_BASE,
+    ...(crop==="jitomate" ? CALIDADES_P_EXTRA_JITOMATE : []),
+    ...CALIDADES_P_MERMA,
+  ];
+  const CALIDADES_P = [...CALIDADES_P_BASE, ...CALIDADES_P_EXTRA_JITOMATE, ...CALIDADES_P_MERMA];
 
   return (
     <div>
@@ -64,7 +71,7 @@ function PreciosCalidad() {
           <thead>
             <tr style={{background:"#fafafa"}}>
               <th style={{padding:"10px 12px",textAlign:"left",color:"#888",fontWeight:500,fontSize:11,borderBottom:"1px solid #f0f0f0"}}>Cultivo</th>
-              {CALIDADES_P.map(c=>(
+              {getCalidadesPrecios(form.crop).map(c=>(
                 <th key={c.id} style={{padding:"10px 12px",textAlign:"center",color:c.color,fontWeight:600,fontSize:11,borderBottom:"1px solid #f0f0f0",minWidth:100}}>{c.label}</th>
               ))}
             </tr>
@@ -75,7 +82,7 @@ function PreciosCalidad() {
                 <td style={{padding:"10px 12px",fontWeight:600}}>
                   <span style={{color:crop.color}}>{crop.emoji} {crop.name}</span>
                 </td>
-                {CALIDADES_P.map(c=>(
+                {getCalidadesPrecios(form.crop).map(c=>(
                   <td key={c.id} style={{padding:"8px 10px",textAlign:"center"}}>
                     <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center"}}>
                       <span style={{fontSize:12,color:"#aaa",fontWeight:500}}>$</span>
@@ -135,11 +142,16 @@ const CANALES = [
   "Exportación","Venta directa","Agroindustria","Mercado orgánico","Otro"
 ];
 
-const CALIDADES = [
+const CALIDADES_BASE = [
   { id:"primera", label:"Primera", color:"#27ae60", icon:"⭐" },
   { id:"segunda", label:"Segunda", color:"#f39c12", icon:"⚡" },
   { id:"tercera", label:"Tercera", color:"#e67e22", icon:"▲"  },
 ];
+const CALIDADES_EXTRA = {
+  jitomate: [{ id:"canica", label:"Canica", color:"#9b59b6", icon:"●" }],
+};
+const getCalidadesVentas = (crop) => [...CALIDADES_BASE, ...(CALIDADES_EXTRA[crop]||[])];
+const CALIDADES = [...CALIDADES_BASE, ...CALIDADES_EXTRA.jitomate];
 
 const n = (v, d=2) => Number(parseFloat(v||0).toFixed(d));
 const fmt = (v) => Number(v||0).toLocaleString("es-MX", { minimumFractionDigits:2, maximumFractionDigits:2 });
@@ -1416,7 +1428,7 @@ function CosechasAdmin() {
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({});
   const CROPS_C = {jitomate:{name:"Jitomate",emoji:"🍅"},fresa:{name:"Fresa",emoji:"🍓"},arandano:{name:"Arándano",emoji:"🫐"},zarzamora:{name:"Zarzamora",emoji:"🫐"}};
-  const CALIDADES_C = [{id:"primera",label:"Primera",color:"#27ae60"},{id:"segunda",label:"Segunda",color:"#f39c12"},{id:"tercera",label:"Tercera",color:"#e67e22"},{id:"merma_venta",label:"Merma",color:"#e74c3c"}];
+  const CALIDADES_C = [{id:"primera",label:"Primera",color:"#27ae60"},{id:"segunda",label:"Segunda",color:"#f39c12"},{id:"tercera",label:"Tercera",color:"#e67e22"},{id:"canica",label:"Canica",color:"#9b59b6"},{id:"merma_venta",label:"Merma",color:"#e74c3c"}];
   const inp = INP;
 
   useEffect(()=>{
