@@ -1294,6 +1294,59 @@ function AsistenteIA() {
 }
 
 
+// ─── INDICADOR DE CONEXIÓN ───────────────────────────────────────────────────
+function ConnectionStatus() {
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [showOfflineToast, setShowOfflineToast] = useState(false);
+  const [showSyncToast, setShowSyncToast] = useState(false);
+
+  useEffect(()=>{
+    const handleOnline  = () => { 
+      setIsOnline(true); 
+      setShowSyncToast(true);
+      setTimeout(()=>setShowSyncToast(false), 4000);
+    };
+    const handleOffline = () => { 
+      setIsOnline(false); 
+      setShowOfflineToast(true);
+      setTimeout(()=>setShowOfflineToast(false), 5000);
+    };
+    window.addEventListener("online",  handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online",  handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Solo mostrar el badge si está offline
+  if(isOnline && !showSyncToast) return null;
+
+  return (
+    <>
+      {/* Banner permanente cuando está offline */}
+      {!isOnline && (
+        <div style={{position:"fixed",top:0,left:0,right:0,background:"#f39c12",color:"#fff",textAlign:"center",padding:"6px 12px",fontSize:12,fontWeight:600,zIndex:1000,boxShadow:"0 2px 4px rgba(0,0,0,0.1)"}}>
+          📴 Sin conexión — tus datos se guardarán y enviarán al recuperar señal
+        </div>
+      )}
+      {/* Toast al volver online */}
+      {showSyncToast && (
+        <div style={{position:"fixed",top:10,right:10,background:"#27ae60",color:"#fff",padding:"10px 16px",borderRadius:10,fontSize:12,fontWeight:600,zIndex:1001,boxShadow:"0 2px 8px rgba(0,0,0,0.15)",animation:"fadeIn 0.3s"}}>
+          ✓ Conexión restaurada — sincronizando...
+        </div>
+      )}
+      {/* Toast inicial al perder conexión */}
+      {showOfflineToast && isOnline === false && (
+        <div style={{position:"fixed",top:40,right:10,background:"#e74c3c",color:"#fff",padding:"10px 16px",borderRadius:10,fontSize:12,fontWeight:600,zIndex:1001,boxShadow:"0 2px 8px rgba(0,0,0,0.15)",maxWidth:280}}>
+          📴 Sin conexión detectada
+        </div>
+      )}
+    </>
+  );
+}
+
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 export default function Worker({ user, onLogout }) {
   const workerName = user?.nombre || user?.email || "Trabajador";
@@ -1322,6 +1375,7 @@ export default function Worker({ user, onLogout }) {
 
   return (
     <div style={{minHeight:"100vh",background:"#fafafa",paddingBottom:80}}>
+      <ConnectionStatus/>
       {/* Header */}
       <div style={{background:"#fff",borderBottom:"1px solid #e0e0e0",padding:"12px 16px",position:"sticky",top:0,zIndex:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <div>

@@ -1,5 +1,13 @@
+// Firebase con persistencia offline activada
+// Las escrituras sin conexión se guardan en IndexedDB y se sincronizan al volver la red
+
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager,
+  CACHE_SIZE_UNLIMITED,
+} from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
@@ -12,5 +20,13 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// Firestore con caché local persistente (IndexedDB) y soporte multi-pestaña
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+  }),
+});
+
 export const auth = getAuth(app);
