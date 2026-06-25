@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { db, auth } from "./firebase";
 import { collection, addDoc, onSnapshot, query, where, orderBy, doc, updateDoc } from "firebase/firestore";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -1347,6 +1347,41 @@ function ConnectionStatus() {
   );
 }
 
+// ─── ERROR BOUNDARY (atrapa crashes y muestra mensaje en vez de pantalla negra) ─
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error("ErrorBoundary:", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{padding:"20px",margin:"20px",background:"#fdedec",border:"2px solid #e74c3c",borderRadius:12,color:"#c0392b"}}>
+          <div style={{fontSize:18,fontWeight:700,marginBottom:10}}>⚠ Algo falló en esta pantalla</div>
+          <div style={{fontSize:13,marginBottom:14,whiteSpace:"pre-wrap",fontFamily:"monospace",background:"#fff",padding:10,borderRadius:8,maxHeight:200,overflow:"auto"}}>
+            {String(this.state.error?.message || this.state.error || "Error desconocido")}
+          </div>
+          <button onClick={()=>{this.setState({hasError:false,error:null});}}
+            style={{padding:"10px 20px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,marginRight:8}}>
+            🔄 Reintentar
+          </button>
+          <button onClick={()=>window.location.reload()}
+            style={{padding:"10px 20px",background:"#888",color:"#fff",border:"none",borderRadius:8,cursor:"pointer"}}>
+            ↻ Recargar app
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 export default function Worker({ user, onLogout }) {
   const workerName = user?.nombre || user?.email || "Trabajador";
@@ -1362,15 +1397,17 @@ export default function Worker({ user, onLogout }) {
   ];
 
   const renderTab = () => {
+    let content;
     switch(tab) {
-      case "registrar":  return <Registro worker={workerName} />;
-      case "cosecha":    return <RegistroCosecha worker={workerName} />;
-      case "tareas":     return <Tareas worker={workerName} />;
-      case "ia":         return <AsistenteIA />;
-      case "incidencia": return <Incidencias worker={workerName} />;
-      case "info":       return <InstruccionesDia />;
-      default:           return <Registro worker={workerName} />;
+      case "registrar":  content = <Registro worker={workerName} />; break;
+      case "cosecha":    content = <RegistroCosecha worker={workerName} />; break;
+      case "tareas":     content = <Tareas worker={workerName} />; break;
+      case "ia":         content = <AsistenteIA />; break;
+      case "incidencia": content = <Incidencias worker={workerName} />; break;
+      case "info":       content = <InstruccionesDia />; break;
+      default:           content = <Registro worker={workerName} />;
     }
+    return <ErrorBoundary key={tab}>{content}</ErrorBoundary>;
   };
 
   return (
