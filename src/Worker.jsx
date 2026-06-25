@@ -501,7 +501,7 @@ function RegistroCosecha({ worker }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState("");
 
-  const [formC, setFormC] = useState({ loteId:"", kgCosechados:"", calidad:"primera", notas:"" });
+  const [formC, setFormC] = useState({ loteId:"", kgCosechados:"", calidad:"primera", notas:"", fecha:new Date().toISOString().slice(0,10) });
   const [formV, setFormV] = useState({ loteId:"", comprador:"", canal:"Mercado local", calidad:"primera", kgVendidos:"", precioKg:"", factura:"", notas:"", fecha:new Date().toISOString().slice(0,10) });
   const [formVL, setFormVL] = useState({ loteId:"", etiqueta:"", kgValidados:"", precioVenta:"", observaciones:"", fecha:new Date().toISOString().slice(0,10) });
   const [formSiniestro, setFormSiniestro] = useState({ loteId:"", kgSiniestro:"", montoSeguro:"", evento:"granizo", notas:"", fecha:new Date().toISOString().slice(0,10) });
@@ -580,14 +580,15 @@ function RegistroCosecha({ worker }) {
     setSaving(true);
     try {
       const lote=getLote(formC.loteId); const now=new Date();
+      const fechaCosecha = formC.fecha || now.toISOString().slice(0,10);
       await addDoc(collection(db,"cosechas_trabajador"),{
         ...formC,kgCosechados:parseFloat(formC.kgCosechados),worker,
-        date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
+        date:fechaCosecha, fecha:fechaCosecha, time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",crop:lote?.crop||"",
         zona:lote?.zona||"", invernadero:lote?.zona||"",
         tratamiento:lote?.tratamiento||"",
       });
-      setSaved("cosecha"); setFormC({loteId:"",kgCosechados:"",calidad:"primera",notas:""});
+      setSaved("cosecha"); setFormC({loteId:"",kgCosechados:"",calidad:"primera",notas:"",fecha:new Date().toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
     } catch(e) { 
       const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
@@ -715,7 +716,13 @@ function RegistroCosecha({ worker }) {
           {formC.loteId&&(
             <>
               <div style={{marginBottom:16}}>
-                <label style={LBL}>Kg cosechados hoy *</label>
+                <label style={LBL}>📅 Fecha de cosecha</label>
+                <input type="date" value={formC.fecha||new Date().toISOString().slice(0,10)}
+                  max={new Date().toISOString().slice(0,10)}
+                  onChange={e=>setFormC(p=>({...p,fecha:e.target.value}))} style={INP}/>
+              </div>
+              <div style={{marginBottom:16}}>
+                <label style={LBL}>Kg cosechados *</label>
                 <input type="number" step="0.1" min="0" value={formC.kgCosechados}
                   onChange={e=>setFormC(p=>({...p,kgCosechados:e.target.value}))} placeholder="Ej: 45.5"
                   style={{...INP,fontSize:24,fontWeight:700,textAlign:"center",fontFamily:"'Courier New',monospace"}}/>
