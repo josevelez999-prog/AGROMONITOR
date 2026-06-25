@@ -1775,6 +1775,15 @@ export default function App(){
   const [currentUser,setCurrentUser]=useState(null);
   const [userRole,setUserRole]=useState(null);
   const esObservador = userRole==="observador";
+  
+  // Detectar móvil automáticamente
+  const [isMobile, setIsMobile] = useState(typeof window!=="undefined" && window.innerWidth < 768);
+  const [forceDesktop, setForceDesktop] = useState(typeof window!=="undefined" && localStorage.getItem("forceDesktop")==="1");
+  useEffect(()=>{
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(()=>{
     const unsub = onAuthStateChanged(auth, async user => {
@@ -1819,6 +1828,15 @@ export default function App(){
 
   // Logged in as worker
   if(userRole==="trabajador") return <Worker user={currentUser}/>;
+
+  // Admin/observador en MÓVIL: vista compacta dashboard
+  if((userRole==="admin"||userRole==="observador") && isMobile && !forceDesktop) {
+    return <MobileDashboard 
+      user={currentUser} 
+      onLogout={()=>setCurrentUser(null)}
+      onSwitchToDesktop={()=>{ localStorage.setItem("forceDesktop","1"); setForceDesktop(true); }}
+    />;
+  }
 
   // Data loading for admin
   if(loading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f4f5f7"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,color:"#27ae60",fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#aaa",marginTop:4}}>Cargando...</div></div></div>;
