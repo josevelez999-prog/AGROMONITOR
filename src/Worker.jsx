@@ -16,6 +16,28 @@ const cleanData = (obj) => {
   return out;
 };
 
+// Helper: reintenta una operación si falla por error transitorio de Firestore
+const saveWithRetry = async (saveFn, maxRetries = 2) => {
+  let lastError = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await saveFn();
+    } catch (e) {
+      lastError = e;
+      const msg = e?.message || String(e);
+      const isTransient = msg.includes("INTERNAL ASSERTION") ||
+                         msg.includes("Unexpected state") ||
+                         msg.includes("unavailable") ||
+                         msg.includes("deadline-exceeded");
+      if (!isTransient || attempt >= maxRetries) throw e;
+      // Esperar 500ms * (attempt+1) antes de reintentar
+      console.warn(`Reintentando guardado (intento ${attempt+1}/${maxRetries})...`);
+      await new Promise(r => setTimeout(r, 500 * (attempt+1)));
+    }
+  }
+  throw lastError;
+};
+
 // Detecta error de Firestore corrupto y ofrece recuperación
 const handleFirestoreError = (error) => {
   const msg = error?.message || String(error);
@@ -35,6 +57,61 @@ const handleFirestoreError = (error) => {
   }
   return false;
 };
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error("ErrorBoundary:", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      const errMsg = String(this.state.error?.message || this.state.error || "");
+      const isFirestoreBug = errMsg.includes("INTERNAL ASSERTION") || errMsg.includes("Unexpected state");
+      return (
+        <div style={{padding:"20px",margin:"20px",background:"#fdedec",border:"2px solid #e74c3c",borderRadius:12,color:"#c0392b"}}>
+          {isFirestoreBug && (
+            <div style={{background:"#fef9e7",border:"1px solid #f9e79f",borderRadius:8,padding:"10px 12px",marginBottom:12,color:"#856404",fontSize:12}}>
+              💡 Este es un problema temporal de sincronización local. La solución más rápida:
+              <button onClick={()=>{
+                if(window.confirm("¿Limpiar caché local y recargar?\n\nTus datos en la nube NO se perderán.")) {
+                  if("databases" in indexedDB) {
+                    indexedDB.databases().then(dbs => {
+                      dbs.forEach(d => { if(d.name?.includes("firestore")) indexedDB.deleteDatabase(d.name); });
+                      setTimeout(()=>window.location.reload(), 500);
+                    }).catch(()=>window.location.reload());
+                  } else {
+                    window.location.reload();
+                  }
+                }
+              }} style={{marginTop:8,padding:"8px 14px",background:"#27ae60",border:"none",borderRadius:6,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:12,display:"block"}}>
+                🔧 Limpiar y reiniciar
+              </button>
+            </div>
+          )}
+          <div style={{fontSize:18,fontWeight:700,marginBottom:10}}>⚠ Algo falló en esta pantalla</div>
+          <div style={{fontSize:13,marginBottom:14,whiteSpace:"pre-wrap",fontFamily:"monospace",background:"#fff",padding:10,borderRadius:8,maxHeight:200,overflow:"auto"}}>
+            {String(this.state.error?.message || this.state.error || "Error desconocido")}
+          </div>
+          <button onClick={()=>{this.setState({hasError:false,error:null});}}
+            style={{padding:"10px 20px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,marginRight:8}}>
+            🔄 Reintentar
+          </button>
+          <button onClick={()=>window.location.reload()}
+            style={{padding:"10px 20px",background:"#888",color:"#fff",border:"none",borderRadius:8,cursor:"pointer"}}>
+            ↻ Recargar app
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const CROPS = {
   jitomate:  {
@@ -305,7 +382,7 @@ function Registro({ worker }) {
         createdAt:now.toISOString(), photoURL,
       };
       Object.keys(data).forEach(k => data[k] === null && delete data[k]);
-      await addDoc(collection(db,"readings"), cleanData(data));
+      await saveWithRetry(() => addDoc(collection(db,"readings"), cleanData(data)));
       setSaved(true);
       setForm(p=>({...p,zone:"Zona 1",bandeja:"Bandeja 1",tinaco:"Tinaco 1",ph:"",ce:"",drenaje:"",volumenEntrada:"",notes:"",ca:"",no3:"",k:"",fe:""}));
       setImgFile(null); setImgPreview(null);
@@ -530,6 +607,69 @@ function MiHistorial({ worker }) {
 
 // ─── COSECHA / VENTA / VALIDACIÓN ─────────────────────────────────────────────
 // ─── COSECHA / VENTA / VALIDACIÓN / MERMA ─────────────────────────────────────
+
+
+// ─── CALIDAD SELECTOR (memoizado) ────────────────────────────────────────────
+const CalidadSelector = React.memo(function CalidadSelector({ value, onChange, crop }){
+  const opciones = getCalidades(crop);
+  const cols = opciones.length >= 4 ? "1fr 1fr" : "1fr 1fr 1fr";
+  return (
+    <div style={{marginBottom:16}}>
+      <label style={LBL}>Calidad del producto</label>
+      <div style={{display:"grid",gridTemplateColumns:cols,gap:8}}>
+        {opciones.map(c=>(
+          <button key={c.id} onClick={()=>onChange(c.id)}
+            style={{padding:"10px 8px",border:`2px solid ${value===c.id?c.color:"#ddd"}`,borderRadius:12,background:value===c.id?c.color+"18":"#fff",cursor:"pointer",textAlign:"center"}}>
+            <div style={{fontSize:20,marginBottom:3}}>{c.icon}</div>
+            <div style={{fontWeight:600,fontSize:12,color:value===c.id?c.color:"#444"}}>{c.label}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+// ─── LOTE SELECTOR (componente memoizado para evitar re-mount) ───────────────
+const LoteSelectorMemo = React.memo(function LoteSelectorMemo({ value, onChange, lotes, ventas, cosechas }){
+  const lotesSafe = lotes || [];
+  const ventasSafe = ventas || [];
+  const cosechasSafe = cosechas || [];
+  return (
+    <div style={{marginBottom:16}}>
+      <label style={LBL}>Lote de producción *</label>
+      {!lotesSafe.length
+        ? <div style={{background:"#f5f5f5",borderRadius:10,padding:14,textAlign:"center",color:"#aaa",fontSize:13,border:"1px solid #eee"}}>El encargado aún no ha creado lotes</div>
+        : lotesSafe.map(lote => {
+            try {
+              const c=CROPS[lote.crop]; const sel=value===lote.id;
+              const kgVen = ventasSafe.filter(x=>x.loteId===lote.id).reduce((s,x)=>s+(parseFloat(x.kgVendidos)||0),0);
+              const kgCosTrab = cosechasSafe.filter(x=>x.loteId===lote.id).reduce((s,x)=>s+(parseFloat(x.kgCosechados)||0),0);
+              const kgCos = kgCosTrab > 0 ? kgCosTrab : (parseFloat(lote.kgCosechados)||0);
+              const stock = Math.max(0, kgCos - kgVen);
+              return (
+                <button key={lote.id} onClick={()=>onChange(lote.id)}
+                  style={{width:"100%",padding:"12px 14px",marginBottom:8,border:`2px solid ${sel?"#27ae60":"#ddd"}`,borderRadius:12,background:sel?"#eafaf1":"#fff",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:22}}>{c?.emoji||"🌱"}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:600,fontSize:14,color:sel?"#27ae60":"#222"}}>{lote.nombre||"Sin nombre"}</div>
+                    <div style={{fontSize:11,color:"#888"}}>{c?.name||lote.crop} · {lote.zona||"—"}</div>
+                    <div style={{display:"flex",gap:8,marginTop:4,fontSize:10,flexWrap:"wrap"}}>
+                      <span style={{background:"#eafaf1",color:"#27ae60",padding:"2px 6px",borderRadius:6,fontWeight:600}}>📦 {stock.toFixed(1)} kg disp.</span>
+                      <span style={{color:"#aaa"}}>Cos: {kgCos.toFixed(1)} kg · Vend: {kgVen.toFixed(1)} kg</span>
+                    </div>
+                  </div>
+                  {sel&&<span style={{color:"#27ae60",fontSize:20,fontWeight:700}}>✓</span>}
+                </button>
+              );
+            } catch(e) {
+              return <div key={lote.id||Math.random()} style={{padding:8,color:"#aaa",fontSize:11}}>Lote con error: {e.message}</div>;
+            }
+          })
+      }
+    </div>
+  );
+});
+
 function RegistroCosecha({ worker }) {
   const [subtab, setSubtab] = useState("cosecha");
   const [lotes, setLotes] = useState([]);
@@ -563,59 +703,7 @@ function RegistroCosecha({ worker }) {
   const getLote = id => lotes.find(l=>l.id===id);
   const getPrecio = (crop,calidad) => preciosSugeridos[crop]?.[calidad]||null;
 
-  const LoteSelector = ({ value, onChange }) => (
-    <div style={{marginBottom:16}}>
-      <label style={LBL}>Lote de producción *</label>
-      {!lotes.length
-        ? <div style={{background:"#f5f5f5",borderRadius:10,padding:14,textAlign:"center",color:"#aaa",fontSize:13,border:"1px solid #eee"}}>El encargado aún no ha creado lotes</div>
-        : lotes.map(lote => {
-            const c=CROPS[lote.crop]; const sel=value===lote.id;
-            return (
-              <button key={lote.id} onClick={()=>onChange(lote.id)}
-                style={{width:"100%",padding:"12px 14px",marginBottom:8,border:`2px solid ${sel?"#27ae60":"#ddd"}`,borderRadius:12,background:sel?"#eafaf1":"#fff",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:10}}>
-                <span style={{fontSize:22}}>{c?.emoji||"🌱"}</span>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:600,fontSize:14,color:sel?"#27ae60":"#222"}}>{lote.nombre}</div>
-                  <div style={{fontSize:11,color:"#888"}}>{c?.name} · {lote.zona}</div>
-                  {(()=>{
-                    const kgVen = (ventasW||[]).filter(x=>x.loteId===lote.id).reduce((s,x)=>s+(parseFloat(x.kgVendidos)||0),0);
-                    const kgCosTrab = (cosechasW||[]).filter(x=>x.loteId===lote.id).reduce((s,x)=>s+(parseFloat(x.kgCosechados)||0),0);
-                    const kgCos = kgCosTrab > 0 ? kgCosTrab : (parseFloat(lote.kgCosechados)||0);
-                    const stock = Math.max(0, kgCos - kgVen);
-                    return (
-                      <div style={{display:"flex",gap:8,marginTop:4,fontSize:10,flexWrap:"wrap"}}>
-                        <span style={{background:"#eafaf1",color:"#27ae60",padding:"2px 6px",borderRadius:6,fontWeight:600}}>📦 {stock.toFixed(1)} kg disp.</span>
-                        <span style={{color:"#aaa"}}>Cos: {kgCos.toFixed(1)} kg · Vend: {kgVen.toFixed(1)} kg</span>
-                      </div>
-                    );
-                  })()}
-                </div>
-                {sel&&<span style={{color:"#27ae60",fontSize:20,fontWeight:700}}>✓</span>}
-              </button>
-            );
-          })
-      }
-    </div>
-  );
 
-  const CalidadSelector = ({ value, onChange, crop }) => {
-    const opciones = getCalidades(crop);
-    const cols = opciones.length >= 4 ? "1fr 1fr" : "1fr 1fr 1fr";
-    return (
-      <div style={{marginBottom:16}}>
-        <label style={LBL}>Calidad del producto</label>
-        <div style={{display:"grid",gridTemplateColumns:cols,gap:8}}>
-          {opciones.map(c=>(
-            <button key={c.id} onClick={()=>onChange(c.id)}
-              style={{padding:"10px 8px",border:`2px solid ${value===c.id?c.color:"#ddd"}`,borderRadius:12,background:value===c.id?c.color+"18":"#fff",cursor:"pointer",textAlign:"center"}}>
-              <div style={{fontSize:20,marginBottom:3}}>{c.icon}</div>
-              <div style={{fontWeight:600,fontSize:12,color:value===c.id?c.color:"#444"}}>{c.label}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  };
 
   const submitCosecha = async () => {
     if (!formC.loteId||!formC.kgCosechados) { alert("Selecciona lote y escribe los kg"); return; }
@@ -623,13 +711,13 @@ function RegistroCosecha({ worker }) {
     try {
       const lote=getLote(formC.loteId); const now=new Date();
       const fechaCosecha = formC.fecha || now.toISOString().slice(0,10);
-      await addDoc(collection(db,"cosechas_trabajador"),cleanData({
+      await saveWithRetry(() => addDoc(collection(db,"cosechas_trabajador"),cleanData({
         ...formC,kgCosechados:parseFloat(formC.kgCosechados),worker,
         date:fechaCosecha, fecha:fechaCosecha, time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",crop:lote?.crop||"",
         zona:lote?.zona||"", invernadero:lote?.zona||"",
         tratamiento:lote?.tratamiento||"",
-      }));
+      })));
       setSaved("cosecha"); setFormC({loteId:"",kgCosechados:"",calidad:"primera",notas:"",fecha:new Date().toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
     } catch(e) {
@@ -649,12 +737,12 @@ function RegistroCosecha({ worker }) {
       const kg=parseFloat(formV.kgVendidos)||0;
       const precio=parseFloat(formV.precioKg)||0;
       const now=new Date();
-      await addDoc(collection(db,"ventas"),cleanData({
+      await saveWithRetry(() => addDoc(collection(db,"ventas"),cleanData({
         ...formV,kgVendidos:kg,precioKg:precio,totalVenta:parseFloat((kg*precio).toFixed(2)),
         worker,cropName:CROPS[lote?.crop||""]?.name||"",loteName:lote?.nombre||"",
         tratamiento:lote?.tratamiento||"",crop:lote?.crop||"",
         date:formV.fecha,createdAt:now.toISOString(),
-      }));
+      })));
       setSaved("venta");
       setFormV({loteId:"",comprador:"",canal:"Mercado local",calidad:"primera",kgVendidos:"",precioKg:"",factura:"",notas:"",fecha:new Date().toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
@@ -672,14 +760,14 @@ function RegistroCosecha({ worker }) {
     setSaving(true);
     try {
       const lote=getLote(formVL.loteId); const now=new Date();
-      await addDoc(collection(db,"validaciones_tratamiento"),cleanData({
+      await saveWithRetry(() => addDoc(collection(db,"validaciones_tratamiento"),cleanData({
         ...formVL,kgValidados:parseFloat(formVL.kgValidados)||0,
         precioVenta:parseFloat(formVL.precioVenta)||0,
         etiquetaTratamiento:formVL.etiqueta,
         worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",
         crop:lote?.crop||"",tratamiento:lote?.tratamiento||"",zona:lote?.zona||"",
-      }));
+      })));
       setSaved("validacion");
       setFormVL({loteId:"",etiqueta:"",kgValidados:"",precioVenta:"",observaciones:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
@@ -697,12 +785,12 @@ function RegistroCosecha({ worker }) {
     setSaving(true);
     try {
       const lote=getLote(formMerma.loteId); const now=new Date();
-      await addDoc(collection(db,"mermas"),cleanData({
+      await saveWithRetry(() => addDoc(collection(db,"mermas"),cleanData({
         ...formMerma,kgMerma:parseFloat(formMerma.kgMerma)||0,
         worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",
         crop:lote?.crop||"",zona:lote?.zona||"",
-      }));
+      })));
       setSaved("merma");
       setFormMerma({loteId:"",kgMerma:"",causa:"",notas:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
@@ -720,14 +808,14 @@ function RegistroCosecha({ worker }) {
     setSaving(true);
     try {
       const lote=getLote(formSiniestro.loteId); const now=new Date();
-      await addDoc(collection(db,"siniestros"),cleanData({
+      await saveWithRetry(() => addDoc(collection(db,"siniestros"),cleanData({
         ...formSiniestro,
         kgSiniestro:parseFloat(formSiniestro.kgSiniestro)||0,
         montoSeguro:parseFloat(formSiniestro.montoSeguro)||0,
         worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",
         crop:lote?.crop||"",zona:lote?.zona||"",
-      }));
+      })));
       setSaved("siniestro");
       setFormSiniestro({loteId:"",kgSiniestro:"",montoSeguro:"",evento:"granizo",notas:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
@@ -758,8 +846,8 @@ function RegistroCosecha({ worker }) {
       </div>
 
       {subtab==="cosecha"&&(
-        <div>
-          <LoteSelector value={formC.loteId} onChange={v=>setFormC(p=>({...p,loteId:v}))}/>
+        <ErrorBoundary key="cosecha"><div>
+          <LoteSelectorMemo value={formC.loteId} onChange={v=>setFormC(p=>({...p,loteId:v}))} lotes={lotes} ventas={ventasW} cosechas={cosechasW}/>
           {formC.loteId&&(
             <>
               <div style={{marginBottom:16}}>
@@ -786,12 +874,12 @@ function RegistroCosecha({ worker }) {
               </button>
             </>
           )}
-        </div>
+        </div></ErrorBoundary>
       )}
 
       {subtab==="venta"&&(
-        <div>
-          <LoteSelector value={formV.loteId} onChange={v=>setFormV(p=>({...p,loteId:v}))}/>
+        <ErrorBoundary key="venta"><div>
+          <LoteSelectorMemo value={formV.loteId} onChange={v=>setFormV(p=>({...p,loteId:v}))} lotes={lotes} ventas={ventasW} cosechas={cosechasW}/>
           <div style={{marginBottom:16}}>
             <label style={LBL}>Comprador / Cliente *</label>
             <input value={formV.comprador} onChange={e=>setFormV(p=>({...p,comprador:e.target.value}))} placeholder="Nombre del comprador" style={INP}/>
@@ -847,15 +935,15 @@ function RegistroCosecha({ worker }) {
             style={{width:"100%",padding:15,background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
             {saving?"Guardando...":"💰 Registrar venta"}
           </button>
-        </div>
+        </div></ErrorBoundary>
       )}
 
       {subtab==="validacion"&&(
-        <div>
+        <ErrorBoundary key="validacion"><div>
           <div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1a5276"}}>
             🏷️ Confirma el tratamiento del producto antes de que salga de la unidad
           </div>
-          <LoteSelector value={formVL.loteId} onChange={v=>setFormVL(p=>({...p,loteId:v}))}/>
+          <LoteSelectorMemo value={formVL.loteId} onChange={v=>setFormVL(p=>({...p,loteId:v}))} lotes={lotes} ventas={ventasW} cosechas={cosechasW}/>
           {formVL.loteId&&(()=>{
             const lote=getLote(formVL.loteId);
             const crop=CROPS[lote?.crop];
@@ -903,15 +991,15 @@ function RegistroCosecha({ worker }) {
               </>
             );
           })()}
-        </div>
+        </div></ErrorBoundary>
       )}
 
       {subtab==="merma"&&(
-        <div>
+        <ErrorBoundary key="merma"><div>
           <div style={{background:"#fef9e7",border:"1px solid #f39c1244",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#856404"}}>
             ⚠ Registra el producto que no se puede vender — merma, desperdicio o pérdida del día
           </div>
-          <LoteSelector value={formMerma.loteId} onChange={v=>setFormMerma(p=>({...p,loteId:v}))}/>
+          <LoteSelectorMemo value={formMerma.loteId} onChange={v=>setFormMerma(p=>({...p,loteId:v}))} lotes={lotes} ventas={ventasW} cosechas={cosechasW}/>
           {formMerma.loteId&&(
             <>
               <div style={{marginBottom:16}}>
@@ -946,15 +1034,15 @@ function RegistroCosecha({ worker }) {
               </button>
             </>
           )}
-        </div>
+        </div></ErrorBoundary>
       )}
 
       {subtab==="siniestro"&&(
-        <div>
+        <ErrorBoundary key="siniestro"><div>
           <div style={{background:"#eaf4fb",border:"1px solid #5dade2",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1f618d"}}>
             🌩 Registra producto siniestrado por granizo u otro evento climático que el seguro pagará. Estos kg <strong>sí cuentan</strong> como producción y el monto del seguro <strong>se suma a ingresos</strong>.
           </div>
-          <LoteSelector value={formSiniestro.loteId} onChange={id=>setFormSiniestro(p=>({...p,loteId:id}))}/>
+          <LoteSelectorMemo value={formSiniestro.loteId} onChange={id=>setFormSiniestro(p=>({...p,loteId:id}))} lotes={lotes} ventas={ventasW} cosechas={cosechasW}/>
           {formSiniestro.loteId&&(()=>{
             const lote=getLote(formSiniestro.loteId);
             if(!lote) return null;
@@ -1006,7 +1094,7 @@ function RegistroCosecha({ worker }) {
               </>
             );
           })()}
-        </div>
+        </div></ErrorBoundary>
       )}
     </div>
   );
@@ -1434,60 +1522,7 @@ function ConnectionStatus() {
 }
 
 // ─── ERROR BOUNDARY (atrapa crashes y muestra mensaje en vez de pantalla negra) ─
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-  componentDidCatch(error, info) {
-    console.error("ErrorBoundary:", error, info);
-  }
-  render() {
-    if (this.state.hasError) {
-      const errMsg = String(this.state.error?.message || this.state.error || "");
-      const isFirestoreBug = errMsg.includes("INTERNAL ASSERTION") || errMsg.includes("Unexpected state");
-      return (
-        <div style={{padding:"20px",margin:"20px",background:"#fdedec",border:"2px solid #e74c3c",borderRadius:12,color:"#c0392b"}}>
-          {isFirestoreBug && (
-            <div style={{background:"#fef9e7",border:"1px solid #f9e79f",borderRadius:8,padding:"10px 12px",marginBottom:12,color:"#856404",fontSize:12}}>
-              💡 Este es un problema temporal de sincronización local. La solución más rápida:
-              <button onClick={()=>{
-                if(window.confirm("¿Limpiar caché local y recargar?\n\nTus datos en la nube NO se perderán.")) {
-                  if("databases" in indexedDB) {
-                    indexedDB.databases().then(dbs => {
-                      dbs.forEach(d => { if(d.name?.includes("firestore")) indexedDB.deleteDatabase(d.name); });
-                      setTimeout(()=>window.location.reload(), 500);
-                    }).catch(()=>window.location.reload());
-                  } else {
-                    window.location.reload();
-                  }
-                }
-              }} style={{marginTop:8,padding:"8px 14px",background:"#27ae60",border:"none",borderRadius:6,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:12,display:"block"}}>
-                🔧 Limpiar y reiniciar
-              </button>
-            </div>
-          )}
-          <div style={{fontSize:18,fontWeight:700,marginBottom:10}}>⚠ Algo falló en esta pantalla</div>
-          <div style={{fontSize:13,marginBottom:14,whiteSpace:"pre-wrap",fontFamily:"monospace",background:"#fff",padding:10,borderRadius:8,maxHeight:200,overflow:"auto"}}>
-            {String(this.state.error?.message || this.state.error || "Error desconocido")}
-          </div>
-          <button onClick={()=>{this.setState({hasError:false,error:null});}}
-            style={{padding:"10px 20px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,marginRight:8}}>
-            🔄 Reintentar
-          </button>
-          <button onClick={()=>window.location.reload()}
-            style={{padding:"10px 20px",background:"#888",color:"#fff",border:"none",borderRadius:8,cursor:"pointer"}}>
-            ↻ Recargar app
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 export default function Worker({ user, onLogout }) {
