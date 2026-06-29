@@ -4,6 +4,38 @@ import { collection, addDoc, onSnapshot, query, where, orderBy, doc, updateDoc }
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { signOut } from "firebase/auth";
 
+// Sanitiza objeto: convierte undefined a null y elimina NaN
+const cleanData = (obj) => {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined) out[k] = null;
+    else if (typeof v === "number" && isNaN(v)) out[k] = null;
+    else if (v === "") out[k] = "";
+    else out[k] = v;
+  }
+  return out;
+};
+
+// Detecta error de Firestore corrupto y ofrece recuperación
+const handleFirestoreError = (error) => {
+  const msg = error?.message || String(error);
+  if (msg.includes("INTERNAL ASSERTION FAILED") || msg.includes("Unexpected state")) {
+    if (window.confirm("⚠ Detectamos un problema con la base de datos local de tu teléfono.\n\n¿Quieres limpiar el caché y recargar? Tus datos en la nube NO se perderán.")) {
+      // Borrar IndexedDB de Firestore y recargar
+      indexedDB.databases?.().then(dbs => {
+        dbs.forEach(db => {
+          if(db.name?.includes("firestore")) indexedDB.deleteDatabase(db.name);
+        });
+        setTimeout(()=>window.location.reload(), 500);
+      }).catch(()=>{
+        setTimeout(()=>window.location.reload(), 500);
+      });
+      return true;
+    }
+  }
+  return false;
+};
+
 const CROPS = {
   jitomate:  {
     name:"Jitomate", emoji:"🍅", color:"#c0392b",
@@ -273,15 +305,16 @@ function Registro({ worker }) {
         createdAt:now.toISOString(), photoURL,
       };
       Object.keys(data).forEach(k => data[k] === null && delete data[k]);
-      await addDoc(collection(db,"readings"), data);
+      await addDoc(collection(db,"readings"), cleanData(data));
       setSaved(true);
       setForm(p=>({...p,zone:"Zona 1",bandeja:"Bandeja 1",tinaco:"Tinaco 1",ph:"",ce:"",drenaje:"",volumenEntrada:"",notes:"",ca:"",no3:"",k:"",fe:""}));
       setImgFile(null); setImgPreview(null);
       setTimeout(()=>setSaved(false),4000);
     } catch(e) {
-      const offlineMsg = !navigator.onLine ? "\n\n📴 Estás sin conexión. El dato se guardará y enviará cuando vuelva la señal." : "";
-      alert("⚠ Error al guardar:\n" + (e?.message||"Error desconocido") + offlineMsg);
       console.error("Submit error:", e);
+      if (handleFirestoreError(e)) { setSaving(false); return; }
+      const offlineMsg = !navigator.onLine ? "\n\n📴 Estás sin conexión. El dato se guardará y enviará cuando vuelva la señal." : "";
+      alert("⚠ Error al guardar:\n" + (e?.message||"Error desconocido").slice(0,300) + offlineMsg);
     }
     setSaving(false);
   };
@@ -590,19 +623,20 @@ function RegistroCosecha({ worker }) {
     try {
       const lote=getLote(formC.loteId); const now=new Date();
       const fechaCosecha = formC.fecha || now.toISOString().slice(0,10);
-      await addDoc(collection(db,"cosechas_trabajador"),{
+      await addDoc(collection(db,"cosechas_trabajador"),cleanData({
         ...formC,kgCosechados:parseFloat(formC.kgCosechados),worker,
         date:fechaCosecha, fecha:fechaCosecha, time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",crop:lote?.crop||"",
         zona:lote?.zona||"", invernadero:lote?.zona||"",
         tratamiento:lote?.tratamiento||"",
-      });
+      }));
       setSaved("cosecha"); setFormC({loteId:"",kgCosechados:"",calidad:"primera",notas:"",fecha:new Date().toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
-    } catch(e) { 
-      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
-      alert("⚠ Error al guardar:\n" + e.message + offline);
+    } catch(e) {
       console.error(e);
+      if (handleFirestoreError(e)) return;
+      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
+      alert("⚠ Error al guardar:\n" + (e.message||"Error desconocido").slice(0,300) + offline);
     }
     setSaving(false);
   };
@@ -615,19 +649,20 @@ function RegistroCosecha({ worker }) {
       const kg=parseFloat(formV.kgVendidos)||0;
       const precio=parseFloat(formV.precioKg)||0;
       const now=new Date();
-      await addDoc(collection(db,"ventas"),{
+      await addDoc(collection(db,"ventas"),cleanData({
         ...formV,kgVendidos:kg,precioKg:precio,totalVenta:parseFloat((kg*precio).toFixed(2)),
         worker,cropName:CROPS[lote?.crop||""]?.name||"",loteName:lote?.nombre||"",
         tratamiento:lote?.tratamiento||"",crop:lote?.crop||"",
         date:formV.fecha,createdAt:now.toISOString(),
-      });
+      }));
       setSaved("venta");
       setFormV({loteId:"",comprador:"",canal:"Mercado local",calidad:"primera",kgVendidos:"",precioKg:"",factura:"",notas:"",fecha:new Date().toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
-    } catch(e) { 
-      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
-      alert("⚠ Error al guardar:\n" + e.message + offline);
+    } catch(e) {
       console.error(e);
+      if (handleFirestoreError(e)) return;
+      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
+      alert("⚠ Error al guardar:\n" + (e.message||"Error desconocido").slice(0,300) + offline);
     }
     setSaving(false);
   };
@@ -637,21 +672,22 @@ function RegistroCosecha({ worker }) {
     setSaving(true);
     try {
       const lote=getLote(formVL.loteId); const now=new Date();
-      await addDoc(collection(db,"validaciones_tratamiento"),{
+      await addDoc(collection(db,"validaciones_tratamiento"),cleanData({
         ...formVL,kgValidados:parseFloat(formVL.kgValidados)||0,
         precioVenta:parseFloat(formVL.precioVenta)||0,
         etiquetaTratamiento:formVL.etiqueta,
         worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",
         crop:lote?.crop||"",tratamiento:lote?.tratamiento||"",zona:lote?.zona||"",
-      });
+      }));
       setSaved("validacion");
       setFormVL({loteId:"",etiqueta:"",kgValidados:"",precioVenta:"",observaciones:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
-    } catch(e) { 
-      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
-      alert("⚠ Error al guardar:\n" + e.message + offline);
+    } catch(e) {
       console.error(e);
+      if (handleFirestoreError(e)) return;
+      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
+      alert("⚠ Error al guardar:\n" + (e.message||"Error desconocido").slice(0,300) + offline);
     }
     setSaving(false);
   };
@@ -661,19 +697,20 @@ function RegistroCosecha({ worker }) {
     setSaving(true);
     try {
       const lote=getLote(formMerma.loteId); const now=new Date();
-      await addDoc(collection(db,"mermas"),{
+      await addDoc(collection(db,"mermas"),cleanData({
         ...formMerma,kgMerma:parseFloat(formMerma.kgMerma)||0,
         worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",
         crop:lote?.crop||"",zona:lote?.zona||"",
-      });
+      }));
       setSaved("merma");
       setFormMerma({loteId:"",kgMerma:"",causa:"",notas:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
-    } catch(e) { 
-      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
-      alert("⚠ Error al guardar:\n" + e.message + offline);
+    } catch(e) {
       console.error(e);
+      if (handleFirestoreError(e)) return;
+      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
+      alert("⚠ Error al guardar:\n" + (e.message||"Error desconocido").slice(0,300) + offline);
     }
     setSaving(false);
   };
@@ -683,21 +720,22 @@ function RegistroCosecha({ worker }) {
     setSaving(true);
     try {
       const lote=getLote(formSiniestro.loteId); const now=new Date();
-      await addDoc(collection(db,"siniestros"),{
+      await addDoc(collection(db,"siniestros"),cleanData({
         ...formSiniestro,
         kgSiniestro:parseFloat(formSiniestro.kgSiniestro)||0,
         montoSeguro:parseFloat(formSiniestro.montoSeguro)||0,
         worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",
         crop:lote?.crop||"",zona:lote?.zona||"",
-      });
+      }));
       setSaved("siniestro");
       setFormSiniestro({loteId:"",kgSiniestro:"",montoSeguro:"",evento:"granizo",notas:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
-    } catch(e) { 
-      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
-      alert("⚠ Error al guardar:\n" + e.message + offline);
+    } catch(e) {
       console.error(e);
+      if (handleFirestoreError(e)) return;
+      const offline = !navigator.onLine ? "\n\n📴 Sin conexión - se guardará al recuperar señal" : "";
+      alert("⚠ Error al guardar:\n" + (e.message||"Error desconocido").slice(0,300) + offline);
     }
     setSaving(false);
   };
@@ -1090,7 +1128,7 @@ function Incidencias({ worker }) {
     try{
       if(imgFile){const st=getStorage();const r=sRef(st,`incidencias/${Date.now()}_${imgFile.name}`);await uploadBytes(r,imgFile);photoURL=await getDownloadURL(r);}
       const now=new Date();
-      await addDoc(collection(db,"incidencias"),{...form,worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),createdAt:now.toISOString(),status:"pendiente",photoURL});
+      await addDoc(collection(db,"incidencias"),cleanData({...form,worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),createdAt:now.toISOString(),status:"pendiente",photoURL}));
       setSaved(true);setForm({type:"plaga",zone:"",description:"",crop:"jitomate"});setImgFile(null);setImgPreview(null);
       setTimeout(()=>setSaved(false),4000);
     }catch{alert("⚠ Error al enviar:\n" + (e?.message||"Error desconocido") + (!navigator.onLine?"\n\n📴 Sin conexión":""));console.error("Incidencia error:",e);}
@@ -1409,8 +1447,29 @@ class ErrorBoundary extends React.Component {
   }
   render() {
     if (this.state.hasError) {
+      const errMsg = String(this.state.error?.message || this.state.error || "");
+      const isFirestoreBug = errMsg.includes("INTERNAL ASSERTION") || errMsg.includes("Unexpected state");
       return (
         <div style={{padding:"20px",margin:"20px",background:"#fdedec",border:"2px solid #e74c3c",borderRadius:12,color:"#c0392b"}}>
+          {isFirestoreBug && (
+            <div style={{background:"#fef9e7",border:"1px solid #f9e79f",borderRadius:8,padding:"10px 12px",marginBottom:12,color:"#856404",fontSize:12}}>
+              💡 Este es un problema temporal de sincronización local. La solución más rápida:
+              <button onClick={()=>{
+                if(window.confirm("¿Limpiar caché local y recargar?\n\nTus datos en la nube NO se perderán.")) {
+                  if("databases" in indexedDB) {
+                    indexedDB.databases().then(dbs => {
+                      dbs.forEach(d => { if(d.name?.includes("firestore")) indexedDB.deleteDatabase(d.name); });
+                      setTimeout(()=>window.location.reload(), 500);
+                    }).catch(()=>window.location.reload());
+                  } else {
+                    window.location.reload();
+                  }
+                }
+              }} style={{marginTop:8,padding:"8px 14px",background:"#27ae60",border:"none",borderRadius:6,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:12,display:"block"}}>
+                🔧 Limpiar y reiniciar
+              </button>
+            </div>
+          )}
           <div style={{fontSize:18,fontWeight:700,marginBottom:10}}>⚠ Algo falló en esta pantalla</div>
           <div style={{fontSize:13,marginBottom:14,whiteSpace:"pre-wrap",fontFamily:"monospace",background:"#fff",padding:10,borderRadius:8,maxHeight:200,overflow:"auto"}}>
             {String(this.state.error?.message || this.state.error || "Error desconocido")}
