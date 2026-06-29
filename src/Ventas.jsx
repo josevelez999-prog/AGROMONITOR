@@ -485,7 +485,7 @@ function RegistroVentas() {
                 </tr>
               </thead>
               <tbody>
-                {ventas.map(v=>{
+                {[...ventas].sort((a,b)=>{const da=a.fecha||a.createdAt||"";const db=b.fecha||b.createdAt||"";return db.localeCompare(da);}).map(v=>{
                   const crop = CROPS[v.crop];
                   const cal = CALIDADES.find(c=>c.id===v.calidad);
                   const trat = TRATAMIENTOS.find(t=>t.id===v.tratamiento);
@@ -506,7 +506,7 @@ function RegistroVentas() {
                       <td style={{padding:"8px 10px",fontSize:11,color:"#aaa"}}>{v.factura||"—"}</td>
                       <td style={{padding:"8px 10px"}}>
                         <div style={{display:"flex",gap:4}}>
-                          <button onClick={()=>{setEditing(v);setShowForm(true);window.scrollTo(0,0);}} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button>
+                          <button onClick={()=>{setForm({loteId:v.loteId||"",crop:v.crop||"jitomate",comprador:v.comprador||"",canal:v.canal||"Mercado local",calidad:v.calidad||"primera",kgVendidos:v.kgVendidos||0,precioKg:v.precioKg||0,fecha:v.fecha||new Date().toISOString().slice(0,10),notas:v.notas||"",factura:v.factura||""});setEditing(v);setShowForm(true);window.scrollTo(0,0);}} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button>
                           <button onClick={()=>{if(window.confirm("¿Eliminar esta venta?"))deleteDoc(doc(db,"ventas",v.id));}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>
                         </div>
                       </td>
@@ -1452,7 +1452,7 @@ function CosechasAdmin() {
   return (
     <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"14px 18px",marginTop:12}}>
       <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12,letterSpacing:0.3}}>COSECHAS REGISTRADAS POR TRABAJADORES</div>
-      {cosechas.map(c=>{
+      {[...cosechas].sort((a,b)=>{const da=a.fecha||a.date||a.createdAt||"";const db=b.fecha||b.date||b.createdAt||"";return db.localeCompare(da);}).map(c=>{
         const crop=CROPS_C[c.crop];
         const cal=CALIDADES_C.find(x=>x.id===c.calidad);
         const isEdit=editing===c.id;
@@ -1468,7 +1468,7 @@ function CosechasAdmin() {
                 <span style={{fontFamily:"'Courier New',monospace",fontWeight:700,color:"#27ae60",fontSize:14}}>{c.kgCosechados} kg</span>
                 <span style={{background:cal?.color+"18",color:cal?.color,border:`1px solid ${cal?.color}44`,borderRadius:8,padding:"1px 8px",fontSize:11,fontWeight:600}}>{cal?.label}</span>
                 <div style={{display:"flex",gap:4}}>
-                  <button onClick={()=>{setEditing(c.id);setEditForm({kgCosechados:c.kgCosechados,calidad:c.calidad,notas:c.notas||""});}} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button>
+                  <button onClick={()=>{setEditing(c.id);setEditForm({kgCosechados:c.kgCosechados,calidad:c.calidad,notas:c.notas||"",fecha:c.fecha||c.date||""});}} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button>
                   <button onClick={()=>{if(window.confirm("¿Eliminar este registro?"))deleteDoc(doc(db,"cosechas_trabajador",c.id));}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>
                 </div>
               </div>
@@ -1478,6 +1478,11 @@ function CosechasAdmin() {
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
                   <div>
                     <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>KG COSECHADOS</label>
+                    <div style={{marginBottom:8}}>
+                      <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:2}}>📅 FECHA</label>
+                      <input type="date" max={new Date().toISOString().slice(0,10)} value={editForm.fecha||""} onChange={e=>setEditForm(p=>({...p,fecha:e.target.value}))} style={inp}/>
+                    </div>
+                    <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:2}}>KG COSECHADOS</label>
                     <input type="number" step="0.1" min="0" value={editForm.kgCosechados} onChange={e=>setEditForm(p=>({...p,kgCosechados:e.target.value}))} style={inp}/>
                   </div>
                   <div>
@@ -1508,6 +1513,23 @@ function CosechasAdmin() {
 // ─── VALIDACIONES ADMIN ───────────────────────────────────────────────────────
 function ValidacionesAdmin() {
   const [validaciones, setValidaciones] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState({});
+
+  const saveEditVal = async () => {
+    if (!editing) return;
+    const updateData = {
+      kgValidados: parseFloat(editForm.kgValidados)||0,
+      precioVenta: parseFloat(editForm.precioVenta)||0,
+      observaciones: editForm.observaciones||"",
+      updatedAt: new Date().toISOString(),
+    };
+    if(editForm.fecha) { updateData.fecha = editForm.fecha; updateData.date = editForm.fecha; }
+    try {
+      await updateDoc(doc(db,"validaciones_tratamiento",editing), updateData);
+      setEditing(null);
+    } catch(e) { alert("⚠ Error: "+e.message); }
+  };
   const [filterCrop, setFilterCrop] = useState("all");
 
   useEffect(()=>{
@@ -1560,7 +1582,7 @@ function ValidacionesAdmin() {
       )}
 
       {/* Tarjetas de validación */}
-      {filtered.map(v=>{
+      {[...filtered].sort((a,b)=>{const da=a.fecha||a.date||a.createdAt||"";const db=b.fecha||b.date||b.createdAt||"";return db.localeCompare(da);}).map(v=>{
         const crop = CROPS[v.crop];
         return (
           <div key={v.id} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderLeft:"4px solid #2980b9",borderRadius:12,padding:"14px 18px",marginBottom:10}}>
@@ -1605,7 +1627,9 @@ function ValidacionesAdmin() {
                 </div>
               </div>
 
-              <button onClick={()=>{if(window.confirm("¿Eliminar esta validación?"))deleteDoc(doc(db,"validaciones_tratamiento",v.id));}}
+              <button onClick={()=>{setEditing(v.id);setEditForm({kgValidados:v.kgValidados||0,precioVenta:v.precioVenta||0,observaciones:v.observaciones||"",fecha:v.fecha||v.date||""});}}
+                style={{background:"#2980b9",border:"none",borderRadius:6,padding:"5px 10px",cursor:"pointer",fontSize:11,color:"#fff",fontWeight:700,whiteSpace:"nowrap",marginRight:4}}>✎ Editar</button>
+              <button onClick={()=>{if(window.confirm("¿Eliminar esta validación?\n\nEsta acción no se puede deshacer."))deleteDoc(doc(db,"validaciones_tratamiento",v.id));}}
                 style={{background:"#fdedec",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,color:"#c0392b",flexShrink:0}}>✕</button>
             </div>
           </div>
@@ -1620,6 +1644,23 @@ function ValidacionesAdmin() {
 function MermasAdmin() {
   const [mermas, setMermas] = useState([]);
   const [filterCrop, setFilterCrop] = useState("all");
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState({});
+
+  const saveEditMerma = async () => {
+    if (!editing) return;
+    const updateData = {
+      kgMerma: parseFloat(editForm.kgMerma)||0,
+      causa: editForm.causa||"",
+      notas: editForm.notas||"",
+      updatedAt: new Date().toISOString(),
+    };
+    if(editForm.fecha) { updateData.fecha = editForm.fecha; updateData.date = editForm.fecha; }
+    try {
+      await updateDoc(doc(db,"mermas",editing), updateData);
+      setEditing(null);
+    } catch(e) { alert("⚠ Error: "+e.message); }
+  };
 
   useEffect(()=>{
     const q = query(collection(db,"mermas"), orderBy("createdAt","desc"));
@@ -1721,7 +1762,7 @@ function MermasAdmin() {
           <div style={{fontSize:12}}>Los trabajadores registran mermas desde su app</div>
         </div>
       )}
-      {filtered.map(m=>{
+      {[...filtered].sort((a,b)=>{const da=a.fecha||a.date||a.createdAt||"";const db=b.fecha||b.date||b.createdAt||"";return db.localeCompare(da);}).map(m=>{
         const crop=CROPS[m.crop];
         return(
           <div key={m.id} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderLeft:"4px solid #f39c12",borderRadius:12,padding:"12px 16px",marginBottom:8}}>
@@ -1739,8 +1780,12 @@ function MermasAdmin() {
                 <div style={{fontFamily:"'Courier New',monospace",fontSize:18,fontWeight:700,color:"#f39c12"}}>{fmt(m.kgMerma)} kg</div>
                 <div style={{fontSize:9,color:"#aaa"}}>merma</div>
               </div>
-              <button onClick={()=>{if(window.confirm("¿Eliminar este registro?"))deleteDoc(doc(db,"mermas",m.id));}}
-                style={{background:"#fdedec",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>
+              <div style={{display:"flex",gap:4,flexShrink:0}}>
+                <button onClick={()=>{setEditing(m.id);setEditForm({kgMerma:m.kgMerma||0,causa:m.causa||"",notas:m.notas||"",fecha:m.fecha||m.date||""});}}
+                  style={{background:"#2980b9",border:"none",borderRadius:6,padding:"5px 10px",cursor:"pointer",fontSize:11,color:"#fff",fontWeight:700,whiteSpace:"nowrap"}}>✎ Editar</button>
+                <button onClick={()=>{if(window.confirm("¿Eliminar este registro?\n\nEsta acción no se puede deshacer."))deleteDoc(doc(db,"mermas",m.id));}}
+                  style={{background:"#e74c3c",border:"none",borderRadius:6,padding:"5px 10px",cursor:"pointer",fontSize:13,color:"#fff",fontWeight:700}}>🗑</button>
+              </div>
             </div>
           </div>
         );
