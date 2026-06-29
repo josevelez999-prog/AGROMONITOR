@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Worker from "./Worker";
 import MobileDashboard from "./MobileDashboard";
+import AlmacenAdmin from "./AlmacenAdmin";
 import Ventas from "./Ventas";
 import LoginScreen from "./Auth";
 import UsuariosAdmin from "./UsuariosAdmin";
@@ -1746,14 +1747,14 @@ const NAV=[
   {id:"formulador",label:"Formulador",icon:"⬡"},
   {id:"incidencias",label:"Incidencias",icon:"🚨"},
   {id:"tareas",label:"Tareas y avisos",icon:"📋"},
-  {id:"inventario",label:"Inventario",icon:"📦"},
+  {id:"inventario",label:"Almacén",icon:"📦"},
   {id:"trabajadores",label:"Equipo",icon:"◎"},
   {id:"suelo", label:"Análisis de Suelo", icon:"🌍"},
   {id:"ventas", label:"Ventas", icon:"💰"},
   {id:"rangos", label:"Rangos", icon:"🎯"},
   {id:"usuarios", label:"Usuarios", icon:"👥"},
 ];
-const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Inventario de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas",rangos:"Rangos semanales pH/CE",usuarios:"Gestión de usuarios"};
+const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Almacén de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas",rangos:"Rangos semanales pH/CE",usuarios:"Gestión de usuarios"};
 
 // ─── BLOQUEADO ────────────────────────────────────────────────────────────────
 function Bloqueado({nombre="esta sección"}) {
@@ -1784,20 +1785,10 @@ export default function App(){
   const [forceDesktop, setForceDesktop] = useState(()=>{
     try { return typeof window!=="undefined" && localStorage.getItem("forceDesktop")==="1"; } catch { return false; }
   });
-  const [isPortrait, setIsPortrait] = useState(()=>{
-    try { return typeof window!=="undefined" && window.innerHeight > window.innerWidth; } catch { return false; }
-  });
   useEffect(()=>{
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-      setIsPortrait(window.innerHeight > window.innerWidth);
-    };
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", handleResize);
-    window.addEventListener("orientationchange", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      window.removeEventListener("orientationchange", handleResize);
-    };
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   useEffect(()=>{
@@ -1883,29 +1874,16 @@ export default function App(){
     incidencias: <IncidenciasAdmin/>,
     tareas:      <TareasAdmin/>,
     
-    inventario:  <Inventario/>,
+    inventario:  <AlmacenAdmin/>,
     trabajadores:<Trabajadores readings={readings}/>,
     ventas:      <Ventas readOnly={esObservador}/>,
     rangos:      esObservador?<Bloqueado nombre="los rangos"/>:<RangosSemanales/>,
     usuarios:    esObservador?<Bloqueado nombre="la gestión de usuarios"/>:<UsuariosAdmin/>,
   };
 
-  // Rotación automática a horizontal cuando admin/observador ve web en celular vertical
-  const needsRotation = isMobile && forceDesktop && isPortrait;
-
   return(
-    <div style={needsRotation ? {
-      position:"fixed",
-      top:0, left:0,
-      width:"100vh", height:"100vw",
-      transform:"rotate(90deg) translateY(-100vw)",
-      transformOrigin:"top left",
-      overflow:"auto",
-      display:"flex",
-      background:"#f4f5f7",
-      fontFamily:"'Georgia',serif",
-    } : {display:"flex",minHeight:"100vh",background:"#f4f5f7",fontFamily:"'Georgia',serif"}}>
-      <div style={{width:isMobile&&forceDesktop?150:210,background:"#1a2533",display:"flex",flexDirection:"column",position:"sticky",top:0,height:"100vh",flexShrink:0,overflowY:"auto"}}>
+    <div style={{display:"flex",minHeight:"100vh",background:"#f4f5f7",fontFamily:"'Georgia',serif"}}>
+      <div style={{width:210,background:"#1a2533",display:"flex",flexDirection:"column",position:"sticky",top:0,height:"100vh",flexShrink:0,overflowY:"auto"}}>
         <div style={{padding:"20px 18px 14px",borderBottom:"1px solid #243040"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:22}}>🌿</span>
@@ -1926,7 +1904,7 @@ export default function App(){
           <div>{readings.length} registros</div>
         </div>
       </div>
-      <div style={{flex:1,overflowY:"auto",overflowX:"auto",minWidth:0}}>
+      <div style={{flex:1,overflow:"auto"}}>
         <div style={{background:"#fff",borderBottom:"0.5px solid #e0e0e0",padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
           <h1 style={{margin:0,fontSize:18,fontWeight:700,color:"#1a2533"}}>{TITLES[page]}</h1>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
@@ -1945,7 +1923,7 @@ export default function App(){
             </div>
           </div>
         </div>
-        <div style={{padding:isMobile&&forceDesktop?"12px 14px":"20px 24px",maxWidth:1000,margin:"0 auto"}}>{SECTION[page]}</div>
+        <div style={{padding:"20px 24px",maxWidth:1000,margin:"0 auto"}}>{SECTION[page]}</div>
       </div>
     </div>
   );
