@@ -1784,10 +1784,20 @@ export default function App(){
   const [forceDesktop, setForceDesktop] = useState(()=>{
     try { return typeof window!=="undefined" && localStorage.getItem("forceDesktop")==="1"; } catch { return false; }
   });
+  const [isPortrait, setIsPortrait] = useState(()=>{
+    try { return typeof window!=="undefined" && window.innerHeight > window.innerWidth; } catch { return false; }
+  });
   useEffect(()=>{
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+      setIsPortrait(window.innerHeight > window.innerWidth);
+    };
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+    };
   }, []);
 
   useEffect(()=>{
@@ -1880,8 +1890,21 @@ export default function App(){
     usuarios:    esObservador?<Bloqueado nombre="la gestión de usuarios"/>:<UsuariosAdmin/>,
   };
 
+  // Rotación automática a horizontal cuando admin/observador ve web en celular vertical
+  const needsRotation = isMobile && forceDesktop && isPortrait;
+
   return(
-    <div style={{display:"flex",minHeight:"100vh",background:"#f4f5f7",fontFamily:"'Georgia',serif"}}>
+    <div style={needsRotation ? {
+      position:"fixed",
+      top:0, left:0,
+      width:"100vh", height:"100vw",
+      transform:"rotate(90deg) translateY(-100vw)",
+      transformOrigin:"top left",
+      overflow:"auto",
+      display:"flex",
+      background:"#f4f5f7",
+      fontFamily:"'Georgia',serif",
+    } : {display:"flex",minHeight:"100vh",background:"#f4f5f7",fontFamily:"'Georgia',serif"}}>
       <div style={{width:isMobile&&forceDesktop?150:210,background:"#1a2533",display:"flex",flexDirection:"column",position:"sticky",top:0,height:"100vh",flexShrink:0,overflowY:"auto"}}>
         <div style={{padding:"20px 18px 14px",borderBottom:"1px solid #243040"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
