@@ -78,14 +78,43 @@ export default function AlmacenAdmin() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// SUB-TAB 1: INSUMOS (lista maestra de insumos del almacén)
+// SUB-TAB 1: INSUMOS - Stock vivo con acciones rápidas + Importador XLSX
 // ────────────────────────────────────────────────────────────────────────────
 function InsumosTab({ insumos }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [movimientos, setMovimientos] = useState([]);
   const initial = { name: "", categoria: "agroquimicos", tarjeta: "", tipoAdquisicion: "Compra", presentacion: "Kg", precio: 0, stockInicial: 0, minStock: 0, notas: "" };
   const [form, setForm] = useState(initial);
   const [editing, setEditing] = useState(null);
   const [filterCat, setFilterCat] = useState("all");
   const [search, setSearch] = useState("");
+  const [quickRow, setQuickRow] = useState(null); // { id, tipo, cantidad, fecha, motivo }
+  const [importing, setImporting] = useState(false);
+  const [importLog, setImportLog] = useState(null);
+  const fileRef = useRef(null);
+
+  // Cargar movimientos para calcular stock actual
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "inventario_movimientos"), snap => {
+      setMovimientos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, []);
+
+  // Calcular stock actual por insumo
+  const stockPorInsumo = useMemo(() => {
+    const map = {};
+    insumos.forEach(i => {
+      const entradas = movimientos.filter(m => m.insumoId === i.id && m.tipo === "entrada").reduce((s, m) => s + num(m.cantidad), 0);
+      const salidas = movimientos.filter(m => m.insumoId === i.id && m.tipo === "salida").reduce((s, m) => s + num(m.cantidad), 0);
+      map[i.id] = {
+        actual: num(i.stockInicial) + entradas - salidas,
+        entradas, salidas,
+        valor: (num(i.stockInicial) + entradas - salidas) * num(i.precio),
+      };
+    });
+    return map;
+  }, [insumos, movimientos]);
 
   const save = async () => {
     if (!form.name) { alert("Falta el nombre del insumo"); return; }
@@ -114,9 +143,174 @@ function InsumosTab({ insumos }) {
   };
 
   const eliminar = async (id, name) => {
-    if (!window.confirm(`¿Eliminar el insumo "${name}"?\n\nNo se eliminarán los movimientos históricos.`)) return;
+    if (!window.confirm(`¿Eliminar el insumo "${name}"?\n\nLos movimientos históricos NO se eliminarán.`)) return;
     try { await deleteDoc(doc(db, "inventario", id)); }
     catch (e) { alert("Error: " + e.message); }
+  };
+
+  // ─── REGISTRAR MOVIMIENTO RÁPIDO (entrada/salida en línea) ───
+  const guardarRapido = async () => {
+    if (!quickRow || !quickRow.cantidad || num(quickRow.cantidad) <= 0) {
+      alert("Ingresa una cantidad mayor a 0"); return;
+    }
+    try {
+      await addDoc(collection(db, "inventario_movimientos"), {
+        insumoId: quickRow.id,
+        tipo: quickRow.tipo,
+        cantidad: num(quickRow.cantidad),
+        fecha: quickRow.fecha || today,
+        motivo: quickRow.motivo || (quickRow.tipo === "salida" ? "Uso/aplicación" : "Compra/ingreso"),
+        responsable: quickRow.responsable || "",
+        createdAt: new Date().toISOString(),
+      });
+      setQuickRow(null);
+    } catch (e) { alert("⚠ Error: " + e.message); }
+  };
+
+  // ─── IMPORTADOR DESDE XLSX ───
+  const importarXLSX = async (file) => {
+    setImporting(true);
+    setImportLog({ status: "Cargando librería...", details: [] });
+    try {
+      const XLSX = await loadSheetJS();
+      setImportLog({ status: "Leyendo archivo...", details: [] });
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+      // Detectar secciones por palabras clave
+      const seccionesMap = [
+        { keys: ["agroqu", "fertili"], categoria: "agroquimicos" },
+        { keys: ["ferret"],            categoria: "ferreteria"   },
+        { keys: ["combust"],           categoria: "combustibles" },
+        { keys: ["limpiez"],           categoria: "limpieza"     },
+        { keys: ["plást", "plast"],    categoria: "plasticos"    },
+        { keys: ["semill", "vegetat"], categoria: "semillas"     },
+      ];
+
+      // Encontrar puntos de corte de cada sección
+      let currentCat = "agroquimicos"; // por defecto
+      const items = [];
+      const log = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i] || [];
+        // Detectar cambio de categoría por "Total almacén X"
+        const cellB = String(row[1] || "").toLowerCase();
+        if (cellB.includes("total almac")) {
+          for (const s of seccionesMap) {
+            if (s.keys.some(k => cellB.includes(k))) {
+              log.push(`📍 Sección detectada: ${s.categoria}`);
+              break;
+            }
+          }
+          continue;
+        }
+        // Detectar header de nueva sección (próxima) por "Unidad de producción"
+        if (cellB.includes("unidad de produc")) {
+          // La siguiente sección depende de las filas siguientes
+          // Buscar en filas posteriores qué sigue
+          for (let j = i + 2; j < Math.min(rows.length, i + 30); j++) {
+            const r = rows[j] || [];
+            const test = String(r[1] || "").toLowerCase();
+            if (test.includes("total almac")) {
+              for (const s of seccionesMap) {
+                if (s.keys.some(k => test.includes(k))) {
+                  currentCat = s.categoria;
+                  break;
+                }
+              }
+              break;
+            }
+          }
+          continue;
+        }
+
+        // Filas de datos: tienen valor en columna 4 (tarjeta) o 5 (nombre)
+        const unidad = row[1];
+        const tipoAdq = row[2];
+        const tarjeta = row[3];
+        const nombre = row[4];
+        const presentacion = row[5];
+        const costo = row[6];
+        const saldoIniUnidades = row[7];
+
+        if (!nombre || typeof nombre !== "string" || nombre.length < 2) continue;
+        if (String(nombre).toLowerCase().includes("insumo")) continue; // header
+        if (String(nombre).toLowerCase().includes("nota")) continue;
+
+        // Inferir categoría por columna o por contexto
+        items.push({
+          name: String(nombre).trim().toUpperCase(),
+          categoria: currentCat,
+          tarjeta: String(tarjeta || "").trim(),
+          tipoAdquisicion: String(tipoAdq || "Compra").trim(),
+          presentacion: String(presentacion || "Kg").trim(),
+          precio: num(costo),
+          stockInicial: num(saldoIniUnidades),
+          minStock: 0,
+          notas: String(unidad || "").trim(),
+        });
+      }
+
+      // Refinar categoría según ubicación en archivo (recorrer hacia atrás desde "Total almacén X")
+      const sectionRanges = [];
+      let lastTotal = -1;
+      for (let i = 0; i < rows.length; i++) {
+        const cellB = String((rows[i] || [])[1] || "").toLowerCase();
+        if (cellB.includes("total almac")) {
+          let cat = "agroquimicos";
+          for (const s of seccionesMap) {
+            if (s.keys.some(k => cellB.includes(k))) { cat = s.categoria; break; }
+          }
+          sectionRanges.push({ from: lastTotal + 1, to: i - 1, categoria: cat });
+          lastTotal = i;
+        }
+      }
+
+      // Re-mapear items con su categoría correcta basada en el rango de fila
+      const itemsCorregidos = [];
+      let idx = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i] || [];
+        const nombre = row[4];
+        if (!nombre || typeof nombre !== "string" || nombre.length < 2) continue;
+        if (String(nombre).toLowerCase().includes("insumo")) continue;
+        if (String(nombre).toLowerCase().includes("nota")) continue;
+        // Buscar a qué sección pertenece esta fila
+        const section = sectionRanges.find(s => i >= s.from && i <= s.to);
+        if (idx < items.length) {
+          items[idx].categoria = section?.categoria || "agroquimicos";
+          itemsCorregidos.push(items[idx]);
+          idx++;
+        }
+      }
+
+      const finalItems = itemsCorregidos.length ? itemsCorregidos : items;
+      log.push(`✓ ${finalItems.length} insumos detectados`);
+      setImportLog({ status: `Guardando ${finalItems.length} insumos...`, details: log });
+
+      // Insertar en Firebase (uno a uno con pequeño delay para no saturar)
+      let okCount = 0, errCount = 0;
+      for (const item of finalItems) {
+        try {
+          await addDoc(collection(db, "inventario"), {
+            ...item,
+            createdAt: new Date().toISOString(),
+            importedFrom: file.name,
+          });
+          okCount++;
+        } catch (e) { errCount++; console.warn(e); }
+      }
+
+      log.push(`✅ Guardados: ${okCount}`);
+      if (errCount) log.push(`⚠ Errores: ${errCount}`);
+      setImportLog({ status: "Listo", details: log, done: true, ok: okCount, err: errCount });
+    } catch (e) {
+      setImportLog({ status: "Error", details: [`❌ ${e.message}`], done: true });
+    }
+    setImporting(false);
   };
 
   const insumosFilt = insumos.filter(i => {
@@ -127,64 +321,116 @@ function InsumosTab({ insumos }) {
 
   const card = { background: "#fff", border: "0.5px solid #e0e0e0", borderRadius: 12, padding: "14px 18px", marginBottom: 12 };
 
+  // Resumen de stock total
+  const resumen = useMemo(() => {
+    let valorTotal = 0, stockBajo = 0;
+    insumos.forEach(i => {
+      const s = stockPorInsumo[i.id];
+      if (s) {
+        valorTotal += s.valor;
+        if (s.actual <= num(i.minStock) && num(i.minStock) > 0) stockBajo++;
+      }
+    });
+    return { valorTotal, stockBajo, total: insumos.length };
+  }, [insumos, stockPorInsumo]);
+
   return (
     <div>
-      {/* Formulario alta/edición */}
-      <div style={{ ...card, borderLeft: "4px solid #27ae60" }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#27ae60", marginBottom: 12 }}>
-          {editing ? "✎ EDITAR INSUMO" : "➕ AGREGAR INSUMO AL ALMACÉN"}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 10 }}>
-          <div style={{ gridColumn: "1 / 3" }}>
-            <label style={LBL}>Nombre del insumo *</label>
-            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Ej: ACIDO FOSFORICO" style={INP} />
+      {/* Resumen */}
+      {insumos.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 14 }}>
+          <div style={{ background: "linear-gradient(135deg,#27ae60,#2ecc71)", color: "#fff", borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, opacity: 0.85, textTransform: "uppercase" }}>📦 Total insumos</div>
+            <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Courier New',monospace" }}>{resumen.total}</div>
           </div>
-          <div>
-            <label style={LBL}>No. Tarjeta *</label>
-            <input value={form.tarjeta} onChange={e => setForm(p => ({ ...p, tarjeta: e.target.value }))} placeholder="Ej: 004" style={INP} />
+          <div style={{ background: "#fff", border: "1.5px solid #2980b9", borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, color: "#2980b9", textTransform: "uppercase", fontWeight: 600 }}>💰 Valor en almacén</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#2980b9", fontFamily: "'Courier New',monospace" }}>${fmt(resumen.valorTotal)}</div>
           </div>
-          <div>
-            <label style={LBL}>Presentación</label>
-            <select value={form.presentacion} onChange={e => setForm(p => ({ ...p, presentacion: e.target.value }))} style={INP}>
-              {PRESENTACIONES.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={LBL}>Categoría / Almacén *</label>
-            <select value={form.categoria} onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))} style={INP}>
-              {CATEGORIAS.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={LBL}>Tipo adquisición</label>
-            <select value={form.tipoAdquisicion} onChange={e => setForm(p => ({ ...p, tipoAdquisicion: e.target.value }))} style={INP}>
-              {TIPOS_ADQUISICION.map(t => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={LBL}>Costo unitario ($)</label>
-            <input type="number" step="0.01" value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} style={INP} />
-          </div>
-          <div>
-            <label style={LBL}>Stock inicial</label>
-            <input type="number" step="0.001" value={form.stockInicial} onChange={e => setForm(p => ({ ...p, stockInicial: e.target.value }))} style={INP} />
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={LBL}>Notas (opcional)</label>
-            <input value={form.notas} onChange={e => setForm(p => ({ ...p, notas: e.target.value }))} style={INP} />
+          <div style={{ background: resumen.stockBajo ? "#fdedec" : "#fff", border: `1.5px solid ${resumen.stockBajo ? "#e74c3c" : "#27ae60"}`, borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, color: resumen.stockBajo ? "#c0392b" : "#27ae60", textTransform: "uppercase", fontWeight: 600 }}>{resumen.stockBajo ? "⚠ Stock bajo" : "✅ Sin alertas"}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: resumen.stockBajo ? "#c0392b" : "#27ae60", fontFamily: "'Courier New',monospace" }}>{resumen.stockBajo}</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={save} style={{ padding: "9px 22px", background: "#27ae60", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
-            {editing ? "Guardar cambios" : "+ Agregar"}
-          </button>
-          {editing && (
-            <button onClick={() => { setEditing(null); setForm(initial); }} style={{ padding: "9px 16px", border: "1px solid #ddd", borderRadius: 8, background: "transparent", color: "#888", cursor: "pointer", fontSize: 13 }}>
-              Cancelar
+      )}
+
+      {/* Importador XLSX */}
+      <div style={{ ...card, borderLeft: "4px solid #f39c12", background: "#fef9e7" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#b7950b", marginBottom: 4 }}>📤 Importar inventario desde Excel</div>
+            <div style={{ fontSize: 11, color: "#856404" }}>
+              Sube tu archivo "RG_MOVIMIENTOS_DE_ALMACEN" y se cargarán todos los insumos con sus categorías, tarjetas y stocks iniciales
+            </div>
+          </div>
+          <div>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files[0]; if (f) importarXLSX(f); e.target.value = ""; }} />
+            <button onClick={() => fileRef.current?.click()} disabled={importing} style={{ padding: "9px 18px", background: importing ? "#aaa" : "#f39c12", color: "#fff", border: "none", borderRadius: 8, cursor: importing ? "wait" : "pointer", fontWeight: 700, fontSize: 12 }}>
+              {importing ? "⏳ Importando..." : "📤 Seleccionar archivo XLSX"}
             </button>
-          )}
+          </div>
         </div>
+        {importLog && (
+          <div style={{ marginTop: 12, padding: "10px 12px", background: "#fff", borderRadius: 8, fontSize: 11, fontFamily: "monospace", border: "1px solid #f9e79f" }}>
+            <div style={{ fontWeight: 700, marginBottom: 4, color: importLog.done && !importLog.err ? "#27ae60" : importLog.done && importLog.err ? "#c0392b" : "#856404" }}>
+              {importLog.status}
+            </div>
+            {(importLog.details || []).map((l, i) => <div key={i} style={{ color: "#666" }}>{l}</div>)}
+            {importLog.done && <button onClick={() => setImportLog(null)} style={{ marginTop: 6, padding: "4px 12px", background: "transparent", border: "1px solid #ccc", borderRadius: 6, fontSize: 11, cursor: "pointer", color: "#666" }}>Cerrar</button>}
+          </div>
+        )}
       </div>
+
+      {/* Formulario alta/edición manual */}
+      <details style={{ marginBottom: 12 }}>
+        <summary style={{ cursor: "pointer", padding: "10px 14px", background: "#fff", border: "0.5px solid #e0e0e0", borderRadius: 12, fontSize: 12, fontWeight: 600, color: "#27ae60" }}>
+          ➕ Agregar insumo manualmente {editing && "(editando)"}
+        </summary>
+        <div style={{ ...card, borderLeft: "4px solid #27ae60", marginTop: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 10 }}>
+            <div style={{ gridColumn: "1 / 3" }}>
+              <label style={LBL}>Nombre del insumo *</label>
+              <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Ej: ACIDO FOSFORICO" style={INP} />
+            </div>
+            <div>
+              <label style={LBL}>No. Tarjeta *</label>
+              <input value={form.tarjeta} onChange={e => setForm(p => ({ ...p, tarjeta: e.target.value }))} placeholder="Ej: 004" style={INP} />
+            </div>
+            <div>
+              <label style={LBL}>Presentación</label>
+              <select value={form.presentacion} onChange={e => setForm(p => ({ ...p, presentacion: e.target.value }))} style={INP}>
+                {PRESENTACIONES.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={LBL}>Categoría / Almacén *</label>
+              <select value={form.categoria} onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))} style={INP}>
+                {CATEGORIAS.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={LBL}>Tipo adquisición</label>
+              <select value={form.tipoAdquisicion} onChange={e => setForm(p => ({ ...p, tipoAdquisicion: e.target.value }))} style={INP}>
+                {TIPOS_ADQUISICION.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={LBL}>Costo unitario ($)</label>
+              <input type="number" step="0.01" value={form.precio} onChange={e => setForm(p => ({ ...p, precio: e.target.value }))} style={INP} />
+            </div>
+            <div>
+              <label style={LBL}>Stock inicial</label>
+              <input type="number" step="0.001" value={form.stockInicial} onChange={e => setForm(p => ({ ...p, stockInicial: e.target.value }))} style={INP} />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={save} style={{ padding: "9px 22px", background: "#27ae60", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+              {editing ? "Guardar cambios" : "+ Agregar"}
+            </button>
+            {editing && <button onClick={() => { setEditing(null); setForm(initial); }} style={{ padding: "9px 16px", border: "1px solid #ddd", borderRadius: 8, background: "transparent", color: "#888", cursor: "pointer", fontSize: 13 }}>Cancelar</button>}
+          </div>
+        </div>
+      </details>
 
       {/* Filtros */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
@@ -194,6 +440,7 @@ function InsumosTab({ insumos }) {
         </button>
         {CATEGORIAS.map(c => {
           const count = insumos.filter(i => i.categoria === c.id).length;
+          if (count === 0) return null;
           const active = filterCat === c.id;
           return (
             <button key={c.id} onClick={() => setFilterCat(c.id)} style={{ padding: "6px 12px", border: `1px solid ${active ? c.color : "#ddd"}`, borderRadius: 16, background: active ? c.color + "20" : "#fff", cursor: "pointer", fontSize: 11, color: active ? c.color : "#666", fontWeight: active ? 700 : 500 }}>
@@ -203,18 +450,18 @@ function InsumosTab({ insumos }) {
         })}
       </div>
 
-      {/* Lista */}
+      {/* Lista de insumos con stock vivo y acción rápida */}
       {!insumosFilt.length ? (
         <div style={{ ...card, textAlign: "center", color: "#aaa", padding: "40px 20px" }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>📦</div>
-          <div>{insumos.length === 0 ? "Sin insumos. Agrega el primero arriba." : "Sin resultados con esos filtros"}</div>
+          <div>{insumos.length === 0 ? "Sube tu archivo Excel arriba para cargar tu inventario" : "Sin resultados con esos filtros"}</div>
         </div>
       ) : (
         <div style={{ background: "#fff", border: "0.5px solid #e0e0e0", borderRadius: 12, padding: 14, overflow: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 800 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1000 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #f0f0f0" }}>
-                {["Tarjeta", "Nombre", "Categoría", "Presentación", "Adquisición", "$/u", "Stock inicial", "Mínimo", ""].map(h => (
+                {["Tarjeta", "Insumo", "Categoría", "Pres.", "$/U", "Stock actual", "Valor", "Acciones rápidas", ""].map(h => (
                   <th key={h} style={{ padding: "10px 8px", textAlign: "left", color: "#aaa", fontWeight: 500, fontSize: 11 }}>{h}</th>
                 ))}
               </tr>
@@ -222,27 +469,92 @@ function InsumosTab({ insumos }) {
             <tbody>
               {insumosFilt.map(i => {
                 const cat = CATEGORIAS.find(c => c.id === i.categoria);
+                const s = stockPorInsumo[i.id] || { actual: 0, valor: 0 };
+                const low = num(i.minStock) > 0 && s.actual <= num(i.minStock);
+                const isQuick = quickRow && quickRow.id === i.id;
+
                 return (
-                  <tr key={i.id} style={{ borderBottom: "1px solid #fafafa" }}>
-                    <td style={{ padding: "10px 8px", fontFamily: "'Courier New',monospace", fontWeight: 700, color: "#2980b9" }}>{i.tarjeta || "—"}</td>
-                    <td style={{ padding: "10px 8px", fontWeight: 600 }}>{i.name}</td>
-                    <td style={{ padding: "10px 8px" }}>
-                      <span style={{ background: (cat?.color || "#888") + "20", color: cat?.color || "#888", borderRadius: 8, padding: "2px 8px", fontSize: 10, fontWeight: 600 }}>
-                        {cat?.emoji} {cat?.label || i.categoria}
-                      </span>
-                    </td>
-                    <td style={{ padding: "10px 8px", color: "#666" }}>{i.presentacion}</td>
-                    <td style={{ padding: "10px 8px", color: "#666", fontSize: 11 }}>{i.tipoAdquisicion}</td>
-                    <td style={{ padding: "10px 8px", fontFamily: "'Courier New',monospace" }}>${fmt(i.precio)}</td>
-                    <td style={{ padding: "10px 8px", fontFamily: "'Courier New',monospace", color: "#27ae60", fontWeight: 600 }}>{fmt(i.stockInicial, 3)}</td>
-                    <td style={{ padding: "10px 8px", fontFamily: "'Courier New',monospace", color: "#888" }}>{fmt(i.minStock, 1)}</td>
-                    <td style={{ padding: "10px 8px" }}>
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <button onClick={() => { setEditing(i.id); setForm({ name: i.name, categoria: i.categoria || "agroquimicos", tarjeta: i.tarjeta || "", tipoAdquisicion: i.tipoAdquisicion || "Compra", presentacion: i.presentacion || "Kg", precio: i.precio || 0, stockInicial: i.stockInicial || 0, minStock: i.minStock || 0, notas: i.notas || "" }); window.scrollTo(0, 0); }} style={{ background: "#eaf4fb", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, color: "#2980b9", fontWeight: 600 }}>✎</button>
-                        <button onClick={() => eliminar(i.id, i.name)} style={{ background: "#fdedec", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, color: "#c0392b" }}>🗑</button>
-                      </div>
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={i.id} style={{ borderBottom: "1px solid #fafafa", background: low ? "#fefcf0" : "transparent" }}>
+                      <td style={{ padding: "10px 8px", fontFamily: "'Courier New',monospace", fontWeight: 700, color: "#2980b9" }}>{i.tarjeta || "—"}</td>
+                      <td style={{ padding: "10px 8px", fontWeight: 600 }}>{i.name}</td>
+                      <td style={{ padding: "10px 8px" }}>
+                        <span style={{ background: (cat?.color || "#888") + "20", color: cat?.color || "#888", borderRadius: 8, padding: "2px 8px", fontSize: 10, fontWeight: 600 }}>
+                          {cat?.emoji} {cat?.label || i.categoria}
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 8px", color: "#666" }}>{i.presentacion}</td>
+                      <td style={{ padding: "10px 8px", fontFamily: "'Courier New',monospace" }}>${fmt(i.precio)}</td>
+                      <td style={{ padding: "10px 8px", fontFamily: "'Courier New',monospace", fontWeight: 700, color: low ? "#e74c3c" : (s.actual === 0 ? "#aaa" : "#27ae60") }}>
+                        {fmt(s.actual, 3)} {i.presentacion}
+                        {low && <div style={{ fontSize: 9, color: "#c0392b", fontWeight: 600 }}>⚠ Mín: {fmt(i.minStock, 2)}</div>}
+                      </td>
+                      <td style={{ padding: "10px 8px", fontFamily: "'Courier New',monospace", color: "#666" }}>${fmt(s.valor)}</td>
+                      <td style={{ padding: "10px 8px" }}>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button onClick={() => setQuickRow({ id: i.id, tipo: "salida", cantidad: "", fecha: today, motivo: "" })} style={{ background: isQuick && quickRow.tipo === "salida" ? "#e67e22" : "#fdeee7", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 11, color: isQuick && quickRow.tipo === "salida" ? "#fff" : "#e67e22", fontWeight: 700 }} title="Registrar uso/salida">
+                            📤 Usé
+                          </button>
+                          <button onClick={() => setQuickRow({ id: i.id, tipo: "entrada", cantidad: "", fecha: today, motivo: "" })} style={{ background: isQuick && quickRow.tipo === "entrada" ? "#27ae60" : "#eafaf1", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 11, color: isQuick && quickRow.tipo === "entrada" ? "#fff" : "#27ae60", fontWeight: 700 }} title="Registrar entrada/compra">
+                            📥 Entró
+                          </button>
+                        </div>
+                      </td>
+                      <td style={{ padding: "10px 8px" }}>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button onClick={() => { setEditing(i.id); setForm({ name: i.name, categoria: i.categoria || "agroquimicos", tarjeta: i.tarjeta || "", tipoAdquisicion: i.tipoAdquisicion || "Compra", presentacion: i.presentacion || "Kg", precio: i.precio || 0, stockInicial: i.stockInicial || 0, minStock: i.minStock || 0, notas: i.notas || "" }); window.scrollTo(0, 0); }} style={{ background: "#eaf4fb", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, color: "#2980b9", fontWeight: 600 }} title="Editar">✎</button>
+                          <button onClick={() => eliminar(i.id, i.name)} style={{ background: "#fdedec", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, color: "#c0392b" }} title="Eliminar">🗑</button>
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Mini-form inline cuando se da Usé / Entró */}
+                    {isQuick && (
+                      <tr style={{ background: quickRow.tipo === "salida" ? "#fef5e8" : "#eafaf1", borderBottom: "2px solid " + (quickRow.tipo === "salida" ? "#e67e22" : "#27ae60") }}>
+                        <td colSpan={9} style={{ padding: "12px 14px" }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: quickRow.tipo === "salida" ? "#e67e22" : "#27ae60", marginBottom: 8 }}>
+                            {quickRow.tipo === "salida" ? "📤 REGISTRAR USO" : "📥 REGISTRAR ENTRADA"} — {i.name}
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr 1fr 130px 100px", gap: 8, alignItems: "end" }}>
+                            <div>
+                              <label style={LBL}>Cantidad ({i.presentacion}) *</label>
+                              <input type="number" step="0.001" min="0" autoFocus value={quickRow.cantidad} onChange={e => setQuickRow(p => ({ ...p, cantidad: e.target.value }))} style={INP} />
+                            </div>
+                            <div>
+                              <label style={LBL}>📅 Fecha</label>
+                              <input type="date" max={today} value={quickRow.fecha} onChange={e => setQuickRow(p => ({ ...p, fecha: e.target.value }))} style={INP} />
+                            </div>
+                            <div>
+                              <label style={LBL}>Motivo / Concepto</label>
+                              <input value={quickRow.motivo} onChange={e => setQuickRow(p => ({ ...p, motivo: e.target.value }))} placeholder={quickRow.tipo === "salida" ? "Ej: Aplicación invernadero 2" : "Ej: Compra factura 123"} style={INP} />
+                            </div>
+                            <div>
+                              <label style={LBL}>Responsable</label>
+                              <input value={quickRow.responsable || ""} onChange={e => setQuickRow(p => ({ ...p, responsable: e.target.value }))} placeholder="Nombre" style={INP} />
+                            </div>
+                            <button onClick={guardarRapido} style={{ padding: "9px 16px", background: quickRow.tipo === "salida" ? "#e67e22" : "#27ae60", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
+                              ✓ Guardar
+                            </button>
+                            <button onClick={() => setQuickRow(null)} style={{ padding: "9px 14px", border: "1px solid #ddd", borderRadius: 8, background: "#fff", color: "#888", cursor: "pointer", fontSize: 12 }}>
+                              Cancelar
+                            </button>
+                          </div>
+                          {/* Preview del cambio */}
+                          {num(quickRow.cantidad) > 0 && (
+                            <div style={{ marginTop: 8, fontSize: 11, color: "#666", paddingTop: 6, borderTop: "1px dashed #ccc" }}>
+                              Stock actual: <strong>{fmt(s.actual, 3)} {i.presentacion}</strong>
+                              {" → "}
+                              <strong style={{ color: quickRow.tipo === "salida" ? "#e67e22" : "#27ae60" }}>
+                                {fmt(quickRow.tipo === "salida" ? s.actual - num(quickRow.cantidad) : s.actual + num(quickRow.cantidad), 3)} {i.presentacion}
+                              </strong>
+                              {quickRow.tipo === "salida" && (s.actual - num(quickRow.cantidad)) < 0 && (
+                                <span style={{ color: "#c0392b", marginLeft: 8, fontWeight: 700 }}>⚠ Stock quedaría negativo</span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 );
               })}
             </tbody>
