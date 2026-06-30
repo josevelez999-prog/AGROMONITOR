@@ -321,30 +321,41 @@ function InsumosTab({ insumos }) {
 
   const card = { background: "#fff", border: "0.5px solid #e0e0e0", borderRadius: 12, padding: "14px 18px", marginBottom: 12 };
 
-  // Resumen de stock total
+  // Resumen de stock total (respeta filtro de categoría)
   const resumen = useMemo(() => {
     let valorTotal = 0, stockBajo = 0;
-    insumos.forEach(i => {
+    const insumosCalc = filterCat === "all" ? insumos : insumos.filter(i => i.categoria === filterCat);
+    insumosCalc.forEach(i => {
       const s = stockPorInsumo[i.id];
       if (s) {
         valorTotal += s.valor;
         if (s.actual <= num(i.minStock) && num(i.minStock) > 0) stockBajo++;
       }
     });
-    return { valorTotal, stockBajo, total: insumos.length };
-  }, [insumos, stockPorInsumo]);
+    return { valorTotal, stockBajo, total: insumosCalc.length };
+  }, [insumos, stockPorInsumo, filterCat]);
 
   return (
     <div>
-      {/* Resumen */}
+      {/* Resumen con selector de categoría para valor filtrado */}
       {insumos.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 14 }}>
           <div style={{ background: "linear-gradient(135deg,#27ae60,#2ecc71)", color: "#fff", borderRadius: 12, padding: "14px 16px" }}>
-            <div style={{ fontSize: 11, opacity: 0.85, textTransform: "uppercase" }}>📦 Total insumos</div>
+            <div style={{ fontSize: 11, opacity: 0.85, textTransform: "uppercase" }}>📦 Total insumos {filterCat !== "all" ? `(${CATEGORIAS.find(c=>c.id===filterCat)?.label})` : ""}</div>
             <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Courier New',monospace" }}>{resumen.total}</div>
           </div>
-          <div style={{ background: "#fff", border: "1.5px solid #2980b9", borderRadius: 12, padding: "14px 16px" }}>
-            <div style={{ fontSize: 11, color: "#2980b9", textTransform: "uppercase", fontWeight: 600 }}>💰 Valor en almacén</div>
+          <div style={{ background: "#fff", border: "1.5px solid #2980b9", borderRadius: 12, padding: "12px 16px" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: 4 }}>
+              <div style={{ fontSize: 11, color: "#2980b9", textTransform: "uppercase", fontWeight: 600 }}>💰 Valor en almacén</div>
+              <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} style={{ fontSize:10, padding:"3px 6px", border:"1px solid #ddd", borderRadius:6, background:"#fff", color:"#555", cursor:"pointer" }}>
+                <option value="all">Toda la categoría</option>
+                {CATEGORIAS.map(c=>{
+                  const cnt = insumos.filter(i=>i.categoria===c.id).length;
+                  if(cnt===0) return null;
+                  return <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>;
+                })}
+              </select>
+            </div>
             <div style={{ fontSize: 22, fontWeight: 700, color: "#2980b9", fontFamily: "'Courier New',monospace" }}>${fmt(resumen.valorTotal)}</div>
           </div>
           <div style={{ background: resumen.stockBajo ? "#fdedec" : "#fff", border: `1.5px solid ${resumen.stockBajo ? "#e74c3c" : "#27ae60"}`, borderRadius: 12, padding: "14px 16px" }}>
@@ -354,32 +365,30 @@ function InsumosTab({ insumos }) {
         </div>
       )}
 
-      {/* Importador XLSX */}
-      <div style={{ ...card, borderLeft: "4px solid #f39c12", background: "#fef9e7" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#b7950b", marginBottom: 4 }}>📤 Importar inventario desde Excel</div>
-            <div style={{ fontSize: 11, color: "#856404" }}>
-              Sube tu archivo "RG_MOVIMIENTOS_DE_ALMACEN" y se cargarán todos los insumos con sus categorías, tarjetas y stocks iniciales
+      {/* Importador XLSX discreto - como details/summary plegable */}
+      <details style={{ marginBottom: 12 }}>
+        <summary style={{ cursor: "pointer", padding: "8px 14px", background: "#fff", border: "0.5px solid #e0e0e0", borderRadius: 10, fontSize: 11, color: "#888", display: "inline-block" }}>
+          📤 Importar inventario desde Excel
+        </summary>
+        <div style={{ marginTop: 8, padding: "12px 14px", background: "#fef9e7", border: "1px solid #f9e79f", borderRadius: 10 }}>
+          <div style={{ fontSize: 11, color: "#856404", marginBottom: 8 }}>
+            Sube tu archivo "RG_MOVIMIENTOS_DE_ALMACEN" para cargar todos los insumos con sus categorías y stocks iniciales (esto solo se hace una vez)
+          </div>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files[0]; if (f) importarXLSX(f); e.target.value = ""; }} />
+          <button onClick={() => fileRef.current?.click()} disabled={importing} style={{ padding: "7px 14px", background: importing ? "#aaa" : "#f39c12", color: "#fff", border: "none", borderRadius: 6, cursor: importing ? "wait" : "pointer", fontWeight: 700, fontSize: 11 }}>
+            {importing ? "⏳ Importando..." : "📤 Seleccionar archivo XLSX"}
+          </button>
+          {importLog && (
+            <div style={{ marginTop: 10, padding: "8px 10px", background: "#fff", borderRadius: 6, fontSize: 10.5, fontFamily: "monospace", border: "1px solid #f9e79f" }}>
+              <div style={{ fontWeight: 700, marginBottom: 4, color: importLog.done && !importLog.err ? "#27ae60" : importLog.done && importLog.err ? "#c0392b" : "#856404" }}>
+                {importLog.status}
+              </div>
+              {(importLog.details || []).map((l, i) => <div key={i} style={{ color: "#666" }}>{l}</div>)}
+              {importLog.done && <button onClick={() => setImportLog(null)} style={{ marginTop: 6, padding: "3px 10px", background: "transparent", border: "1px solid #ccc", borderRadius: 4, fontSize: 10, cursor: "pointer", color: "#666" }}>Cerrar</button>}
             </div>
-          </div>
-          <div>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files[0]; if (f) importarXLSX(f); e.target.value = ""; }} />
-            <button onClick={() => fileRef.current?.click()} disabled={importing} style={{ padding: "9px 18px", background: importing ? "#aaa" : "#f39c12", color: "#fff", border: "none", borderRadius: 8, cursor: importing ? "wait" : "pointer", fontWeight: 700, fontSize: 12 }}>
-              {importing ? "⏳ Importando..." : "📤 Seleccionar archivo XLSX"}
-            </button>
-          </div>
+          )}
         </div>
-        {importLog && (
-          <div style={{ marginTop: 12, padding: "10px 12px", background: "#fff", borderRadius: 8, fontSize: 11, fontFamily: "monospace", border: "1px solid #f9e79f" }}>
-            <div style={{ fontWeight: 700, marginBottom: 4, color: importLog.done && !importLog.err ? "#27ae60" : importLog.done && importLog.err ? "#c0392b" : "#856404" }}>
-              {importLog.status}
-            </div>
-            {(importLog.details || []).map((l, i) => <div key={i} style={{ color: "#666" }}>{l}</div>)}
-            {importLog.done && <button onClick={() => setImportLog(null)} style={{ marginTop: 6, padding: "4px 12px", background: "transparent", border: "1px solid #ccc", borderRadius: 6, fontSize: 11, cursor: "pointer", color: "#666" }}>Cerrar</button>}
-          </div>
-        )}
-      </div>
+      </details>
 
       {/* Formulario alta/edición manual */}
       <details style={{ marginBottom: 12 }}>
@@ -566,16 +575,51 @@ function InsumosTab({ insumos }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// SUB-TAB 2: MOVIMIENTOS (entradas y salidas)
+// SUB-TAB 2: MOVIMIENTOS - con búsqueda inteligente y stock vivo
 // ────────────────────────────────────────────────────────────────────────────
 function MovimientosTab({ insumos, movimientos }) {
   const today = new Date().toISOString().slice(0, 10);
-  const initial = { insumoId: "", tipo: "entrada", cantidad: 0, fecha: today, motivo: "", responsable: "" };
+  const initial = { insumoId: "", tipo: "salida", cantidad: 0, fecha: today, motivo: "", responsable: "" };
   const [form, setForm] = useState(initial);
   const [editing, setEditing] = useState(null);
   const [filterMes, setFilterMes] = useState(today.slice(0, 7));
   const [filterTipo, setFilterTipo] = useState("all");
   const [filterCat, setFilterCat] = useState("all");
+  const [filterInsumoId, setFilterInsumoId] = useState("all");
+
+  // Búsqueda inteligente del insumo
+  const [searchInsumo, setSearchInsumo] = useState("");
+  const [showSugg, setShowSugg] = useState(false);
+  const searchRef = useRef(null);
+
+  // Cerrar sugerencias al hacer click fuera
+  useEffect(() => {
+    const handler = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) setShowSugg(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Calcular stock por insumo
+  const stockPorInsumo = useMemo(() => {
+    const map = {};
+    insumos.forEach(i => {
+      const ent = movimientos.filter(m => m.insumoId === i.id && m.tipo === "entrada").reduce((s, m) => s + num(m.cantidad), 0);
+      const sal = movimientos.filter(m => m.insumoId === i.id && m.tipo === "salida").reduce((s, m) => s + num(m.cantidad), 0);
+      map[i.id] = num(i.stockInicial) + ent - sal;
+    });
+    return map;
+  }, [insumos, movimientos]);
+
+  // Sugerencias de búsqueda
+  const sugerencias = useMemo(() => {
+    if (!searchInsumo) return [];
+    const q = searchInsumo.toLowerCase();
+    return insumos
+      .filter(i => i.name?.toLowerCase().includes(q) || i.tarjeta?.includes(q))
+      .slice(0, 10);
+  }, [searchInsumo, insumos]);
 
   const save = async () => {
     if (!form.insumoId) { alert("Selecciona el insumo"); return; }
@@ -597,6 +641,7 @@ function MovimientosTab({ insumos, movimientos }) {
         await addDoc(collection(db, "inventario_movimientos"), { ...data, createdAt: new Date().toISOString() });
       }
       setForm({ ...initial, fecha: today });
+      setSearchInsumo("");
     } catch (e) { alert("⚠ Error: " + e.message); }
   };
 
@@ -611,6 +656,7 @@ function MovimientosTab({ insumos, movimientos }) {
   const movFilt = movimientos.filter(m => {
     if (filterMes && !(m.fecha || "").startsWith(filterMes)) return false;
     if (filterTipo !== "all" && m.tipo !== filterTipo) return false;
+    if (filterInsumoId !== "all" && m.insumoId !== filterInsumoId) return false;
     if (filterCat !== "all") {
       const ins = getInsumo(m.insumoId);
       if (!ins || ins.categoria !== filterCat) return false;
@@ -619,31 +665,92 @@ function MovimientosTab({ insumos, movimientos }) {
   });
 
   const insumoSel = getInsumo(form.insumoId);
+  const stockInsumoSel = insumoSel ? stockPorInsumo[insumoSel.id] : null;
+
+  // Insumos filtrados por categoría para el dropdown de "Filtro por insumo"
+  const insumosParaFiltro = filterCat === "all" ? insumos : insumos.filter(i => i.categoria === filterCat);
+  // Reset filterInsumoId si cambia categoría
+  useEffect(() => {
+    if (filterInsumoId !== "all" && !insumosParaFiltro.find(i => i.id === filterInsumoId)) {
+      setFilterInsumoId("all");
+    }
+  }, [filterCat, filterInsumoId, insumosParaFiltro]);
 
   return (
     <div>
-      {/* Formulario nuevo movimiento */}
+      {/* Formulario nuevo movimiento con búsqueda inteligente */}
       <div style={{ background: "#fff", border: "0.5px solid #e0e0e0", borderLeft: "4px solid #2980b9", borderRadius: 12, padding: "14px 18px", marginBottom: 16 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#2980b9", marginBottom: 12 }}>
           {editing ? "✎ EDITAR MOVIMIENTO" : "➕ REGISTRAR MOVIMIENTO"}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
-          <div>
-            <label style={LBL}>Insumo *</label>
-            <select value={form.insumoId} onChange={e => setForm(p => ({ ...p, insumoId: e.target.value }))} style={INP}>
-              <option value="">— Selecciona —</option>
-              {insumos.map(i => (
-                <option key={i.id} value={i.id}>
-                  {i.tarjeta ? `[${i.tarjeta}] ` : ""}{i.name} ({i.presentacion})
-                </option>
-              ))}
-            </select>
+
+        {/* Búsqueda inteligente de insumo */}
+        <div ref={searchRef} style={{ position: "relative", marginBottom: 10 }}>
+          <label style={LBL}>🔍 Buscar insumo por nombre o tarjeta *</label>
+          <input
+            value={searchInsumo || (insumoSel ? `[${insumoSel.tarjeta||"—"}] ${insumoSel.name}` : "")}
+            onChange={e => { setSearchInsumo(e.target.value); setShowSugg(true); setForm(p => ({ ...p, insumoId: "" })); }}
+            onFocus={() => setShowSugg(true)}
+            placeholder="Escribe para buscar... (ej: 'acido', '004', 'fosforico')"
+            style={INP}
+            autoComplete="off"
+          />
+          {showSugg && sugerencias.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #ddd", borderRadius: 8, marginTop: 2, maxHeight: 240, overflowY: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.08)", zIndex: 10 }}>
+              {sugerencias.map(ins => {
+                const cat = CATEGORIAS.find(c => c.id === ins.categoria);
+                const stk = stockPorInsumo[ins.id] || 0;
+                const low = num(ins.minStock) > 0 && stk <= num(ins.minStock);
+                return (
+                  <div key={ins.id}
+                    onClick={() => { setForm(p => ({ ...p, insumoId: ins.id })); setSearchInsumo(""); setShowSugg(false); }}
+                    style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #f5f5f5", display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#f8f9fa"}
+                    onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+                    <span style={{ background: (cat?.color || "#888") + "20", color: cat?.color || "#888", borderRadius: 6, padding: "2px 6px", fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{cat?.emoji}</span>
+                    <span style={{ fontFamily: "'Courier New',monospace", color: "#2980b9", fontWeight: 700, fontSize: 11, minWidth: 32 }}>{ins.tarjeta || "—"}</span>
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>{ins.name}</span>
+                    <span style={{ fontSize: 10, color: "#888" }}>{ins.presentacion}</span>
+                    <span style={{ fontSize: 11, fontFamily: "'Courier New',monospace", fontWeight: 700, color: low ? "#e74c3c" : (stk === 0 ? "#aaa" : "#27ae60"), minWidth: 80, textAlign: "right" }}>
+                      Stock: {fmt(stk, 2)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {showSugg && searchInsumo && sugerencias.length === 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #ddd", borderRadius: 8, marginTop: 2, padding: "12px 14px", fontSize: 11, color: "#888", boxShadow: "0 4px 12px rgba(0,0,0,0.08)", zIndex: 10 }}>
+              Sin resultados para "{searchInsumo}"
+            </div>
+          )}
+        </div>
+
+        {/* Card del insumo seleccionado con stock actual */}
+        {insumoSel && (
+          <div style={{ background: "#eafaf1", border: "1px solid #a9dfbf", borderRadius: 8, padding: "10px 14px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, color: "#666" }}>Insumo seleccionado:</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#27ae60" }}>
+                [{insumoSel.tarjeta || "—"}] {insumoSel.name}
+              </div>
+              <div style={{ fontSize: 11, color: "#888" }}>{CATEGORIAS.find(c => c.id === insumoSel.categoria)?.label} · ${fmt(insumoSel.precio)}/{insumoSel.presentacion}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", fontWeight: 600 }}>Stock actual</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: num(stockInsumoSel) <= num(insumoSel.minStock) && num(insumoSel.minStock) > 0 ? "#e74c3c" : "#27ae60", fontFamily: "'Courier New',monospace" }}>
+                {fmt(stockInsumoSel, 3)} {insumoSel.presentacion}
+              </div>
+            </div>
           </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
             <label style={LBL}>Tipo *</label>
             <select value={form.tipo} onChange={e => setForm(p => ({ ...p, tipo: e.target.value }))} style={INP}>
-              <option value="entrada">📥 Entrada</option>
-              <option value="salida">📤 Salida</option>
+              <option value="salida">📤 Salida (uso/consumo)</option>
+              <option value="entrada">📥 Entrada (compra/ingreso)</option>
             </select>
           </div>
           <div>
@@ -656,41 +763,99 @@ function MovimientosTab({ insumos, movimientos }) {
           </div>
           <div style={{ gridColumn: "1 / 3" }}>
             <label style={LBL}>Motivo / Concepto</label>
-            <input value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))} placeholder="Ej: Aplicación en invernadero 2, Compra factura 123, Donación..." style={INP} />
+            <input value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))} placeholder="Ej: Aplicación invernadero 2, Compra factura 123..." style={INP} />
           </div>
-          <div style={{ gridColumn: "3 / 5" }}>
+          <div>
             <label style={LBL}>Responsable</label>
-            <input value={form.responsable} onChange={e => setForm(p => ({ ...p, responsable: e.target.value }))} placeholder="Nombre de quien realizó" style={INP} />
+            <input value={form.responsable} onChange={e => setForm(p => ({ ...p, responsable: e.target.value }))} placeholder="Nombre" style={INP} />
           </div>
         </div>
+
+        {/* Preview del cambio */}
+        {insumoSel && num(form.cantidad) > 0 && (
+          <div style={{ marginBottom: 10, padding: "8px 12px", background: "#fafafa", borderRadius: 6, fontSize: 11, color: "#666" }}>
+            Stock: <strong>{fmt(stockInsumoSel, 3)} {insumoSel.presentacion}</strong> →{" "}
+            <strong style={{ color: form.tipo === "salida" ? "#e67e22" : "#27ae60" }}>
+              {fmt(form.tipo === "salida" ? stockInsumoSel - num(form.cantidad) : stockInsumoSel + num(form.cantidad), 3)} {insumoSel.presentacion}
+            </strong>
+            {form.tipo === "salida" && (stockInsumoSel - num(form.cantidad)) < 0 && (
+              <span style={{ color: "#c0392b", marginLeft: 8, fontWeight: 700 }}>⚠ Stock quedaría negativo</span>
+            )}
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={save} style={{ padding: "9px 22px", background: form.tipo === "entrada" ? "#27ae60" : "#e67e22", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+          <button onClick={save} disabled={!form.insumoId} style={{ padding: "9px 22px", background: !form.insumoId ? "#aaa" : (form.tipo === "entrada" ? "#27ae60" : "#e67e22"), color: "#fff", border: "none", borderRadius: 8, cursor: !form.insumoId ? "not-allowed" : "pointer", fontWeight: 700, fontSize: 13 }}>
             {editing ? "Guardar" : `+ Registrar ${form.tipo}`}
           </button>
-          {editing && (
-            <button onClick={() => { setEditing(null); setForm({ ...initial, fecha: today }); }} style={{ padding: "9px 16px", border: "1px solid #ddd", borderRadius: 8, background: "transparent", color: "#888", cursor: "pointer", fontSize: 13 }}>
-              Cancelar
-            </button>
-          )}
+          {editing && <button onClick={() => { setEditing(null); setForm({ ...initial, fecha: today }); setSearchInsumo(""); }} style={{ padding: "9px 16px", border: "1px solid #ddd", borderRadius: 8, background: "transparent", color: "#888", cursor: "pointer", fontSize: 13 }}>Cancelar</button>}
         </div>
       </div>
 
-      {/* Filtros */}
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
-        <input type="month" value={filterMes} onChange={e => setFilterMes(e.target.value)} style={{ ...INP, maxWidth: 160 }} />
-        <select value={filterTipo} onChange={e => setFilterTipo(e.target.value)} style={{ ...INP, maxWidth: 160 }}>
-          <option value="all">Todos los tipos</option>
-          <option value="entrada">📥 Entradas</option>
-          <option value="salida">📤 Salidas</option>
-        </select>
-        <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{ ...INP, maxWidth: 200 }}>
-          <option value="all">Todas las categorías</option>
-          {CATEGORIAS.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
-        </select>
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "#666" }}>
-          {movFilt.length} movimientos · 📥 {movFilt.filter(m => m.tipo === "entrada").length} · 📤 {movFilt.filter(m => m.tipo === "salida").length}
+      {/* Filtros - ahora con categoría y por insumo */}
+      <div style={{ display: "grid", gridTemplateColumns: "150px 150px 200px 1fr auto", gap: 8, marginBottom: 12, alignItems: "end" }}>
+        <div>
+          <label style={LBL}>📅 Mes</label>
+          <input type="month" value={filterMes} onChange={e => setFilterMes(e.target.value)} style={INP} />
+        </div>
+        <div>
+          <label style={LBL}>Tipo</label>
+          <select value={filterTipo} onChange={e => setFilterTipo(e.target.value)} style={INP}>
+            <option value="all">Todos</option>
+            <option value="entrada">📥 Entradas</option>
+            <option value="salida">📤 Salidas</option>
+          </select>
+        </div>
+        <div>
+          <label style={LBL}>📦 Categoría / Almacén</label>
+          <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={INP}>
+            <option value="all">Todas las categorías</option>
+            {CATEGORIAS.map(c => {
+              const cnt = insumos.filter(i => i.categoria === c.id).length;
+              if (cnt === 0) return null;
+              return <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>;
+            })}
+          </select>
+        </div>
+        <div>
+          <label style={LBL}>🔎 Filtrar por insumo</label>
+          <select value={filterInsumoId} onChange={e => setFilterInsumoId(e.target.value)} style={INP}>
+            <option value="all">Todos los insumos {filterCat !== "all" ? `(${insumosParaFiltro.length})` : ""}</option>
+            {insumosParaFiltro.map(i => {
+              const stk = stockPorInsumo[i.id] || 0;
+              return <option key={i.id} value={i.id}>{i.tarjeta ? `[${i.tarjeta}] ` : ""}{i.name} (Stock: {fmt(stk, 2)} {i.presentacion})</option>;
+            })}
+          </select>
+        </div>
+        <div style={{ fontSize: 11, color: "#666", paddingBottom: 8, whiteSpace: "nowrap" }}>
+          {movFilt.length} mov · 📥 {movFilt.filter(m => m.tipo === "entrada").length} · 📤 {movFilt.filter(m => m.tipo === "salida").length}
         </div>
       </div>
+
+      {/* Stock card si hay insumo filtrado */}
+      {filterInsumoId !== "all" && (() => {
+        const ins = getInsumo(filterInsumoId);
+        if (!ins) return null;
+        const stk = stockPorInsumo[ins.id] || 0;
+        const cat = CATEGORIAS.find(c => c.id === ins.categoria);
+        const low = num(ins.minStock) > 0 && stk <= num(ins.minStock);
+        return (
+          <div style={{ background: "linear-gradient(135deg, #2980b9, #3498db)", color: "#fff", borderRadius: 10, padding: "12px 16px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 10, opacity: 0.85, textTransform: "uppercase", letterSpacing: 0.5 }}>Insumo filtrado</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{cat?.emoji} [{ins.tarjeta || "—"}] {ins.name}</div>
+              <div style={{ fontSize: 11, opacity: 0.85 }}>{cat?.label} · ${fmt(ins.precio)}/{ins.presentacion}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 10, opacity: 0.85, textTransform: "uppercase" }}>Stock actual</div>
+              <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'Courier New',monospace" }}>
+                {fmt(stk, 3)} {ins.presentacion}
+              </div>
+              {low && <div style={{ fontSize: 10, color: "#fee", fontWeight: 600 }}>⚠ Por debajo del mínimo ({fmt(ins.minStock, 2)})</div>}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Tabla */}
       {!movFilt.length ? (
@@ -709,7 +874,7 @@ function MovimientosTab({ insumos, movimientos }) {
               </tr>
             </thead>
             <tbody>
-              {movFilt.map(m => {
+              {[...movFilt].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).map(m => {
                 const ins = getInsumo(m.insumoId);
                 const valor = (ins?.precio || 0) * (m.cantidad || 0);
                 return (
@@ -732,7 +897,7 @@ function MovimientosTab({ insumos, movimientos }) {
                     <td style={{ padding: "9px 8px", color: "#666", fontSize: 11 }}>{m.responsable || "—"}</td>
                     <td style={{ padding: "9px 8px" }}>
                       <div style={{ display: "flex", gap: 4 }}>
-                        <button onClick={() => { setEditing(m.id); setForm({ insumoId: m.insumoId, tipo: m.tipo, cantidad: m.cantidad, fecha: m.fecha, motivo: m.motivo || "", responsable: m.responsable || "" }); window.scrollTo(0, 0); }} style={{ background: "#eaf4fb", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, color: "#2980b9", fontWeight: 600 }}>✎</button>
+                        <button onClick={() => { setEditing(m.id); setForm({ insumoId: m.insumoId, tipo: m.tipo, cantidad: m.cantidad, fecha: m.fecha, motivo: m.motivo || "", responsable: m.responsable || "" }); setSearchInsumo(""); window.scrollTo(0, 0); }} style={{ background: "#eaf4fb", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, color: "#2980b9", fontWeight: 600 }}>✎</button>
                         <button onClick={() => eliminar(m.id)} style={{ background: "#fdedec", border: "none", borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, color: "#c0392b" }}>🗑</button>
                       </div>
                     </td>
