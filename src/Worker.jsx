@@ -153,9 +153,11 @@ function MisAlertasActivas({ worker }) {
     const rangosUnsub = onSnapshot(doc(db,"config","rangos_semanales"), snap=>{
       if(snap.exists()) setWeeklyRangos(snap.data());
     });
-    const q = query(collection(db,"readings"), where("worker","==",worker), orderBy("createdAt","desc"));
+    const q = query(collection(db,"readings"), where("worker","==",worker));
     const unsub = onSnapshot(q, snap=>{
-      const recent = snap.docs.slice(0,10).map(d=>({id:d.id,...d.data()}));
+      const all = snap.docs.map(d=>({id:d.id,...d.data()}));
+      all.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
+      const recent = all.slice(0,10);
       const conAlerta = recent.filter(r=>{
         if(r.resolved||r.dismissed) return false;
         if((r.tipo||"entrada")!=="entrada") return false;
@@ -174,7 +176,7 @@ function MisAlertasActivas({ worker }) {
       setAlertas(conAlerta);
     });
     return()=>{unsub();rangosUnsub();};
-  },[worker,weeklyRangos]);
+  },[worker]);
 
   const resolver = async (id) => {
     if(!window.confirm("¿Marcar esta medición como resuelta? Se quitará la alerta del admin y de tu pantalla.")) return;
@@ -502,10 +504,15 @@ function MiHistorial({ worker }) {
   const [readings, setReadings] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(()=>{
-    const q = query(collection(db,"readings"),where("worker","==",worker),orderBy("createdAt","desc"));
-    const unsub = onSnapshot(q,snap=>{setReadings(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);},()=>setLoading(false));
+    const q = query(collection(db,"readings"),where("worker","==",worker));
+    const unsub = onSnapshot(q,snap=>{
+      const all = snap.docs.map(d=>({id:d.id,...d.data()}));
+      all.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
+      setReadings(all);
+      setLoading(false);
+    },(err)=>{ console.error("readings listener:", err); setLoading(false); });
     return()=>{unsub();rangosUnsub();};
-  },[worker,weeklyRangos]);
+  },[worker]);
   if(loading) return <div style={{textAlign:"center",padding:"2rem",color:"#aaa"}}>Cargando...</div>;
   if(!readings.length) return <div style={{textAlign:"center",padding:"2rem",color:"#aaa"}}><div style={{fontSize:36,marginBottom:8}}>📋</div><div>Aún no tienes registros</div></div>;
   return (
@@ -556,7 +563,7 @@ function RegistroCosecha({ worker }) {
 
   useEffect(()=>{
     const q = query(collection(db,"lotes"),orderBy("createdAt","desc"));
-    const unsub = onSnapshot(q,snap=>setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    const unsub = onSnapshot(q,snap=>setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))),(err)=>console.error("lotes:",err));
     const u2 = onSnapshot(query(collection(db,"ventas")), s=>setVentasW(s.docs.map(d=>({id:d.id,...d.data()}))));
     const u3 = onSnapshot(query(collection(db,"cosechas_trabajador")), s=>setCosechasW(s.docs.map(d=>({id:d.id,...d.data()}))));
     return()=>{ unsub(); u2(); u3(); };
@@ -1458,14 +1465,20 @@ class ErrorBoundary extends React.Component {
   }
   render() {
     if (this.state.hasError) {
-      const errMsg = String(this.state.error?.message || this.state.error || "");
+      const errMsg = String(this.state.error?.message || this.state.error || "Error desconocido");
       return (
         <div style={{padding:"24px 20px",margin:"20px",background:"#fdedec",border:"2px solid #e74c3c",borderRadius:12,color:"#c0392b",textAlign:"center"}}>
           <div style={{fontSize:36,marginBottom:10}}>⚠</div>
           <div style={{fontSize:17,fontWeight:700,marginBottom:8}}>Algo falló al cargar</div>
-          <div style={{fontSize:13,marginBottom:18,color:"#888"}}>
+          <div style={{fontSize:13,marginBottom:14,color:"#888"}}>
             Presiona "Reintentar". Si sigue fallando, recarga la app.
           </div>
+          <details style={{marginBottom:16,textAlign:"left"}}>
+            <summary style={{fontSize:11,color:"#999",cursor:"pointer"}}>Ver detalle técnico</summary>
+            <div style={{fontSize:10.5,fontFamily:"monospace",background:"#fff",padding:10,borderRadius:8,marginTop:6,maxHeight:160,overflow:"auto",color:"#666",wordBreak:"break-word"}}>
+              {errMsg}
+            </div>
+          </details>
           <button onClick={()=>{this.setState({hasError:false,error:null});}}
             style={{padding:"11px 24px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,marginRight:8,fontSize:14}}>
             🔄 Reintentar
