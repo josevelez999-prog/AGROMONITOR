@@ -1,9 +1,9 @@
 // Firebase con persistencia offline + auto-recovery del bug INTERNAL ASSERTION
 
 import { initializeApp } from "firebase/app";
-import { 
-  initializeFirestore, 
-  persistentLocalCache, 
+import {
+  initializeFirestore,
+  persistentLocalCache,
   persistentSingleTabManager,
   memoryLocalCache,
   CACHE_SIZE_UNLIMITED,
@@ -21,20 +21,20 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Detectar si en sesión previa hubo un error grave de IndexedDB
+// ─── Detectar fallos previos y elegir modo de cache ─────────────────────────
 let useMemoryCache = false;
 try {
   const failCount = parseInt(localStorage.getItem("firestore_fail_count") || "0", 10);
   if (failCount >= 2) {
-    // Después de 2 fallos consecutivos, usar memoria sola (sin offline pero estable)
     console.warn("⚠ Firestore en modo memoria (sin offline) por errores previos");
     useMemoryCache = true;
   }
 } catch {}
 
-// Configuración del caché — usa persistentSingleTabManager (más estable que Multi)
+// persistentSingleTabManager (más estable que Multi para móviles)
+// Si ya hubo 2+ fallos, usa memoryLocalCache (sin bug pero sin offline)
 const cacheConfig = useMemoryCache
-  ? memoryLocalCache()  // Sin offline, pero sin bug INTERNAL ASSERTION
+  ? memoryLocalCache()
   : persistentLocalCache({
       tabManager: persistentSingleTabManager({ forceOwnership: true }),
       cacheSizeBytes: CACHE_SIZE_UNLIMITED,
@@ -44,22 +44,21 @@ export const db = initializeFirestore(app, { localCache: cacheConfig });
 export const auth = getAuth(app);
 
 // ─── AUTO-RECOVERY GLOBAL ─────────────────────────────────────────────────────
-// Captura errores no manejados del SDK y limpia el caché automáticamente
 if (typeof window !== "undefined") {
   const handleFirestoreCrash = async (errorMsg) => {
-    const isFirestoreBug = 
+    const isFirestoreBug =
       errorMsg.includes("INTERNAL ASSERTION") ||
       errorMsg.includes("Unexpected state") ||
-      errorMsg.includes("IndexedDB") && errorMsg.includes("Firestore");
-    
+      (errorMsg.includes("IndexedDB") && errorMsg.includes("Firestore"));
+
     if (!isFirestoreBug) return;
-    
+
     // Incrementar contador de fallos
     try {
       const c = parseInt(localStorage.getItem("firestore_fail_count") || "0", 10);
       localStorage.setItem("firestore_fail_count", String(c + 1));
     } catch {}
-    
+
     // Evitar bucle infinito de recargas
     const lastReload = parseInt(sessionStorage.getItem("firestore_last_reload") || "0", 10);
     const now = Date.now();
@@ -68,10 +67,9 @@ if (typeof window !== "undefined") {
       return;
     }
     sessionStorage.setItem("firestore_last_reload", String(now));
-    
+
     console.warn("🔧 Auto-recuperación: limpiando IndexedDB de Firestore...");
-    
-    // Limpiar todas las BDs de Firestore
+
     try {
       if ("databases" in indexedDB) {
         const dbs = await indexedDB.databases();
@@ -86,25 +84,28 @@ if (typeof window !== "undefined") {
     } catch (e) {
       console.error("Error limpiando IndexedDB:", e);
     }
-    
-    // Recargar después de un momento
+
     setTimeout(() => window.location.reload(), 800);
   };
 
-  // Errores síncronos no capturados
   window.addEventListener("error", (e) => {
     const msg = e?.error?.message || e?.message || "";
     handleFirestoreCrash(String(msg));
   });
 
-  // Promesas rechazadas no manejadas
   window.addEventListener("unhandledrejection", (e) => {
     const msg = e?.reason?.message || String(e?.reason) || "";
     handleFirestoreCrash(String(msg));
   });
 
-  // Si la app funcionó correctamente por 30 segundos, resetear contador de fallos
+  // Si la app funcionó correctamente por 30 segundos, resetear contador
   setTimeout(() => {
-    try { localStorage.setItem("firestore_fail_count", "0"); } catch {}
+    try {
+      const c = parseInt(localStorage.getItem("firestore_fail_count") || "0", 10);
+      if (c > 0) {
+        localStorage.setItem("firestore_fail_count", "0");
+        console.log("✓ Contador de fallos Firestore reseteado");
+      }
+    } catch {}
   }, 30000);
 }

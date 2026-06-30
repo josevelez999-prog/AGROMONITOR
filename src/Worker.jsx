@@ -1448,8 +1448,14 @@ class ErrorBoundary extends React.Component {
     const isFirestoreBug = errMsg.includes("INTERNAL ASSERTION") || errMsg.includes("Unexpected state");
 
     if (isFirestoreBug) {
-      // Auto-recuperación: el trabajador no debe ver el error
-      // Anti-bucle: máximo 3 auto-recuperaciones por sesión
+      // IMPORTANTE: incrementar el contador GLOBAL de fallos en localStorage
+      // Tras 2 fallos, firebase.js automáticamente cambiará a memoryLocalCache (sin bug)
+      try {
+        const c = parseInt(localStorage.getItem("firestore_fail_count") || "0", 10);
+        localStorage.setItem("firestore_fail_count", String(c + 1));
+      } catch {}
+
+      // Anti-bucle de auto-recovery por sesión (no por carga)
       let autoCount = 0;
       try { autoCount = parseInt(sessionStorage.getItem("eb_auto_count") || "0", 10); } catch {}
 
@@ -1476,7 +1482,7 @@ class ErrorBoundary extends React.Component {
         clearAndReload();
         return;
       }
-      // Si ya hubo 3 auto-recuperaciones, mostrar mensaje al trabajador
+      // Si ya hubo 3 auto-recuperaciones en una sesión, mostrar mensaje
     }
   }
   render() {
@@ -1503,11 +1509,13 @@ class ErrorBoundary extends React.Component {
             <div style={{fontSize:40,marginBottom:14}}>⏳</div>
             <div style={{fontSize:17,fontWeight:700,marginBottom:10,color:"#b7950b"}}>Conexión interrumpida</div>
             <div style={{fontSize:13,marginBottom:20,lineHeight:1.5}}>
-              Hay un problema temporal con la conexión a la base de datos.<br/>
-              Por favor cierra sesión y vuelve a entrar.
+              Vamos a recargar la app en modo estable.<br/>
+              Tus datos están seguros en la nube.
             </div>
             <button onClick={async ()=>{
               try {
+                // Forzar modo memoria al siguiente arranque (sin el bug)
+                localStorage.setItem("firestore_fail_count", "2");
                 if("databases" in indexedDB) {
                   const dbs = await indexedDB.databases();
                   await Promise.all(dbs.filter(d=>d.name?.includes("firestore")).map(d=>new Promise(res=>{
