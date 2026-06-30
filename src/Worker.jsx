@@ -36,6 +36,33 @@ const handleFirestoreError = (error) => {
   return false;
 };
 
+// Reintenta una operación de guardado si falla por error transitorio de Firestore.
+// Si detecta el bug INTERNAL ASSERTION, limpia IndexedDB e intenta de nuevo en memoria.
+const saveWithRetry = async (saveFn, maxRetries = 2) => {
+  let lastError = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await saveFn();
+    } catch (e) {
+      lastError = e;
+      const msg = e?.message || String(e);
+      const isTransient = msg.includes("INTERNAL ASSERTION") ||
+                         msg.includes("Unexpected state") ||
+                         msg.includes("unavailable") ||
+                         msg.includes("deadline-exceeded");
+      if (!isTransient || attempt >= maxRetries) throw e;
+      // Incrementar contador global de fallos (firebase.js usa esto para fallback a memoria)
+      try {
+        const c = parseInt(localStorage.getItem("firestore_fail_count") || "0", 10);
+        localStorage.setItem("firestore_fail_count", String(c + 1));
+      } catch {}
+      console.warn(`Reintentando guardado (intento ${attempt + 1}/${maxRetries})...`);
+      await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+};
+
 const CROPS = {
   jitomate:  {
     name:"Jitomate", emoji:"🍅", color:"#c0392b",
@@ -305,7 +332,7 @@ function Registro({ worker }) {
         createdAt:now.toISOString(), photoURL,
       };
       Object.keys(data).forEach(k => data[k] === null && delete data[k]);
-      await addDoc(collection(db,"readings"), cleanData(data));
+      await saveWithRetry(() => addDoc(collection(db,"readings"), cleanData(data)));
       setSaved(true);
       setForm(p=>({...p,zone:"Zona 1",bandeja:"Bandeja 1",tinaco:"Tinaco 1",ph:"",ce:"",drenaje:"",volumenEntrada:"",notes:"",ca:"",no3:"",k:"",fe:""}));
       setImgFile(null); setImgPreview(null);
@@ -623,13 +650,13 @@ function RegistroCosecha({ worker }) {
     try {
       const lote=getLote(formC.loteId); const now=new Date();
       const fechaCosecha = formC.fecha || now.toISOString().slice(0,10);
-      await addDoc(collection(db,"cosechas_trabajador"),cleanData({
+      await saveWithRetry(() => addDoc(collection(db,"cosechas_trabajador"),cleanData({
         ...formC,kgCosechados:parseFloat(formC.kgCosechados),worker,
         date:fechaCosecha, fecha:fechaCosecha, time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",crop:lote?.crop||"",
         zona:lote?.zona||"", invernadero:lote?.zona||"",
         tratamiento:lote?.tratamiento||"",
-      }));
+      })));
       setSaved("cosecha"); setFormC({loteId:"",kgCosechados:"",calidad:"primera",notas:"",fecha:new Date().toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
     } catch(e) {
@@ -649,12 +676,12 @@ function RegistroCosecha({ worker }) {
       const kg=parseFloat(formV.kgVendidos)||0;
       const precio=parseFloat(formV.precioKg)||0;
       const now=new Date();
-      await addDoc(collection(db,"ventas"),cleanData({
+      await saveWithRetry(() => addDoc(collection(db,"ventas"),cleanData({
         ...formV,kgVendidos:kg,precioKg:precio,totalVenta:parseFloat((kg*precio).toFixed(2)),
         worker,cropName:CROPS[lote?.crop||""]?.name||"",loteName:lote?.nombre||"",
         tratamiento:lote?.tratamiento||"",crop:lote?.crop||"",
         date:formV.fecha,createdAt:now.toISOString(),
-      }));
+      })));
       setSaved("venta");
       setFormV({loteId:"",comprador:"",canal:"Mercado local",calidad:"primera",kgVendidos:"",precioKg:"",factura:"",notas:"",fecha:new Date().toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
@@ -672,14 +699,14 @@ function RegistroCosecha({ worker }) {
     setSaving(true);
     try {
       const lote=getLote(formVL.loteId); const now=new Date();
-      await addDoc(collection(db,"validaciones_tratamiento"),cleanData({
+      await saveWithRetry(() => addDoc(collection(db,"validaciones_tratamiento"),cleanData({
         ...formVL,kgValidados:parseFloat(formVL.kgValidados)||0,
         precioVenta:parseFloat(formVL.precioVenta)||0,
         etiquetaTratamiento:formVL.etiqueta,
         worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",
         crop:lote?.crop||"",tratamiento:lote?.tratamiento||"",zona:lote?.zona||"",
-      }));
+      })));
       setSaved("validacion");
       setFormVL({loteId:"",etiqueta:"",kgValidados:"",precioVenta:"",observaciones:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
@@ -697,12 +724,12 @@ function RegistroCosecha({ worker }) {
     setSaving(true);
     try {
       const lote=getLote(formMerma.loteId); const now=new Date();
-      await addDoc(collection(db,"mermas"),cleanData({
+      await saveWithRetry(() => addDoc(collection(db,"mermas"),cleanData({
         ...formMerma,kgMerma:parseFloat(formMerma.kgMerma)||0,
         worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",
         crop:lote?.crop||"",zona:lote?.zona||"",
-      }));
+      })));
       setSaved("merma");
       setFormMerma({loteId:"",kgMerma:"",causa:"",notas:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
@@ -720,14 +747,14 @@ function RegistroCosecha({ worker }) {
     setSaving(true);
     try {
       const lote=getLote(formSiniestro.loteId); const now=new Date();
-      await addDoc(collection(db,"siniestros"),cleanData({
+      await saveWithRetry(() => addDoc(collection(db,"siniestros"),cleanData({
         ...formSiniestro,
         kgSiniestro:parseFloat(formSiniestro.kgSiniestro)||0,
         montoSeguro:parseFloat(formSiniestro.montoSeguro)||0,
         worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
         createdAt:now.toISOString(),loteName:lote?.nombre||"",
         crop:lote?.crop||"",zona:lote?.zona||"",
-      }));
+      })));
       setSaved("siniestro");
       setFormSiniestro({loteId:"",kgSiniestro:"",montoSeguro:"",evento:"granizo",notas:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
@@ -1128,7 +1155,7 @@ function Incidencias({ worker }) {
     try{
       if(imgFile){const st=getStorage();const r=sRef(st,`incidencias/${Date.now()}_${imgFile.name}`);await uploadBytes(r,imgFile);photoURL=await getDownloadURL(r);}
       const now=new Date();
-      await addDoc(collection(db,"incidencias"),cleanData({...form,worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),createdAt:now.toISOString(),status:"pendiente",photoURL}));
+      await saveWithRetry(() => addDoc(collection(db,"incidencias"),cleanData({...form,worker,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),createdAt:now.toISOString(),status:"pendiente",photoURL})));
       setSaved(true);setForm({type:"plaga",zone:"",description:"",crop:"jitomate"});setImgFile(null);setImgPreview(null);
       setTimeout(()=>setSaved(false),4000);
     }catch{alert("⚠ Error al enviar:\n" + (e?.message||"Error desconocido") + (!navigator.onLine?"\n\n📴 Sin conexión":""));console.error("Incidencia error:",e);}
@@ -1512,21 +1539,16 @@ class ErrorBoundary extends React.Component {
               Vamos a recargar la app en modo estable.<br/>
               Tus datos están seguros en la nube.
             </div>
-            <button onClick={async ()=>{
+            <button onClick={()=>{
               try {
                 // Forzar modo memoria al siguiente arranque (sin el bug)
                 localStorage.setItem("firestore_fail_count", "2");
-                if("databases" in indexedDB) {
-                  const dbs = await indexedDB.databases();
-                  await Promise.all(dbs.filter(d=>d.name?.includes("firestore")).map(d=>new Promise(res=>{
-                    const r=indexedDB.deleteDatabase(d.name); r.onsuccess=r.onerror=r.onblocked=()=>res();
-                  })));
-                }
-                try { sessionStorage.removeItem("eb_auto_count"); } catch {}
+                sessionStorage.removeItem("eb_auto_count");
               } catch {}
-              window.location.reload();
+              // Ir a reset.html que hace limpieza profunda y confiable
+              window.location.href = "/reset.html";
             }} style={{padding:"12px 24px",background:"#f39c12",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:700}}>
-              🔄 Volver a iniciar
+              🔄 Reparar ahora
             </button>
           </div>
         );

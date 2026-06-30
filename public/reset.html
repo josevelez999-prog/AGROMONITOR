@@ -3,79 +3,93 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Reset GreenLog</title>
+  <title>Reparar GreenLog</title>
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; padding: 30px 20px; max-width: 500px; margin: 0 auto; background: #fafafa; color: #333; }
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 30px 20px; max-width: 500px; margin: 0 auto; background: #fafafa; color: #333; text-align: center; }
     h1 { color: #27ae60; font-size: 22px; margin-bottom: 6px; }
     .sub { color: #888; font-size: 13px; margin-bottom: 22px; }
-    button { display: block; width: 100%; padding: 14px; margin: 10px 0; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
-    .btn-primary { background: #e74c3c; color: white; }
-    .btn-go { background: #27ae60; color: white; }
-    #log { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-top: 14px; font-family: monospace; font-size: 11px; min-height: 80px; white-space: pre-wrap; }
+    button { display: block; width: 100%; padding: 16px; margin: 10px 0; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .btn-primary { background: #27ae60; color: white; }
+    #log { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-top: 14px; font-family: monospace; font-size: 11px; min-height: 60px; white-space: pre-wrap; text-align: left; color: #555; }
+    .spin { display:inline-block; animation: s 1.2s linear infinite; font-size: 40px; }
+    @keyframes s { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <h1>🌿 GreenLog - Reset</h1>
-  <div class="sub">Limpia el caché y Service Worker si la app no abre correctamente</div>
-  
-  <button class="btn-primary" onclick="resetAll()">🗑 LIMPIAR TODO (SW + caché)</button>
-  <button class="btn-go" onclick="location.href='/'">🚀 IR A LA APP</button>
-  
-  <div id="log">Estado: listo</div>
-  
+  <h1>🌿 GreenLog</h1>
+  <div class="sub">Reparación automática</div>
+
+  <div id="status"><div class="spin">🔄</div><div style="margin-top:10px;font-weight:600;color:#27ae60">Reparando, espera...</div></div>
+
+  <button class="btn-primary" id="goBtn" style="display:none" onclick="location.href='/'">🚀 Abrir GreenLog</button>
+
+  <div id="log">Iniciando...</div>
+
   <script>
     const log = msg => {
       const el = document.getElementById("log");
       el.textContent += "\n" + msg;
     };
-    
+
     async function resetAll() {
-      const el = document.getElementById("log");
-      el.textContent = "Iniciando limpieza...";
-      
-      // 1. Desregistrar TODOS los service workers
+      document.getElementById("log").textContent = "Limpiando...";
+
+      // 1. Desregistrar Service Workers
       if ("serviceWorker" in navigator) {
         try {
           const regs = await navigator.serviceWorker.getRegistrations();
-          log(`Service Workers encontrados: ${regs.length}`);
-          for (const r of regs) {
-            await r.unregister();
-            log(`  ✓ Desregistrado: ${r.scope}`);
-          }
-        } catch(e) { log("Error SW: " + e.message); }
+          for (const r of regs) { await r.unregister(); }
+          log("✓ Service Workers limpios (" + regs.length + ")");
+        } catch(e) { log("SW: " + e.message); }
       }
-      
-      // 2. Borrar TODOS los cachés
+
+      // 2. Borrar cachés
       if ("caches" in window) {
         try {
           const keys = await caches.keys();
-          log(`Cachés encontrados: ${keys.length}`);
-          for (const k of keys) {
-            await caches.delete(k);
-            log(`  ✓ Borrado: ${k}`);
-          }
-        } catch(e) { log("Error cache: " + e.message); }
+          for (const k of keys) { await caches.delete(k); }
+          log("✓ Cachés limpios (" + keys.length + ")");
+        } catch(e) { log("cache: " + e.message); }
       }
-      
-      // 3. Borrar localStorage
+
+      // 3. BORRAR INDEXEDDB DE FIRESTORE (lo más importante)
       try {
-        localStorage.clear();
-        log("✓ localStorage limpio");
-      } catch(e) { log("Error localStorage: " + e.message); }
-      
-      // 4. Borrar sessionStorage
-      try {
-        sessionStorage.clear();
-        log("✓ sessionStorage limpio");
-      } catch(e) {}
-      
-      log("\n✅ TODO LIMPIO. Espera 2 segundos...");
-      
-      setTimeout(() => {
-        log("Recargando app...");
-        window.location.href = "/";
-      }, 2000);
+        if ("databases" in indexedDB) {
+          const dbs = await indexedDB.databases();
+          for (const d of dbs) {
+            if (d.name) {
+              await new Promise(res => {
+                const req = indexedDB.deleteDatabase(d.name);
+                req.onsuccess = req.onerror = req.onblocked = () => res();
+              });
+              log("✓ BD borrada: " + d.name);
+            }
+          }
+        } else {
+          // Fallback: borrar nombres conocidos de Firestore
+          const known = ["firestore/[DEFAULT]/agromonitor-d389e/main", "firebaseLocalStorageDb"];
+          for (const name of known) {
+            try { indexedDB.deleteDatabase(name); } catch {}
+          }
+          log("✓ IndexedDB limpiado (modo fallback)");
+        }
+      } catch(e) { log("idb: " + e.message); }
+
+      // 4. localStorage + sessionStorage
+      try { localStorage.clear(); log("✓ localStorage limpio"); } catch(e) {}
+      try { sessionStorage.clear(); log("✓ sessionStorage limpio"); } catch(e) {}
+
+      log("\n✅ LISTO");
+
+      // Mostrar botón y auto-redirigir
+      document.getElementById("status").innerHTML = '<div style="font-size:40px">✅</div><div style="margin-top:10px;font-weight:600;color:#27ae60">¡Reparado!</div>';
+      document.getElementById("goBtn").style.display = "block";
+
+      setTimeout(() => { window.location.href = "/"; }, 2500);
     }
+
+    // Ejecutar automáticamente al cargar
+    resetAll();
   </script>
 </body>
 </html>
