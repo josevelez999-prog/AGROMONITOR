@@ -19,9 +19,10 @@
   <h1>🌿 GreenLog</h1>
   <div class="sub">Reparación automática</div>
 
-  <div id="status"><div class="spin">🔄</div><div style="margin-top:10px;font-weight:600;color:#27ae60">Reparando, espera...</div></div>
+  <div id="status"><div style="font-size:40px">🔧</div><div style="margin-top:10px;font-weight:600;color:#555">Presiona el botón para reparar</div></div>
 
-  <button class="btn-primary" id="goBtn" style="display:none" onclick="location.href='/'">🚀 Abrir GreenLog</button>
+  <button class="btn-primary" onclick="resetAll()">🗑 Reparar ahora</button>
+  <button class="btn-primary" id="goBtn" style="display:none;background:#27ae60" onclick="location.href='/'">🚀 Abrir GreenLog</button>
 
   <div id="log">Iniciando...</div>
 
@@ -79,17 +80,13 @@
       try { localStorage.clear(); log("✓ localStorage limpio"); } catch(e) {}
       try { sessionStorage.clear(); log("✓ sessionStorage limpio"); } catch(e) {}
 
-      log("\n✅ LISTO");
+      log("\n✅ LISTO. Presiona el botón verde para abrir la app.");
 
-      // Mostrar botón y auto-redirigir
       document.getElementById("status").innerHTML = '<div style="font-size:40px">✅</div><div style="margin-top:10px;font-weight:600;color:#27ae60">¡Reparado!</div>';
       document.getElementById("goBtn").style.display = "block";
-
-      setTimeout(() => { window.location.href = "/"; }, 2500);
     }
 
-    // Ejecutar automáticamente al cargar
-    resetAll();
+    // NO se ejecuta automáticamente (evita bucles). El usuario presiona el botón.
   </script>
 </body>
 </html>

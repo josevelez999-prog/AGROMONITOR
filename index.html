@@ -3,58 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#27ae60" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="GreenLog" />
     <title>GreenLog</title>
-    <style>
-      /* Permitir rotación libre del dispositivo */
-      html, body {
-        margin: 0;
-        padding: 0;
-        min-height: 100vh;
-        -webkit-text-size-adjust: 100%;
-      }
-      /* Optimización para landscape */
-      @media screen and (orientation: landscape) and (max-width: 1024px) {
-        body {
-          font-size: 13px;
-        }
-      }
-    </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
-      // Registrar Service Worker
+      // Registrar Service Worker (SIN auto-reload, para evitar bucles de recarga)
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
           navigator.serviceWorker.register("/sw.js")
             .then(reg => {
               console.log("✓ SW registrado", reg.scope);
+              // Busca nueva versión pero NO recarga sola.
+              // La nueva versión se usará la próxima vez que abran la app.
               reg.update();
-              reg.addEventListener("updatefound", () => {
-                const sw = reg.installing;
-                sw?.addEventListener("statechange", () => {
-                  if (sw.state === "installed" && navigator.serviceWorker.controller) {
-                    console.log("Nueva versión SW disponible, recargando...");
-                    window.location.reload();
-                  }
-                });
-              });
             })
             .catch(err => console.warn("SW falló:", err));
-
-          navigator.serviceWorker.addEventListener("message", e => {
-            if (e.data?.type === "SW_UPDATED") {
-              console.log("SW actualizado, recargando...");
-              window.location.reload();
-            }
-          });
         });
       }
     </script>

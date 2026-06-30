@@ -16,25 +16,10 @@ const cleanData = (obj) => {
   return out;
 };
 
-// Detecta error de Firestore corrupto y ofrece recuperación
-const handleFirestoreError = (error) => {
-  const msg = error?.message || String(error);
-  if (msg.includes("INTERNAL ASSERTION FAILED") || msg.includes("Unexpected state")) {
-    if (window.confirm("⚠ Detectamos un problema con la base de datos local de tu teléfono.\n\n¿Quieres limpiar el caché y recargar? Tus datos en la nube NO se perderán.")) {
-      // Borrar IndexedDB de Firestore y recargar
-      indexedDB.databases?.().then(dbs => {
-        dbs.forEach(db => {
-          if(db.name?.includes("firestore")) indexedDB.deleteDatabase(db.name);
-        });
-        setTimeout(()=>window.location.reload(), 500);
-      }).catch(()=>{
-        setTimeout(()=>window.location.reload(), 500);
-      });
-      return true;
-    }
-  }
-  return false;
-};
+// Con memoryLocalCache el bug INTERNAL ASSERTION ya no ocurre.
+// Esta función queda como salvaguarda: si por alguna razón aparece, NO recarga
+// (para evitar bucles); solo deja que el mensaje de error normal se muestre.
+const handleFirestoreError = () => false;
 
 // Reintenta una operación de guardado si falla por error transitorio de Firestore.
 // Si detecta el bug INTERNAL ASSERTION, limpia IndexedDB e intenta de nuevo en memoria.
@@ -51,11 +36,6 @@ const saveWithRetry = async (saveFn, maxRetries = 2) => {
                          msg.includes("unavailable") ||
                          msg.includes("deadline-exceeded");
       if (!isTransient || attempt >= maxRetries) throw e;
-      // Incrementar contador global de fallos (firebase.js usa esto para fallback a memoria)
-      try {
-        const c = parseInt(localStorage.getItem("firestore_fail_count") || "0", 10);
-        localStorage.setItem("firestore_fail_count", String(c + 1));
-      } catch {}
       console.warn(`Reintentando guardado (intento ${attempt + 1}/${maxRetries})...`);
       await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
     }
@@ -1464,110 +1444,35 @@ function ConnectionStatus() {
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null, recovering: false };
+    this.state = { hasError: false, error: null };
   }
   static getDerivedStateFromError(error) {
     return { hasError: true, error };
   }
   componentDidCatch(error, info) {
     console.error("ErrorBoundary:", error, info);
-    const errMsg = String(error?.message || error || "");
-    const isFirestoreBug = errMsg.includes("INTERNAL ASSERTION") || errMsg.includes("Unexpected state");
-
-    if (isFirestoreBug) {
-      // IMPORTANTE: incrementar el contador GLOBAL de fallos en localStorage
-      // Tras 2 fallos, firebase.js automáticamente cambiará a memoryLocalCache (sin bug)
-      try {
-        const c = parseInt(localStorage.getItem("firestore_fail_count") || "0", 10);
-        localStorage.setItem("firestore_fail_count", String(c + 1));
-      } catch {}
-
-      // Anti-bucle de auto-recovery por sesión (no por carga)
-      let autoCount = 0;
-      try { autoCount = parseInt(sessionStorage.getItem("eb_auto_count") || "0", 10); } catch {}
-
-      if (autoCount < 3) {
-        try { sessionStorage.setItem("eb_auto_count", String(autoCount + 1)); } catch {}
-        this.setState({ recovering: true });
-
-        // Limpiar IndexedDB y recargar silenciosamente
-        const clearAndReload = async () => {
-          try {
-            if ("databases" in indexedDB) {
-              const dbs = await indexedDB.databases();
-              await Promise.all(
-                dbs.filter(d => d.name?.includes("firestore"))
-                   .map(d => new Promise((res) => {
-                      const req = indexedDB.deleteDatabase(d.name);
-                      req.onsuccess = req.onerror = req.onblocked = () => res();
-                   }))
-              );
-            }
-          } catch (e) { console.warn("Error limpiando IndexedDB:", e); }
-          setTimeout(() => window.location.reload(), 600);
-        };
-        clearAndReload();
-        return;
-      }
-      // Si ya hubo 3 auto-recuperaciones en una sesión, mostrar mensaje
-    }
+    // NO recargamos automáticamente para evitar bucles de recarga.
+    // Como firebase.js ahora usa memoryLocalCache por defecto, el bug
+    // INTERNAL ASSERTION ya no debería ocurrir. Si algo falla, el usuario
+    // simplemente presiona "Reintentar" y el componente se vuelve a montar.
   }
   render() {
-    // Pantalla de "recuperando" durante auto-fix (sin asustar al trabajador)
-    if (this.state.recovering) {
-      return (
-        <div style={{padding:"40px 20px",textAlign:"center",color:"#27ae60"}}>
-          <div style={{fontSize:36,marginBottom:14,animation:"spin 1.4s linear infinite"}}>🔄</div>
-          <style>{`@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
-          <div style={{fontSize:15,fontWeight:600,marginBottom:6}}>Sincronizando...</div>
-          <div style={{fontSize:12,color:"#888"}}>Un momento por favor</div>
-        </div>
-      );
-    }
-
     if (this.state.hasError) {
       const errMsg = String(this.state.error?.message || this.state.error || "");
-      const isFirestoreBug = errMsg.includes("INTERNAL ASSERTION") || errMsg.includes("Unexpected state");
-
-      // Mensaje amable si ya excedió los 3 intentos automáticos
-      if (isFirestoreBug) {
-        return (
-          <div style={{padding:"30px 24px",margin:"20px",background:"#fff9e7",border:"2px solid #f39c12",borderRadius:12,color:"#856404",textAlign:"center"}}>
-            <div style={{fontSize:40,marginBottom:14}}>⏳</div>
-            <div style={{fontSize:17,fontWeight:700,marginBottom:10,color:"#b7950b"}}>Conexión interrumpida</div>
-            <div style={{fontSize:13,marginBottom:20,lineHeight:1.5}}>
-              Vamos a recargar la app en modo estable.<br/>
-              Tus datos están seguros en la nube.
-            </div>
-            <button onClick={()=>{
-              try {
-                // Forzar modo memoria al siguiente arranque (sin el bug)
-                localStorage.setItem("firestore_fail_count", "2");
-                sessionStorage.removeItem("eb_auto_count");
-              } catch {}
-              // Ir a reset.html que hace limpieza profunda y confiable
-              window.location.href = "/reset.html";
-            }} style={{padding:"12px 24px",background:"#f39c12",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:700}}>
-              🔄 Reparar ahora
-            </button>
-          </div>
-        );
-      }
-
-      // Para otros errores no relacionados con Firestore, mostrar mensaje normal
       return (
-        <div style={{padding:"20px",margin:"20px",background:"#fdedec",border:"2px solid #e74c3c",borderRadius:12,color:"#c0392b"}}>
-          <div style={{fontSize:18,fontWeight:700,marginBottom:10}}>⚠ Algo falló en esta pantalla</div>
-          <div style={{fontSize:13,marginBottom:14,whiteSpace:"pre-wrap",fontFamily:"monospace",background:"#fff",padding:10,borderRadius:8,maxHeight:200,overflow:"auto"}}>
-            {errMsg || "Error desconocido"}
+        <div style={{padding:"24px 20px",margin:"20px",background:"#fdedec",border:"2px solid #e74c3c",borderRadius:12,color:"#c0392b",textAlign:"center"}}>
+          <div style={{fontSize:36,marginBottom:10}}>⚠</div>
+          <div style={{fontSize:17,fontWeight:700,marginBottom:8}}>Algo falló al cargar</div>
+          <div style={{fontSize:13,marginBottom:18,color:"#888"}}>
+            Presiona "Reintentar". Si sigue fallando, recarga la app.
           </div>
           <button onClick={()=>{this.setState({hasError:false,error:null});}}
-            style={{padding:"10px 20px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,marginRight:8}}>
+            style={{padding:"11px 24px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,marginRight:8,fontSize:14}}>
             🔄 Reintentar
           </button>
           <button onClick={()=>window.location.reload()}
-            style={{padding:"10px 20px",background:"#888",color:"#fff",border:"none",borderRadius:8,cursor:"pointer"}}>
-            ↻ Recargar app
+            style={{padding:"11px 24px",background:"#888",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:14}}>
+            ↻ Recargar
           </button>
         </div>
       );
