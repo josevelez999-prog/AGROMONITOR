@@ -1495,6 +1495,231 @@ class ErrorBoundary extends React.Component {
 }
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
+// ─── REGISTRO DE APLICACIÓN DE AGROQUÍMICOS (trabajador) ─────────────────────
+function RegistroAplicacion({ worker }) {
+  const today = new Date().toISOString().slice(0,10);
+  const nowTime = new Date().toTimeString().slice(0,5);
+  const initial = {
+    crop:"jitomate", fecha:today,
+    nombreComercial:"", ingredienteActivo:"", dosisHa:"", dosisAplicada:"", unidadDosis:"L",
+    plaga:"", intervaloSeguridad:"", tiempoReentrada:"",
+    equipo:"Manual", horaInicio:nowTime, horaTermino:"",
+    seccion:"", aplicador:worker||"", insumoId:"", descontarStock:true,
+  };
+  const [form, setForm] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [insumos, setInsumos] = useState([]);
+  const [movimientos, setMovimientos] = useState([]);
+  const [programadas, setProgramadas] = useState([]);
+
+  useEffect(()=>{
+    const u1 = onSnapshot(collection(db,"inventario"), s=>setInsumos(s.docs.map(d=>({id:d.id,...d.data()}))), e=>console.error("inv:",e));
+    const u2 = onSnapshot(collection(db,"inventario_movimientos"), s=>setMovimientos(s.docs.map(d=>({id:d.id,...d.data()}))), e=>console.error("mov:",e));
+    const u3 = onSnapshot(collection(db,"aplicaciones_programadas"), s=>setProgramadas(s.docs.map(d=>({id:d.id,...d.data()}))), e=>console.error("prog:",e));
+    return ()=>{u1();u2();u3();};
+  },[]);
+
+  const agroquimicos = insumos.filter(i=>i.categoria==="agroquimicos");
+  const getStock = (id) => {
+    const ins = insumos.find(i=>i.id===id); if(!ins) return 0;
+    const ent = movimientos.filter(m=>m.insumoId===id&&m.tipo==="entrada").reduce((s,m)=>s+(parseFloat(m.cantidad)||0),0);
+    const sal = movimientos.filter(m=>m.insumoId===id&&m.tipo==="salida").reduce((s,m)=>s+(parseFloat(m.cantidad)||0),0);
+    return (parseFloat(ins.stockInicial)||0)+ent-sal;
+  };
+
+  const onSelectInsumo = (insumoId) => {
+    const ins = agroquimicos.find(i=>i.id===insumoId);
+    if(ins) setForm(p=>({...p,insumoId,nombreComercial:ins.name,unidadDosis:ins.presentacion||"L"}));
+    else setForm(p=>({...p,insumoId}));
+  };
+
+  // Aplicaciones programadas pendientes para hoy o vencidas
+  const pendientesHoy = programadas.filter(p=>p.estado!=="completada" && p.fechaProgramada<=today);
+
+  const usarProgramada = (p) => {
+    setForm(f=>({
+      ...f, crop:p.crop, nombreComercial:p.nombreComercial, ingredienteActivo:p.ingredienteActivo||"",
+      dosisHa:p.dosisHa||"", unidadDosis:p.unidadDosis||"L", plaga:p.plaga||"", seccion:p.seccion||"",
+      insumoId:p.insumoId||"", _programadaId:p.id,
+    }));
+    window.scrollTo(0,0);
+  };
+
+  const submit = async () => {
+    if(!form.nombreComercial) { alert("Escribe el nombre del producto aplicado"); return; }
+    if(!form.dosisAplicada || parseFloat(form.dosisAplicada)<=0) { alert("Escribe la dosis aplicada"); return; }
+    setSaving(true);
+    try {
+      const data = {
+        crop:form.crop, fecha:form.fecha, worker,
+        nombreComercial:form.nombreComercial, ingredienteActivo:form.ingredienteActivo||"",
+        dosisHa:parseFloat(form.dosisHa)||0, dosisAplicada:parseFloat(form.dosisAplicada)||0, unidadDosis:form.unidadDosis,
+        plaga:form.plaga||"", intervaloSeguridad:form.intervaloSeguridad||"", tiempoReentrada:form.tiempoReentrada||"",
+        equipo:form.equipo, horaInicio:form.horaInicio||"", horaTermino:form.horaTermino||"",
+        seccion:form.seccion||"", aplicador:form.aplicador||worker,
+        insumoId:form.insumoId||"", createdAt:new Date().toISOString(),
+      };
+      await saveWithRetry(() => addDoc(collection(db,"aplicaciones"), cleanData(data)));
+
+      // Descontar del stock de almacén si se eligió un insumo y está activado
+      if(form.insumoId && form.descontarStock && parseFloat(form.dosisAplicada)>0) {
+        try {
+          await saveWithRetry(() => addDoc(collection(db,"inventario_movimientos"), cleanData({
+            insumoId:form.insumoId, tipo:"salida", cantidad:parseFloat(form.dosisAplicada),
+            fecha:form.fecha, motivo:`Aplicación ${form.nombreComercial}${form.seccion?" · "+form.seccion:""}`,
+            responsable:worker, createdAt:new Date().toISOString(),
+          })));
+        } catch(e) { console.warn("No se pudo descontar stock:", e); }
+      }
+
+      // Marcar programada como completada
+      if(form._programadaId) {
+        try { await updateDoc(doc(db,"aplicaciones_programadas",form._programadaId),{estado:"completada",completadaAt:new Date().toISOString()}); } catch(e){}
+      }
+
+      setSaved(true);
+      setForm({...initial, fecha:today, horaInicio:new Date().toTimeString().slice(0,5)});
+      setTimeout(()=>setSaved(false),4000);
+    } catch(e) {
+      console.error("Aplicacion error:", e);
+      alert("⚠ Error al guardar:\n"+(e?.message||"Error desconocido").slice(0,300));
+    }
+    setSaving(false);
+  };
+
+  const stockSel = form.insumoId ? getStock(form.insumoId) : null;
+  const LBL2 = {fontSize:11,color:"#888",display:"block",marginBottom:4,fontWeight:600};
+  const INP2 = {padding:"10px 12px",border:"1px solid #e0e0e0",borderRadius:10,fontSize:14,width:"100%",boxSizing:"border-box",background:"#fff",color:"#111"};
+
+  return (
+    <div style={{paddingBottom:20}}>
+      {saved && <div style={{background:"#eafaf1",border:"1px solid #a9dfbf",color:"#27ae60",borderRadius:10,padding:"12px 16px",marginBottom:14,fontWeight:600,textAlign:"center"}}>✅ Aplicación registrada correctamente</div>}
+
+      {/* Programadas pendientes */}
+      {pendientesHoy.length>0 && (
+        <div style={{background:"#fef5e8",border:"1px solid #f5cba7",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#e67e22",marginBottom:8}}>📅 Tienes {pendientesHoy.length} aplicación(es) programada(s):</div>
+          {pendientesHoy.map(p=>{
+            const c=CROPS[p.crop];
+            return (
+              <div key={p.id} style={{background:"#fff",borderRadius:8,padding:"8px 12px",marginBottom:6,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:18}}>{c?.emoji||"🌱"}</span>
+                <div style={{flex:1,fontSize:12}}>
+                  <div style={{fontWeight:600}}>{p.nombreComercial}</div>
+                  <div style={{fontSize:11,color:"#888"}}>{p.fechaProgramada} {p.plaga?"· "+p.plaga:""} {p.seccion?"· "+p.seccion:""}</div>
+                  {p.notas && <div style={{fontSize:11,color:"#e67e22",fontStyle:"italic"}}>{p.notas}</div>}
+                </div>
+                <button onClick={()=>usarProgramada(p)} style={{padding:"6px 12px",background:"#e67e22",border:"none",borderRadius:6,color:"#fff",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>Usar</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{fontSize:16,fontWeight:700,marginBottom:14,color:"#27ae60"}}>🧪 Registrar aplicación de agroquímico</div>
+
+      {/* Producto del almacén */}
+      <div style={{marginBottom:14}}>
+        <label style={LBL2}>Producto del almacén (para descontar stock)</label>
+        <select value={form.insumoId} onChange={e=>onSelectInsumo(e.target.value)} style={INP2}>
+          <option value="">— Escribir manual abajo —</option>
+          {agroquimicos.map(i=>{
+            const stk=getStock(i.id);
+            return <option key={i.id} value={i.id}>{i.tarjeta?`[${i.tarjeta}] `:""}{i.name} (Stock: {stk.toFixed(2)} {i.presentacion})</option>;
+          })}
+        </select>
+      </div>
+
+      {form.insumoId && stockSel!==null && (
+        <div style={{background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:8,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontSize:12,color:"#666"}}>Stock disponible:</div>
+          <div style={{fontSize:16,fontWeight:700,color:stockSel<=0?"#e74c3c":"#27ae60",fontFamily:"monospace"}}>{stockSel.toFixed(3)} {form.unidadDosis}</div>
+        </div>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div>
+          <label style={LBL2}>Cultivo *</label>
+          <select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={INP2}>
+            <option value="jitomate">🍅 Jitomate</option>
+            <option value="fresa">🍓 Fresa</option>
+            <option value="arandano">🫐 Arándano</option>
+            <option value="zarzamora">🫐 Zarzamora</option>
+          </select>
+        </div>
+        <div>
+          <label style={LBL2}>📅 Fecha *</label>
+          <input type="date" max={today} value={form.fecha} onChange={e=>setForm(p=>({...p,fecha:e.target.value}))} style={INP2}/>
+        </div>
+        <div style={{gridColumn:"1 / -1"}}>
+          <label style={LBL2}>Nombre comercial *</label>
+          <input value={form.nombreComercial} onChange={e=>setForm(p=>({...p,nombreComercial:e.target.value}))} placeholder="Ej: ACADIAN" style={INP2}/>
+        </div>
+        <div style={{gridColumn:"1 / -1"}}>
+          <label style={LBL2}>Ingrediente activo</label>
+          <input value={form.ingredienteActivo} onChange={e=>setForm(p=>({...p,ingredienteActivo:e.target.value}))} placeholder="Ej: Extracto de algas marinas" style={INP2}/>
+        </div>
+        <div>
+          <label style={LBL2}>Dosis / Ha</label>
+          <input type="number" step="0.001" value={form.dosisHa} onChange={e=>setForm(p=>({...p,dosisHa:e.target.value}))} style={INP2}/>
+        </div>
+        <div>
+          <label style={LBL2}>Dosis aplicada * ({form.unidadDosis})</label>
+          <input type="number" step="0.001" value={form.dosisAplicada} onChange={e=>setForm(p=>({...p,dosisAplicada:e.target.value}))} style={INP2}/>
+        </div>
+        <div style={{gridColumn:"1 / -1"}}>
+          <label style={LBL2}>Plaga y/o Enfermedad</label>
+          <input value={form.plaga} onChange={e=>setForm(p=>({...p,plaga:e.target.value}))} placeholder="Ej: Mosca blanca, Cenicilla..." style={INP2}/>
+        </div>
+        <div>
+          <label style={LBL2}>Intervalo Seguridad (días)</label>
+          <input value={form.intervaloSeguridad} onChange={e=>setForm(p=>({...p,intervaloSeguridad:e.target.value}))} placeholder="días" style={INP2}/>
+        </div>
+        <div>
+          <label style={LBL2}>Tiempo Reentrada (horas)</label>
+          <input value={form.tiempoReentrada} onChange={e=>setForm(p=>({...p,tiempoReentrada:e.target.value}))} placeholder="horas" style={INP2}/>
+        </div>
+        <div>
+          <label style={LBL2}>Equipo de aplicación</label>
+          <select value={form.equipo} onChange={e=>setForm(p=>({...p,equipo:e.target.value}))} style={INP2}>
+            <option value="Manual">Manual</option>
+            <option value="Motor">Motor</option>
+          </select>
+        </div>
+        <div>
+          <label style={LBL2}>Sección</label>
+          <input value={form.seccion} onChange={e=>setForm(p=>({...p,seccion:e.target.value}))} placeholder="Ej: Nave 2" style={INP2}/>
+        </div>
+        <div>
+          <label style={LBL2}>Hora inicio</label>
+          <input type="time" value={form.horaInicio} onChange={e=>setForm(p=>({...p,horaInicio:e.target.value}))} style={INP2}/>
+        </div>
+        <div>
+          <label style={LBL2}>Hora término</label>
+          <input type="time" value={form.horaTermino} onChange={e=>setForm(p=>({...p,horaTermino:e.target.value}))} style={INP2}/>
+        </div>
+        <div style={{gridColumn:"1 / -1"}}>
+          <label style={LBL2}>Nombre del aplicador</label>
+          <input value={form.aplicador} onChange={e=>setForm(p=>({...p,aplicador:e.target.value}))} style={INP2}/>
+        </div>
+      </div>
+
+      {/* Descontar stock */}
+      {form.insumoId && (
+        <label style={{display:"flex",alignItems:"center",gap:8,marginTop:14,fontSize:13,cursor:"pointer",background:"#f8f9fa",padding:"10px 14px",borderRadius:8}}>
+          <input type="checkbox" checked={form.descontarStock} onChange={e=>setForm(p=>({...p,descontarStock:e.target.checked}))} style={{width:18,height:18}}/>
+          Descontar {form.dosisAplicada||0} {form.unidadDosis} del stock de almacén automáticamente
+        </label>
+      )}
+
+      <button onClick={submit} disabled={saving} style={{width:"100%",marginTop:16,padding:"14px",background:saving?"#aaa":"#27ae60",color:"#fff",border:"none",borderRadius:12,cursor:saving?"wait":"pointer",fontWeight:700,fontSize:15}}>
+        {saving?"Guardando...":"✓ Registrar aplicación"}
+      </button>
+    </div>
+  );
+}
+
 export default function Worker({ user, onLogout }) {
   const workerName = user?.nombre || user?.email || "Trabajador";
   const [tab, setTab] = useState("registrar");
@@ -1502,6 +1727,7 @@ export default function Worker({ user, onLogout }) {
   const TABS = [
     { id:"registrar", label:"📊 Registrar", emoji:"📊" },
     { id:"cosecha",   label:"🧺 Cosecha",   emoji:"🧺" },
+    { id:"aplicacion",label:"🧪 Aplicar",   emoji:"🧪" },
     { id:"tareas",    label:"✅ Tareas",    emoji:"✅" },
     { id:"ia",        label:"🤖 IA",        emoji:"🤖" },
     { id:"incidencia",label:"⚠️ Incidencia",emoji:"⚠️" },
@@ -1513,6 +1739,7 @@ export default function Worker({ user, onLogout }) {
     switch(tab) {
       case "registrar":  content = <Registro worker={workerName} />; break;
       case "cosecha":    content = <RegistroCosecha worker={workerName} />; break;
+      case "aplicacion": content = <RegistroAplicacion worker={workerName} />; break;
       case "tareas":     content = <Tareas worker={workerName} />; break;
       case "ia":         content = <AsistenteIA />; break;
       case "incidencia": content = <Incidencias worker={workerName} />; break;

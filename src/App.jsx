@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import Worker from "./Worker";
 import MobileDashboard from "./MobileDashboard";
 import AlmacenAdmin from "./AlmacenAdmin";
+import AplicacionesAdmin from "./AplicacionesAdmin";
 import Ventas from "./Ventas";
 import LoginScreen from "./Auth";
 import UsuariosAdmin from "./UsuariosAdmin";
@@ -1748,13 +1749,15 @@ const NAV=[
   {id:"incidencias",label:"Incidencias",icon:"🚨"},
   {id:"tareas",label:"Tareas y avisos",icon:"📋"},
   {id:"inventario",label:"Almacén",icon:"📦"},
+  {id:"aplicaciones",label:"Aplicaciones",icon:"🧪"},
   {id:"trabajadores",label:"Equipo",icon:"◎"},
   {id:"suelo", label:"Análisis de Suelo", icon:"🌍"},
   {id:"ventas", label:"Ventas", icon:"💰"},
   {id:"rangos", label:"Rangos", icon:"🎯"},
   {id:"usuarios", label:"Usuarios", icon:"👥"},
 ];
-const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Almacén de insumos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas",rangos:"Rangos semanales pH/CE",usuarios:"Gestión de usuarios"};
+const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Almacén de insumos",
+    aplicaciones:"Aplicación de agroquímicos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas",rangos:"Rangos semanales pH/CE",usuarios:"Gestión de usuarios"};
 
 // ─── BLOQUEADO ────────────────────────────────────────────────────────────────
 function Bloqueado({nombre="esta sección"}) {
@@ -1875,6 +1878,7 @@ export default function App(){
     tareas:      <TareasAdmin/>,
     
     inventario:  <AlmacenAdmin/>,
+    aplicaciones: <AplicacionesAdmin/>,
     trabajadores:<Trabajadores readings={readings}/>,
     ventas:      <Ventas readOnly={esObservador}/>,
     rangos:      esObservador?<Bloqueado nombre="los rangos"/>:<RangosSemanales/>,
