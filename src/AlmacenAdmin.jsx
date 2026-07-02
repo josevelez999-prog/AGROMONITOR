@@ -169,9 +169,53 @@ function InsumosTab({ insumos }) {
 
   // ─── IMPORTADOR DESDE XLSX ───
   const importarXLSX = async (file) => {
+    // Si ya hay insumos cargados, preguntar si reemplazar o cancelar
+    let reemplazar = false;
+    let borrarMovs = false;
+    if (insumos.length > 0) {
+      const resp = window.confirm(
+        `Ya tienes ${insumos.length} insumos cargados en el almacén.\n\n` +
+        `¿Quieres BORRARLOS y reemplazarlos con los del nuevo archivo?\n\n` +
+        `• Aceptar = Borrar los actuales y cargar los nuevos\n` +
+        `• Cancelar = No hacer nada`
+      );
+      if (!resp) return; // Canceló
+      reemplazar = true;
+
+      // Si además hay movimientos registrados, preguntar si también borrarlos
+      if (movimientos.length > 0) {
+        borrarMovs = window.confirm(
+          `También tienes ${movimientos.length} movimientos registrados (entradas/salidas).\n\n` +
+          `¿Quieres BORRAR también esos movimientos?\n\n` +
+          `• Aceptar = Empezar TODO de cero (recomendado si es carga inicial)\n` +
+          `• Cancelar = Conservar los movimientos\n\n` +
+          `⚠ Si los conservas, quedarán apuntando a insumos que ya no existen.`
+        );
+      }
+    }
+
     setImporting(true);
     setImportLog({ status: "Cargando librería...", details: [] });
     try {
+      // Si eligió reemplazar, borrar todos los insumos actuales primero
+      if (reemplazar) {
+        setImportLog({ status: "Borrando datos anteriores...", details: [] });
+        let delCount = 0;
+        for (const ins of insumos) {
+          try { await deleteDoc(doc(db, "inventario", ins.id)); delCount++; } catch (e) { console.warn(e); }
+        }
+        const initDetails = [`🗑 ${delCount} insumos anteriores borrados`];
+
+        // Si eligió borrar movimientos también
+        if (borrarMovs) {
+          let movDelCount = 0;
+          for (const mov of movimientos) {
+            try { await deleteDoc(doc(db, "inventario_movimientos", mov.id)); movDelCount++; } catch (e) { console.warn(e); }
+          }
+          initDetails.push(`🗑 ${movDelCount} movimientos borrados`);
+        }
+        setImportLog({ status: "Leyendo archivo...", details: initDetails });
+      }
       const XLSX = await loadSheetJS();
       setImportLog({ status: "Leyendo archivo...", details: [] });
       const buffer = await file.arrayBuffer();
@@ -192,7 +236,7 @@ function InsumosTab({ insumos }) {
       // Encontrar puntos de corte de cada sección
       let currentCat = "agroquimicos"; // por defecto
       const items = [];
-      const log = [];
+      const log = reemplazar ? (borrarMovs ? ["🗑 Insumos y movimientos reemplazados"] : ["🗑 Insumos anteriores reemplazados"]) : [];
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i] || [];
