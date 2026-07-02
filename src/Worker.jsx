@@ -1495,6 +1495,14 @@ class ErrorBoundary extends React.Component {
 }
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
+// Ubicaciones (nave/invernadero) por cultivo para el módulo de aplicaciones
+const UBICACIONES_APLIC = {
+  jitomate:  { tipo: "Invernadero", lista: ["INV 2", "INV 3", "INV 5", "INV 6"] },
+  fresa:     { tipo: "Nave", lista: ["Nave 1", "Nave 2", "Nave 3"] },
+  arandano:  { tipo: "Nave", lista: ["Nave 1", "Nave 2", "Nave 3"] },
+  zarzamora: { tipo: "Nave", lista: ["Nave 1", "Nave 2", "Nave 3"] },
+};
+
 // ─── REGISTRO DE APLICACIÓN DE AGROQUÍMICOS (trabajador) ─────────────────────
 function RegistroAplicacion({ worker }) {
   const today = new Date().toISOString().slice(0,10);
@@ -1503,7 +1511,7 @@ function RegistroAplicacion({ worker }) {
     crop:"jitomate", fecha:today,
     nombreComercial:"", ingredienteActivo:"", dosisHa:"", dosisAplicada:"", unidadDosis:"L",
     plaga:"", intervaloSeguridad:"", tiempoReentrada:"",
-    equipo:"Manual", horaInicio:nowTime, horaTermino:"",
+    equipo:"Mochila", horaInicio:nowTime, horaTermino:"",
     seccion:"", aplicador:worker||"", insumoId:"", descontarStock:true,
   };
   const [form, setForm] = useState(initial);
@@ -1683,13 +1691,18 @@ function RegistroAplicacion({ worker }) {
         <div>
           <label style={LBL2}>Equipo de aplicación</label>
           <select value={form.equipo} onChange={e=>setForm(p=>({...p,equipo:e.target.value}))} style={INP2}>
-            <option value="Manual">Manual</option>
+            <option value="Mochila">Mochila</option>
+            <option value="Parihuela">Parihuela</option>
             <option value="Motor">Motor</option>
+            <option value="Manual">Manual</option>
           </select>
         </div>
         <div>
-          <label style={LBL2}>Sección</label>
-          <input value={form.seccion} onChange={e=>setForm(p=>({...p,seccion:e.target.value}))} placeholder="Ej: Nave 2" style={INP2}/>
+          <label style={LBL2}>{UBICACIONES_APLIC[form.crop]?.tipo || "Sección"}</label>
+          <select value={form.seccion} onChange={e=>setForm(p=>({...p,seccion:e.target.value}))} style={INP2}>
+            <option value="">— Selecciona —</option>
+            {(UBICACIONES_APLIC[form.crop]?.lista || []).map(u=><option key={u} value={u}>{u}</option>)}
+          </select>
         </div>
         <div>
           <label style={LBL2}>Hora inicio</label>

@@ -9,13 +9,13 @@ import {
 } from "firebase/firestore";
 
 const CROPS_LIST = [
-  { id: "jitomate", name: "Jitomate", emoji: "🍅" },
-  { id: "fresa",    name: "Fresa",    emoji: "🍓" },
-  { id: "arandano", name: "Arándano", emoji: "🫐" },
-  { id: "zarzamora",name: "Zarzamora",emoji: "🫐" },
+  { id: "jitomate", name: "Jitomate", emoji: "🍅", tipoUbicacion: "Invernadero", ubicaciones: ["INV 2", "INV 3", "INV 5", "INV 6"] },
+  { id: "fresa",    name: "Fresa",    emoji: "🍓", tipoUbicacion: "Nave", ubicaciones: ["Nave 1", "Nave 2", "Nave 3"] },
+  { id: "arandano", name: "Arándano", emoji: "🫐", tipoUbicacion: "Nave", ubicaciones: ["Nave 1", "Nave 2", "Nave 3"] },
+  { id: "zarzamora",name: "Zarzamora",emoji: "🫐", tipoUbicacion: "Nave", ubicaciones: ["Nave 1", "Nave 2", "Nave 3"] },
 ];
 
-const EQUIPOS = ["Motor", "Manual"];
+const EQUIPOS = ["Mochila", "Parihuela", "Motor", "Manual"];
 
 const fmt = (n, d = 2) => Number(n || 0).toLocaleString("es-MX", { minimumFractionDigits: d, maximumFractionDigits: d });
 const num = (v) => parseFloat(v) || 0;
@@ -53,7 +53,7 @@ export default function AplicacionesAdmin() {
   const SUBTABS = [
     { id: "registradas", label: "📋 Registradas", color: "#27ae60" },
     { id: "programar",   label: "📅 Programar",   color: "#e67e22" },
-    { id: "reporte",     label: "📄 Reporte FIRA", color: "#8e44ad" },
+    { id: "reporte",     label: "📄 Reporte", color: "#8e44ad" },
   ];
 
   return (
@@ -282,8 +282,11 @@ function ProgramarTab({ programadas, insumos }) {
             <input value={form.plaga} onChange={e => setForm(p => ({ ...p, plaga: e.target.value }))} placeholder="Ej: Mosca blanca" style={INP} />
           </div>
           <div>
-            <label style={LBL}>Sección</label>
-            <input value={form.seccion} onChange={e => setForm(p => ({ ...p, seccion: e.target.value }))} placeholder="Ej: Nave 2" style={INP} />
+            <label style={LBL}>{CROPS_LIST.find(x => x.id === form.crop)?.tipoUbicacion || "Sección"}</label>
+            <select value={form.seccion} onChange={e => setForm(p => ({ ...p, seccion: e.target.value }))} style={INP}>
+              <option value="">— Selecciona —</option>
+              {(CROPS_LIST.find(x => x.id === form.crop)?.ubicaciones || []).map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
             <label style={LBL}>Notas / Instrucciones para el trabajador</label>
@@ -381,9 +384,7 @@ function ReporteTab({ aplicaciones }) {
       const wb = XLSX.utils.book_new();
       const rows = [];
 
-      rows.push(["Fondo de garantía y fomento para la agricultura ganadería y avicultura"]);
       rows.push(["Registro de aplicación de agroquímicos"]);
-      rows.push(["CDT Salvador Lira López, Morelia, Mich."]);
       rows.push([]);
       rows.push([`Unidad de producción / Nave: ${meta.unidad || "—"}`, "", "", `Mes: ${mes}`]);
       rows.push([`Superficie (Has): ${meta.superficie || "—"}`, "", "", `Fecha de plantación: ${meta.fechaPlantacion || "—"}`]);
@@ -425,7 +426,7 @@ function ReporteTab({ aplicaciones }) {
   return (
     <div>
       <div style={{ ...card, borderLeft: "4px solid #8e44ad", marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#8e44ad", marginBottom: 12 }}>📄 REPORTE DE APLICACIONES - FORMATO FIRA (F-13-AASLL)</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#8e44ad", marginBottom: 12 }}>📄 REPORTE DE APLICACIONES DE AGROQUÍMICOS</div>
         <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
             <label style={LBL}>📅 Mes</label>

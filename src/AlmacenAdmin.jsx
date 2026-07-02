@@ -1060,9 +1060,6 @@ function ReporteTab({ insumos, movimientos }) {
       const ws_data = [];
 
       // Header oficial
-      ws_data.push([null, "FIRA - Banco de México"]);
-      ws_data.push([null, "Subdirección de Desarrollo de Capacidades y Mercados"]);
-      ws_data.push([]);
       ws_data.push([null, '"Movimientos de Inventarios de Almacén"']);
       ws_data.push([]);
       ws_data.push([null, `Centro de Desarrollo: ${centro || "—"}`]);
@@ -1156,7 +1153,7 @@ function ReporteTab({ insumos, movimientos }) {
     <div>
       {/* Configuración del reporte */}
       <div style={{ background: "#fff", border: "0.5px solid #e0e0e0", borderLeft: "4px solid #8e44ad", borderRadius: 12, padding: "14px 18px", marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#8e44ad", marginBottom: 12 }}>📄 REPORTE MENSUAL DE MOVIMIENTOS - FORMATO FIRA</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#8e44ad", marginBottom: 12 }}>📄 REPORTE MENSUAL DE MOVIMIENTOS DE ALMACÉN</div>
 
         <div style={{ display: "grid", gridTemplateColumns: "180px 1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
@@ -1196,9 +1193,7 @@ function ReporteTab({ insumos, movimientos }) {
       {/* Vista previa */}
       <div style={{ background: "#fff", border: "0.5px solid #e0e0e0", borderRadius: 12, padding: "18px 22px" }}>
         <div style={{ textAlign: "center", marginBottom: 14 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#2c3e50" }}>FIRA - Banco de México</div>
-          <div style={{ fontSize: 11, color: "#888" }}>Subdirección de Desarrollo de Capacidades y Mercados</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#27ae60", margin: "10px 0" }}>"Movimientos de Inventarios de Almacén"</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#27ae60", margin: "10px 0" }}>Movimientos de Inventarios de Almacén</div>
           <div style={{ fontSize: 12, color: "#555" }}>
             {centro ? `Centro: ${centro}` : "Centro: —"} | Mes: <strong>{nombreMes}</strong>
           </div>
