@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { db } from "./firebase";
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from "./dbCdt";
 import { getAuth, createUserWithEmailAndPassword, updatePassword, signInWithEmailAndPassword } from "firebase/auth";
 
 const INP = {

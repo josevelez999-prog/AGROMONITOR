@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { db, auth } from "./firebase";
-import { collection, addDoc, onSnapshot, query, where, orderBy, doc, updateDoc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, where, orderBy, doc, updateDoc } from "./dbCdt";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { signOut } from "firebase/auth";
 

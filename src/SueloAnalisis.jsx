@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { db } from "./firebase";
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "./dbCdt";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // ─── DATOS DE REFERENCIA ──────────────────────────────────────────────────────

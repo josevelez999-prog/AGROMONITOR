@@ -6,7 +6,7 @@ import { db } from "./firebase";
 import {
   collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
   query, orderBy
-} from "firebase/firestore";
+} from "./dbCdt";
 
 const CROPS_LIST = [
   { id: "jitomate", name: "Jitomate", emoji: "🍅", tipoUbicacion: "Invernadero", ubicaciones: ["INV 2", "INV 3", "INV 5", "INV 6"] },

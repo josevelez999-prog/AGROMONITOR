@@ -6,7 +6,7 @@ import { db } from "./firebase";
 import {
   collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
   query, orderBy
-} from "firebase/firestore";
+} from "./dbCdt";
 
 // ─── Categorías oficiales FIRA ──────────────────────────────────────────────
 const CATEGORIAS = [

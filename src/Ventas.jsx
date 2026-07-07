@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 import { db } from "./firebase";
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, setDoc, getDoc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, setDoc, getDoc } from "./dbCdt";
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 

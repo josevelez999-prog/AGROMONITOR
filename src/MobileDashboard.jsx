@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { db, auth } from "./firebase";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy } from "./dbCdt";
 import { signOut } from "firebase/auth";
 
 const CROPS = {
