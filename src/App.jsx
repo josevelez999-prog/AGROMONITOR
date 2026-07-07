@@ -3,7 +3,7 @@ import Worker from "./Worker";
 import MobileDashboard from "./MobileDashboard";
 import AlmacenAdmin from "./AlmacenAdmin";
 import AplicacionesAdmin from "./AplicacionesAdmin";
-import { setCdtContext, loadCdtData, getSuperOverride } from "./cdtContext";
+import { setCdtContext, loadCdtData, getSuperOverride, getCdtData } from "./cdtContext";
 import SuperAdmin from "./SuperAdmin";
 import Ventas from "./Ventas";
 import LoginScreen from "./Auth";
@@ -49,17 +49,88 @@ const CROPS = {
     salida: {ph:{min:5.8,max:6.8},ce:{min:2.0,max:3.5}},
     noDrenaje:true,
   },
+  pepino:    { name:"Pepino",    emoji:"🥒", color:"#27ae60",
+    ph:{min:5.5,max:6.0}, ce:{min:2.0,max:3.0},
+    entrada:{ph:{min:5.5,max:6.0},ce:{min:2.0,max:3.0}},
+    salida: {ph:{min:5.8,max:6.3},ce:{min:2.5,max:3.5}},
+    extraFields:[
+      {key:"ca", label:"Calcio (Ca)",    unit:"mg/L", min:120, max:180, placeholder:"150"},
+      {key:"no3",label:"Nitratos (NO₃)", unit:"mg/L", min:150, max:220, placeholder:"180"},
+      {key:"k",  label:"Potasio (K)",    unit:"mg/L", min:200, max:300, placeholder:"250"},
+    ],
+  },
+  cana:      { name:"Caña de azúcar", emoji:"🎋", color:"#16a085",
+    ph:{min:6.0,max:7.5}, ce:{min:1.0,max:2.0},
+    entrada:{ph:{min:6.0,max:7.5},ce:{min:1.0,max:2.0}},
+    salida: {ph:{min:6.0,max:7.5},ce:{min:1.5,max:2.5}},
+  },
+  pimiento:  { name:"Pimiento",  emoji:"🫑", color:"#e74c3c",
+    ph:{min:5.5,max:6.2}, ce:{min:2.0,max:3.5},
+    entrada:{ph:{min:5.5,max:6.2},ce:{min:2.0,max:3.5}},
+    salida: {ph:{min:5.8,max:6.5},ce:{min:2.5,max:4.0}},
+  },
+  lechuga:   { name:"Lechuga",   emoji:"🥬", color:"#2ecc71",
+    ph:{min:5.5,max:6.5}, ce:{min:1.2,max:2.0},
+    entrada:{ph:{min:5.5,max:6.5},ce:{min:1.2,max:2.0}},
+    salida: {ph:{min:5.8,max:6.8},ce:{min:1.5,max:2.2}},
+  },
+  chile:     { name:"Chile",     emoji:"🌶️", color:"#c0392b",
+    ph:{min:5.5,max:6.5}, ce:{min:1.8,max:3.0},
+    entrada:{ph:{min:5.5,max:6.5},ce:{min:1.8,max:3.0}},
+    salida: {ph:{min:5.8,max:6.8},ce:{min:2.2,max:3.5}},
+  },
+  frambuesa: { name:"Frambuesa", emoji:"🫐", color:"#9b59b6",
+    ph:{min:5.5,max:6.5}, ce:{min:1.2,max:2.2},
+    entrada:{ph:{min:5.5,max:6.5},ce:{min:1.2,max:2.2}},
+    salida: {ph:{min:5.8,max:6.8},ce:{min:1.5,max:2.8}},
+    noDrenaje:true,
+  },
+  maiz:      { name:"Maíz",      emoji:"🌽", color:"#f39c12",
+    ph:{min:5.8,max:7.0}, ce:{min:1.0,max:2.0},
+    entrada:{ph:{min:5.8,max:7.0},ce:{min:1.0,max:2.0}},
+    salida: {ph:{min:5.8,max:7.0},ce:{min:1.5,max:2.5}},
+  },
+  aguacate:  { name:"Aguacate",  emoji:"🥑", color:"#27ae60",
+    ph:{min:5.0,max:6.5}, ce:{min:0.8,max:1.5},
+    entrada:{ph:{min:5.0,max:6.5},ce:{min:0.8,max:1.5}},
+    salida: {ph:{min:5.0,max:6.5},ce:{min:1.0,max:2.0}},
+  },
 };
 const ETAPAS = ["Vegetativo","Floración","Fructificación","Post-cosecha"];
 const ANIONS  = ["NO3","H2PO4","SO4","HCO3","Cl"];
 const CATIONS = ["NH4","K","Ca","Mg","Na"];
 const ALL_IONS = [...ANIONS,...CATIONS];
 const ION_LABELS = {NO3:"NO₃⁻",H2PO4:"H₂PO₄⁻",SO4:"SO₄²⁻",HCO3:"HCO₃⁻",Cl:"Cl⁻",NH4:"NH₄⁺",K:"K⁺",Ca:"Ca²⁺",Mg:"Mg²⁺",Na:"Na⁺"};
+
+// Devuelve solo los cultivos del CDT activo (filtrado del catálogo maestro CROPS).
+// Si el CDT no definió cultivos, devuelve todos (compatibilidad).
+function getCropsCdt() {
+  try {
+    const cdt = getCdtData();
+    if (cdt && cdt.cultivos && Object.keys(cdt.cultivos).length > 0) {
+      const filtrado = {};
+      Object.keys(cdt.cultivos).forEach(cropId => {
+        if (CROPS[cropId]) filtrado[cropId] = CROPS[cropId];
+      });
+      // Si ninguno coincide con el catálogo, devolver todos para no romper
+      return Object.keys(filtrado).length > 0 ? filtrado : CROPS;
+    }
+  } catch {}
+  return CROPS;
+}
 const CROP_NUT = {
   jitomate: {NO3:11,H2PO4:1.5,SO4:8,HCO3:0,Cl:0,NH4:1,K:8.5,Ca:9,Mg:5,Na:0},
   fresa:    {NO3:7,H2PO4:1.5,SO4:3,HCO3:0,Cl:0,NH4:0.5,K:4.5,Ca:4,Mg:2,Na:0},
   arandano: {NO3:5,H2PO4:1,SO4:2,HCO3:0,Cl:0,NH4:0.5,K:3,Ca:2,Mg:1,Na:0},
   zarzamora:{NO3:7,H2PO4:1,SO4:3.5,HCO3:0,Cl:0,NH4:0.5,K:4,Ca:4,Mg:2,Na:0},
+  pepino:   {NO3:12,H2PO4:1.5,SO4:4,HCO3:0,Cl:0,NH4:1,K:7,Ca:9,Mg:4,Na:0},
+  cana:     {NO3:9,H2PO4:1.5,SO4:3,HCO3:0,Cl:0,NH4:1,K:6,Ca:5,Mg:3,Na:0},
+  pimiento: {NO3:11,H2PO4:1.5,SO4:4,HCO3:0,Cl:0,NH4:1,K:7,Ca:8,Mg:4,Na:0},
+  lechuga:  {NO3:10,H2PO4:1.5,SO4:2,HCO3:0,Cl:0,NH4:1,K:5,Ca:5,Mg:2,Na:0},
+  chile:    {NO3:11,H2PO4:1.5,SO4:4,HCO3:0,Cl:0,NH4:1,K:7,Ca:8,Mg:4,Na:0},
+  frambuesa:{NO3:7,H2PO4:1,SO4:3,HCO3:0,Cl:0,NH4:0.5,K:4,Ca:4,Mg:2,Na:0},
+  maiz:     {NO3:10,H2PO4:2,SO4:3,HCO3:0,Cl:0,NH4:1.5,K:5,Ca:5,Mg:3,Na:0},
+  aguacate: {NO3:6,H2PO4:1,SO4:2,HCO3:0,Cl:0,NH4:0.5,K:4,Ca:4,Mg:3,Na:0},
 };
 const DEF_WATER = {NO3:0,H2PO4:0,SO4:1.55,HCO3:2.25,Cl:0.5,NH4:0,K:0.2,Ca:1,Mg:1.23,Na:1.58};
 const FERTS_INIT = [
@@ -109,7 +180,7 @@ function exportCSV(readings){const h=["Fecha","Hora","Cultivo","Zona","pH","CE",
 function Resumen({readings,onDelete,weeklyRangos={}}){
   const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,{});return getStatus(r.ph,rng.ph)==="danger"||getStatus(r.ce,rng.ce)==="danger";});
   const warn=readings.filter(r=>{const c=CROPS[r.crop];if(!c)return false;const p=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return(p==="warning"||cs==="warning")&&p!=="danger"&&cs!=="danger";});
-  const latest=Object.keys(CROPS).map(k=>{const recs=readings.filter(r=>r.crop===k).sort((a,b)=>b.date.localeCompare(a.date));return{key:k,...recs[0]};}).filter(r=>r.ph);
+  const latest=Object.keys(getCropsCdt()).map(k=>{const recs=readings.filter(r=>r.crop===k).sort((a,b)=>b.date.localeCompare(a.date));return{key:k,...recs[0]};}).filter(r=>r.ph);
   const byW={};readings.forEach(r=>{byW[r.worker]=(byW[r.worker]||0)+1;});
   const rangosSnap = Object.keys(weeklyRangos||{}).length;
   return(
@@ -430,7 +501,7 @@ function RangosSemanales() {
     return()=>unsub();
   },[]);
   const filas=[];
-  Object.entries(CROPS).forEach(([cropKey,crop])=>{
+  Object.entries(getCropsCdt()).forEach(([cropKey,crop])=>{
     const tipos=cropKey==="zarzamora"?["entrada"]:["entrada","salida"];
     const invernaderos=crop.invernaderos||[null];
     invernaderos.forEach(inv=>tipos.forEach(tipo=>{
@@ -520,7 +591,7 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
     catch(e){alert("Error: "+e.message);}
     setResetting(false);
   };
-  const [cropFilter,setCropFilter]=useState("jitomate");
+  const [cropFilter,setCropFilter]=useState(()=>Object.keys(getCropsCdt())[0]||"jitomate");
   const [metric,setMetric]=useState("ph");
   const [sub,setSub]=useState("tendencia");
   const [invFilter,setInvFilter]=useState("all");
@@ -543,7 +614,7 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
   return(
     <div>
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(CROPS).map(([k,c])=>(<button key={k} onClick={()=>setCropFilter(k)} style={{padding:"7px 14px",border:`1px solid ${cropFilter===k?c.color:"#e0e0e0"}`,borderRadius:20,background:cropFilter===k?c.color+"18":"transparent",color:cropFilter===k?c.color:"#666",cursor:"pointer",fontSize:12,fontWeight:500}}>{c.emoji} {c.name}</button>))}</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(getCropsCdt()).map(([k,c])=>(<button key={k} onClick={()=>setCropFilter(k)} style={{padding:"7px 14px",border:`1px solid ${cropFilter===k?c.color:"#e0e0e0"}`,borderRadius:20,background:cropFilter===k?c.color+"18":"transparent",color:cropFilter===k?c.color:"#666",cursor:"pointer",fontSize:12,fontWeight:500}}>{c.emoji} {c.name}</button>))}</div>
         <button onClick={()=>exportCSV(cr)} style={{marginLeft:"auto",padding:"7px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
           <button onClick={()=>setShowReset(s=>!s)} style={{padding:"7px 14px",border:"1px solid #e74c3c44",borderRadius:20,background:showReset?"#fdedec":"#fff",color:"#c0392b",cursor:"pointer",fontSize:12,fontWeight:600}}>🔄 Reset</button>
         </div>
@@ -834,7 +905,7 @@ function DiagnosticoIA(){
           <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:18}}>
             <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:14}}>DATOS DEL REGISTRO</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-              <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,color:"#aaa",marginBottom:4,display:"block"}}>CULTIVO</label><select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={{width:"100%",padding:"8px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:13}}>{Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}</select></div>
+              <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,color:"#aaa",marginBottom:4,display:"block"}}>CULTIVO</label><select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={{width:"100%",padding:"8px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:13}}>{Object.entries(getCropsCdt()).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}</select></div>
               {[["zone","ZONA","Zona A"],["worker","TRABAJADOR","Nombre"],["ph","pH","6.2"],["ce","CE","2.8"]].map(([f,l,ph])=>(
                 <div key={f}><label style={{fontSize:11,color:"#aaa",marginBottom:4,display:"block"}}>{l}</label><input type={f==="ph"||f==="ce"?"number":"text"} step="0.1" value={form[f]} onChange={e=>setForm(p=>({...p,[f]:e.target.value}))} placeholder={ph} style={{width:"100%",padding:"8px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:13,boxSizing:"border-box"}}/></div>
               ))}
@@ -966,7 +1037,7 @@ function IaNutricion({cropName,etapa,target,water,aportes,fertilizando,ferts,vol
 
 // ─── FORMULADOR ───────────────────────────────────────────────────────────────
 function Formulador(){
-  const [crop,setCrop]=useState("jitomate");
+  const [crop,setCrop]=useState(()=>Object.keys(getCropsCdt())[0]||"jitomate");
   const [target,setTarget]=useState({...CROP_NUT.jitomate});
   const [water,setWater]=useState({...DEF_WATER});
   const [ferts,setFerts]=useState(FERTS_INIT);
@@ -1131,7 +1202,7 @@ Pregunta del usuario: ${iaPrompt}`;
           <div>
             <div style={{fontSize:11,color:"#aaa",marginBottom:6,fontFamily:"'Courier New',monospace"}}>CULTIVO</div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {Object.entries(CROPS).map(([k,c])=>(
+              {Object.entries(getCropsCdt()).map(([k,c])=>(
                 <button key={k} onClick={()=>{setCrop(k);setTarget({...CROP_NUT[k]});}}
                   style={{padding:"7px 14px",border:`1px solid ${crop===k?c.color:"#e0e0e0"}`,borderRadius:20,background:crop===k?c.color+"18":"transparent",color:crop===k?c.color:"#666",cursor:"pointer",fontSize:12,fontWeight:crop===k?700:400}}>
                   {c.emoji} {c.name}
@@ -1607,7 +1678,7 @@ function InstruccionesAdmin(){
       <div style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px",marginBottom:16}}>
         <div style={{fontSize:12,fontWeight:700,color:"#444",marginBottom:12}}>PUBLICAR INSTRUCCIONES</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-          <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>CULTIVO</label><select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={inp2}>{Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}</select></div>
+          <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>CULTIVO</label><select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={inp2}>{Object.entries(getCropsCdt()).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}</select></div>
           <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>FECHA</label><input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={inp2}/></div>
           <div style={{gridColumn:"1/-1"}}><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>TÍTULO *</label><input value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))} placeholder="Ej: Preparación solución vegetativa" style={inp2}/></div>
           <div><label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>ZONA</label><input value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} placeholder="Zona A" style={inp2}/></div>
@@ -1867,6 +1938,9 @@ export default function App(){
 
   // Not logged in
   if(!currentUser) return <LoginScreen/>;
+
+  // Esperar a que el contexto del CDT (cultivos, naves) esté cargado
+  if(currentUser && !cdtReady) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f4f5f7"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,color:"#27ae60",fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#aaa",marginTop:4}}>Cargando centro...</div></div></div>;
 
   // Logged in as worker
   if(userRole==="trabajador") return <Worker user={currentUser}/>;

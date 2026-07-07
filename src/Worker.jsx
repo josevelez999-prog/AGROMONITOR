@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { db, auth } from "./firebase";
 import { collection, addDoc, onSnapshot, query, where, orderBy, doc, updateDoc } from "./dbCdt";
+import { getCdtData } from "./cdtContext";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { signOut } from "firebase/auth";
 
@@ -84,6 +85,19 @@ const CROPS = {
     noDrenaje: true,
   },
 };
+
+// Devuelve solo los cultivos del CDT del trabajador
+function getCropsCdt() {
+  try {
+    const cdt = getCdtData();
+    if (cdt && cdt.cultivos && Object.keys(cdt.cultivos).length > 0) {
+      const filtrado = {};
+      Object.keys(cdt.cultivos).forEach(cropId => { if (CROPS[cropId]) filtrado[cropId] = CROPS[cropId]; });
+      return Object.keys(filtrado).length > 0 ? filtrado : CROPS;
+    }
+  } catch {}
+  return CROPS;
+}
 const SYMPTOMS = {
   jitomate: [
     { name:"Hojas amarillas (clorosis)", icon:"🟡", cause:"Deficiencia de Fe o pH muy alto", action:"Bajar pH a 5.8–6.2, aplicar Fe quelado foliar", severity:"alta" },
@@ -351,7 +365,7 @@ function Registro({ worker }) {
       <div style={{marginBottom:14}}>
         <label style={LBL}>Cultivo</label>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {Object.entries(CROPS).map(([k,c])=>(
+          {Object.entries(getCropsCdt()).map(([k,c])=>(
             <button key={k} onClick={()=>setForm(p=>({...p,crop:k,invernadero:c.invernaderos?c.invernaderos[0]:""}))}
               style={{padding:"8px 14px",border:`1.5px solid ${form.crop===k?c.color:"#e0e0e0"}`,borderRadius:20,background:form.crop===k?c.color+"18":"transparent",color:form.crop===k?c.color:"#777",cursor:"pointer",fontSize:13,fontWeight:form.crop===k?700:400}}>
               {c.emoji} {c.name}
@@ -1101,7 +1115,7 @@ function GuiaSintomas() {
   return (
     <div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
-        {Object.entries(CROPS).map(([k,c])=>(
+        {Object.entries(getCropsCdt()).map(([k,c])=>(
           <button key={k} onClick={()=>{setCrop(k);setSel(null);}} style={{padding:"8px 14px",border:`1.5px solid ${crop===k?c.color:"#e0e0e0"}`,borderRadius:20,background:crop===k?c.color+"18":"transparent",color:crop===k?c.color:"#888",cursor:"pointer",fontSize:13,fontWeight:crop===k?700:400}}>
             {c.emoji} {c.name}
           </button>
@@ -1157,7 +1171,7 @@ function Incidencias({ worker }) {
           {TYPES.map(t=>(<button key={t.id} onClick={()=>setForm(p=>({...p,type:t.id}))} style={{padding:"10px 8px",border:`1.5px solid ${form.type===t.id?"#27ae60":"#e0e0e0"}`,borderRadius:8,background:form.type===t.id?"#eafaf1":"transparent",color:form.type===t.id?"#27ae60":"#666",cursor:"pointer",fontSize:12,fontWeight:form.type===t.id?700:400,textAlign:"left"}}>{t.label}</button>))}
         </div>
       </div>
-      <div style={{marginBottom:12}}><label style={LBL}>Cultivo afectado</label><select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={INP}>{Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}</select></div>
+      <div style={{marginBottom:12}}><label style={LBL}>Cultivo afectado</label><select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={INP}>{Object.entries(getCropsCdt()).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}</select></div>
       <div style={{marginBottom:12}}><label style={LBL}>Zona *</label>
           <select value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} style={INP}>
             <option value="">Selecciona zona</option>
