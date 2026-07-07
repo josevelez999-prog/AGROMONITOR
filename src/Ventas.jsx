@@ -127,16 +127,36 @@ const CROPS = {
   fresa:     { name:"Fresa",     emoji:"🍓", color:"#e74c3c", unidad:"kg" },
   arandano:  { name:"Arándano",  emoji:"🫐", color:"#2980b9", unidad:"kg" },
   zarzamora: { name:"Zarzamora", emoji:"🫐", color:"#8e44ad", unidad:"kg" },
+  pepino:    { name:"Pepino",    emoji:"🥒", color:"#27ae60", unidad:"kg" },
+  cana:      { name:"Caña de azúcar", emoji:"🎋", color:"#16a085", unidad:"ton" },
+  pimiento:  { name:"Pimiento",  emoji:"🫑", color:"#e74c3c", unidad:"kg" },
+  lechuga:   { name:"Lechuga",   emoji:"🥬", color:"#2ecc71", unidad:"pza" },
+  chile:     { name:"Chile",     emoji:"🌶️", color:"#c0392b", unidad:"kg" },
+  frambuesa: { name:"Frambuesa", emoji:"🫐", color:"#9b59b6", unidad:"kg" },
+  maiz:      { name:"Maíz",      emoji:"🌽", color:"#f39c12", unidad:"ton" },
+  aguacate:  { name:"Aguacate",  emoji:"🥑", color:"#27ae60", unidad:"kg" },
 };
 
 // Cultivos del CDT activo (filtrados del catálogo)
+const EMOJIS_C = { jitomate:"🍅", fresa:"🍓", arandano:"🫐", zarzamora:"🫐", pepino:"🥒", cana:"🎋", pimiento:"🫑", lechuga:"🥬", chile:"🌶️", frambuesa:"🫐", maiz:"🌽", aguacate:"🥑" };
+const COLORES_C = ["#c0392b","#27ae60","#2980b9","#8e44ad","#16a085","#e67e22","#9b59b6","#f39c12"];
+
 function getCropsCdt() {
   try {
     const cdt = getCdtData();
     if (cdt && cdt.cultivos && Object.keys(cdt.cultivos).length > 0) {
       const f = {};
-      Object.keys(cdt.cultivos).forEach(id => { if (CROPS[id]) f[id] = CROPS[id]; });
-      return Object.keys(f).length > 0 ? f : CROPS;
+      Object.entries(cdt.cultivos).forEach(([id, c], i) => {
+        // Usar datos del CDT; si el cultivo existe en el catálogo interno, tomar su color/unidad
+        const base = CROPS[id] || {};
+        f[id] = {
+          name: c.name || base.name || id,
+          emoji: c.emoji || base.emoji || EMOJIS_C[id] || "🌱",
+          color: base.color || COLORES_C[i % COLORES_C.length],
+          unidad: base.unidad || "kg",
+        };
+      });
+      return f;
     }
   } catch {}
   return CROPS;
