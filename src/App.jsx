@@ -3,7 +3,7 @@ import Worker from "./Worker";
 import MobileDashboard from "./MobileDashboard";
 import AlmacenAdmin from "./AlmacenAdmin";
 import AplicacionesAdmin from "./AplicacionesAdmin";
-import { setCdtContext, loadCdtData } from "./cdtContext";
+import { setCdtContext, loadCdtData, getSuperOverride } from "./cdtContext";
 import SuperAdmin from "./SuperAdmin";
 import Ventas from "./Ventas";
 import LoginScreen from "./Auth";
@@ -1816,8 +1816,13 @@ export default function App(){
           }
           const rol = userData?.rol || "trabajador";
           const esSuper = rol === "super_admin";
-          // El CDT del usuario (si es super_admin sin CDT, arranca en su primer CDT o null)
-          const userCdt = userData?.cdtId || null; // sin cdtId = sin acceso a datos (seguridad)
+          // El CDT del usuario. Si es super_admin y eligió "entrar" a otro CDT,
+          // usamos ese override (persistido en localStorage).
+          let userCdt = userData?.cdtId || null;
+          if (esSuper) {
+            const override = getSuperOverride();
+            if (override) userCdt = override;
+          }
           setUserRole(rol);
           setCdtId(userCdt);
           setCdtContext({ cdtId: userCdt, role: rol, isSuperAdmin: esSuper });

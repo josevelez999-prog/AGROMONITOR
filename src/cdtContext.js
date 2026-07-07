@@ -24,7 +24,24 @@ export const getUserRole = () => _userRole;
 export const isSuperAdmin = () => _isSuperAdmin;
 
 // Para super_admin que "entra" a un CDT (cambia el CDT activo sin cambiar de sesión)
-export const switchCdt = (cdtId) => { _currentCdtId = cdtId; };
+export const switchCdt = (cdtId) => {
+  _currentCdtId = cdtId;
+  // Guardar para que sobreviva a la recarga (solo super_admin usa esto)
+  try {
+    if (cdtId) localStorage.setItem("super_cdt_override", cdtId);
+    else localStorage.removeItem("super_cdt_override");
+  } catch {}
+};
+
+// Lee el CDT que el super_admin eligió ver (persiste tras recarga)
+export const getSuperOverride = () => {
+  try { return localStorage.getItem("super_cdt_override"); } catch { return null; }
+};
+
+// Limpia el override (volver a la vista propia)
+export const clearSuperOverride = () => {
+  try { localStorage.removeItem("super_cdt_override"); } catch {}
+};
 
 // ─── Helpers de datos filtrados por CDT ──────────────────────────────────────
 

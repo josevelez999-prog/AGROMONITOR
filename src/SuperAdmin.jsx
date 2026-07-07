@@ -4,7 +4,7 @@ import { db } from "./firebase";
 import {
   collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, getDocs,
 } from "firebase/firestore";
-import { switchCdt, getCurrentCdtId } from "./cdtContext";
+import { switchCdt, getCurrentCdtId, getSuperOverride, clearSuperOverride } from "./cdtContext";
 
 const INP = { padding: "9px 12px", border: "1px solid #d5dae0", borderRadius: 8, fontSize: 13, width: "100%", boxSizing: "border-box", background: "#fff", color: "#111" };
 const LBL = { fontSize: 11, color: "#8a94a0", display: "block", marginBottom: 4, fontWeight: 600 };
@@ -60,9 +60,15 @@ export default function SuperAdmin() {
     cargarStats();
   }, [cdts.length]);
 
+  const overrideActivo = getSuperOverride();
+
   const entrarACdt = (cdtId) => {
     switchCdt(cdtId);
-    alert(`Ahora estás viendo el CDT "${cdtId}".\n\nRecarga la página o navega para ver sus datos.\nPara volver a la vista global, entra de nuevo aquí.`);
+    window.location.reload();
+  };
+
+  const volverGlobal = () => {
+    clearSuperOverride();
     window.location.reload();
   };
 
@@ -80,6 +86,17 @@ export default function SuperAdmin() {
           + Nuevo CDT
         </button>
       </div>
+
+      {overrideActivo && (
+        <div style={{ background: "#2980b9", color: "#fff", borderRadius: 10, padding: "12px 18px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div style={{ fontSize: 13 }}>
+            👁 Estás viendo los datos del CDT <strong style={{ fontFamily: "monospace" }}>{overrideActivo}</strong>. Todas las secciones (Resumen, Ventas, etc.) muestran datos de este centro.
+          </div>
+          <button onClick={volverGlobal} style={{ padding: "7px 16px", background: "#fff", color: "#2980b9", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+            ← Volver a vista global
+          </button>
+        </div>
+      )}
 
       {(showNew || editingCdt) && (
         <CdtForm
@@ -112,10 +129,17 @@ export default function SuperAdmin() {
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <button onClick={() => entrarACdt(cdt.id)}
-                  style={{ padding: "8px 16px", background: "#2980b9", color: "#fff", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
-                  → Entrar a este CDT
-                </button>
+                {overrideActivo === cdt.id ? (
+                  <button onClick={volverGlobal}
+                    style={{ padding: "8px 16px", background: "#27ae60", color: "#fff", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    ✓ Viendo este CDT
+                  </button>
+                ) : (
+                  <button onClick={() => entrarACdt(cdt.id)}
+                    style={{ padding: "8px 16px", background: "#2980b9", color: "#fff", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    → Entrar a este CDT
+                  </button>
+                )}
                 <button onClick={() => { setEditingCdt(cdt); setShowNew(false); window.scrollTo(0, 0); }}
                   style={{ padding: "7px 16px", background: "#eef2f5", color: "#556", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
                   ✎ Editar
