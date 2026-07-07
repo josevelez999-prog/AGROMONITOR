@@ -74,12 +74,12 @@ function MobileDashboardInner({ user, onLogout, onSwitchToDesktop }) {
 
   useEffect(()=>{
     const subs = [
-      onSnapshot(query(collection(db,"ventas"),    orderBy("createdAt","desc")), s => setVentas(s.docs.map(d=>({id:d.id,...d.data()})))),
-      onSnapshot(query(collection(db,"cosechas_trabajador"), orderBy("createdAt","desc")), s => setCosechas(s.docs.map(d=>({id:d.id,...d.data()})))),
-      onSnapshot(query(collection(db,"lotes"),     orderBy("createdAt","desc")), s => setLotes(s.docs.map(d=>({id:d.id,...d.data()})))),
+      onSnapshot(collection(db,"ventas"), s => setVentas(s.docs.map(d=>({id:d.id,...d.data()})))),
+      onSnapshot(collection(db,"cosechas_trabajador"), s => setCosechas(s.docs.map(d=>({id:d.id,...d.data()})))),
+      onSnapshot(collection(db,"lotes"), s => setLotes(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(query(collection(db,"mermas")),   s => setMermas(s.docs.map(d=>({id:d.id,...d.data()})))),
       onSnapshot(query(collection(db,"siniestros")), s => setSiniestros(s.docs.map(d=>({id:d.id,...d.data()})))),
-      onSnapshot(query(collection(db,"tasks"), orderBy("fechaCreacion","desc")), s => setTasks(s.docs.map(d=>({id:d.id,...d.data()})))),
+      onSnapshot(collection(db,"tasks"), s => setTasks(s.docs.map(d=>({id:d.id,...d.data()})))),
     ];
     return () => subs.forEach(u => u());
   },[]);

@@ -27,7 +27,7 @@ export default function UsuariosAdmin() {
   const [changingPass, setChangingPass] = useState(null);
 
   useEffect(() => {
-    const q = query(collection(db,"usuarios"), orderBy("createdAt","desc"));
+    const q = collection(db,"usuarios");
     const unsub = onSnapshot(q, snap => setUsuarios(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return () => unsub();
   }, []);

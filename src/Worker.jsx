@@ -562,7 +562,7 @@ function RegistroCosecha({ worker }) {
   const CANALES_W = ["Mercado local","Central de abastos","Supermercado","Restaurante","Exportación","Venta directa","Agroindustria","Otro"];
 
   useEffect(()=>{
-    const q = query(collection(db,"lotes"),orderBy("createdAt","desc"));
+    const q = collection(db,"lotes");
     const unsub = onSnapshot(q,snap=>setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))),(err)=>console.error("lotes:",err));
     const u2 = onSnapshot(query(collection(db,"ventas")), s=>setVentasW(s.docs.map(d=>({id:d.id,...d.data()}))));
     const u3 = onSnapshot(query(collection(db,"cosechas_trabajador")), s=>setCosechasW(s.docs.map(d=>({id:d.id,...d.data()}))));
@@ -1030,7 +1030,7 @@ function Tareas({ worker }) {
   const [tasks, setTasks] = useState([]);
   const today = new Date().toISOString().slice(0,10);
   useEffect(()=>{
-    const q = query(collection(db,"tasks"),orderBy("fechaCreacion","desc"));
+    const q = collection(db,"tasks");
     const unsub = onSnapshot(q,snap=>setTasks(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return()=>unsub();
   },[]);

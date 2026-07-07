@@ -46,7 +46,7 @@ export default function AlmacenAdmin() {
     const u1 = onSnapshot(collection(db, "inventario"), snap => {
       setInsumos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-    const u2 = onSnapshot(query(collection(db, "inventario_movimientos"), orderBy("fecha", "desc")), snap => {
+    const u2 = onSnapshot(collection(db,"inventario_movimientos"), snap => {
       setMovimientos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => { u1(); u2(); };

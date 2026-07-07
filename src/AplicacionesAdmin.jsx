@@ -38,10 +38,10 @@ export default function AplicacionesAdmin() {
   const [insumos, setInsumos] = useState([]);
 
   useEffect(() => {
-    const u1 = onSnapshot(query(collection(db, "aplicaciones"), orderBy("fecha", "desc")),
+    const u1 = onSnapshot(collection(db,"aplicaciones"),
       snap => setAplicaciones(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       err => console.error("aplicaciones:", err));
-    const u2 = onSnapshot(query(collection(db, "aplicaciones_programadas"), orderBy("fechaProgramada", "asc")),
+    const u2 = onSnapshot(collection(db,"aplicaciones_programadas"),
       snap => setProgramadas(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       err => console.error("programadas:", err));
     const u3 = onSnapshot(collection(db, "inventario"),

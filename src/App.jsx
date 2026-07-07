@@ -984,7 +984,7 @@ function Formulador(){
 
   // Cargar fórmulas guardadas desde Firebase
   useEffect(()=>{
-    const q = query(collection(db,"formulas_nutritivas"), orderBy("createdAt","desc"));
+    const q = collection(db,"formulas_nutritivas");
     const unsub = onSnapshot(q, snap=>setSavedFormulas(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return()=>unsub();
   },[]);
@@ -1356,7 +1356,7 @@ Pregunta del usuario: ${iaPrompt}`;
 function IncidenciasAdmin(){
   const [data,setData]=useState([]);
   const [filter,setFilter]=useState("pendiente");
-  useEffect(()=>{const q=query(collection(db,"incidencias"),orderBy("createdAt","desc"));const unsub=onSnapshot(q,snap=>setData(snap.docs.map(d=>({id:d.id,...d.data()}))));return()=>unsub();},[]);
+  useEffect(()=>{const q=collection(db,"incidencias");const unsub=onSnapshot(q,snap=>setData(snap.docs.map(d=>({id:d.id,...d.data()}))));return()=>unsub();},[]);
   const filtered=filter==="all"?data:data.filter(i=>i.status===filter);
   const pending=data.filter(i=>i.status==="pendiente");
   const TLABELS={plaga:"🦗 Plaga",enfermedad:"🍂 Enfermedad",equipo:"⚙️ Equipo",clima:"🌡️ Clima",otro:"📋 Otro"};
@@ -1412,7 +1412,7 @@ function TareasAdmin(){
   const [filterStatus,setFilterStatus]=useState("all");
 
   useEffect(()=>{
-    const q=query(collection(db,"tasks"),orderBy("fechaCreacion","desc"));
+    const q=collection(db,"tasks");
     const unsub=onSnapshot(q,snap=>setTasks(snap.docs.map(d=>({id:d.id,...d.data()}))));
     const u2=onSnapshot(query(collection(db,"usuarios")),s=>setUsuarios(s.docs.map(d=>({id:d.id,...d.data()})).filter(u=>u.rol==="trabajador")));
     return()=>{unsub();u2();};
@@ -1598,7 +1598,7 @@ function InstruccionesAdmin(){
   const [data,setData]=useState([]);
   const [form,setForm]=useState({crop:"jitomate",title:"",zone:"",volume:"",notes:"",date:new Date().toISOString().slice(0,10)});
   const [steps,setSteps]=useState([""]);
-  useEffect(()=>{const q=query(collection(db,"instrucciones"),orderBy("createdAt","desc"));const unsub=onSnapshot(q,snap=>setData(snap.docs.map(d=>({id:d.id,...d.data()}))));return()=>unsub();},[]);
+  useEffect(()=>{const q=collection(db,"instrucciones");const unsub=onSnapshot(q,snap=>setData(snap.docs.map(d=>({id:d.id,...d.data()}))));return()=>unsub();},[]);
   const publish=async()=>{if(!form.title){alert("Agrega título");return;}await addDoc(collection(db,"instrucciones"),{...form,steps:steps.filter(s=>s.trim()),createdAt:new Date().toISOString()});setForm(p=>({...p,title:"",zone:"",volume:"",notes:""}));setSteps([""]);};
   const inp2={padding:"9px 12px",border:"1px solid #e0e0e0",borderRadius:8,fontSize:13,width:"100%",boxSizing:"border-box"};
   return(
@@ -1815,7 +1815,7 @@ export default function App(){
           const rol = userData?.rol || "trabajador";
           const esSuper = rol === "super_admin";
           // El CDT del usuario (si es super_admin sin CDT, arranca en su primer CDT o null)
-          const userCdt = userData?.cdtId || "morelia"; // fallback al CDT original
+          const userCdt = userData?.cdtId || null; // sin cdtId = sin acceso a datos (seguridad)
           setUserRole(rol);
           setCdtId(userCdt);
           setCdtContext({ cdtId: userCdt, role: rol, isSuperAdmin: esSuper });
@@ -1824,8 +1824,8 @@ export default function App(){
           setCdtReady(true);
         } catch {
           setUserRole("trabajador");
-          setCdtId("morelia");
-          setCdtContext({ cdtId: "morelia", role: "trabajador", isSuperAdmin: false });
+          setCdtId(null);
+          setCdtContext({ cdtId: null, role: "trabajador", isSuperAdmin: false });
           setCdtReady(true);
         }
       } else {
@@ -1840,7 +1840,7 @@ export default function App(){
   },[]);
 
   useEffect(()=>{
-    const q=query(collection(db,"readings"),orderBy("createdAt","desc"));
+    const q=collection(db,"readings");
     const unsub=onSnapshot(q,snap=>{setReadings(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);},()=>setLoading(false));
     const rangosUnsub=onSnapshot(doc(db,"config","rangos_semanales"),snap=>{if(snap.exists())setWeeklyRangos(snap.data());});
     return()=>{unsub();rangosUnsub();};

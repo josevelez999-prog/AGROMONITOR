@@ -225,7 +225,7 @@ export default function AnalisisSuelo() {
   const fileRef = useRef();
 
   useEffect(() => {
-    const q = query(collection(db, "analisis_suelo"), orderBy("createdAt", "desc"));
+    const q = collection(db,"analisis_suelo");
     const unsub = onSnapshot(q, snap => setAnalisis(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     return () => unsub();
   }, []);

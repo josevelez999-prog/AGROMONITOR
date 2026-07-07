@@ -183,8 +183,8 @@ function GestionLotes() {
   const [saving, setSaving] = useState(false);
 
   useEffect(()=>{
-    const q = query(collection(db,"lotes"), orderBy("createdAt","desc"));
-    const unsub = onSnapshot(q, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    const q = collection(db,"lotes");
+    const unsub = onSnapshot(q, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))));
     const u2 = onSnapshot(query(collection(db,"ventas")), s=>setVentasLote(s.docs.map(d=>({id:d.id,...d.data()}))));
     const u3 = onSnapshot(query(collection(db,"cosechas_trabajador")), s=>setCosechasLote(s.docs.map(d=>({id:d.id,...d.data()}))));
     const u4 = onSnapshot(query(collection(db,"mermas")), s=>setMermasLote(s.docs.map(d=>({id:d.id,...d.data()}))));
@@ -327,14 +327,14 @@ function RegistroVentas() {
   const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db,"ventas"), orderBy("createdAt","desc"));
-    const unsub = onSnapshot(q, snap => setVentas(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    const q = collection(db,"ventas");
+    const unsub = onSnapshot(q, snap => setVentas(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))));
     return () => unsub();
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db,"lotes"), orderBy("createdAt","desc"));
-    const unsub = onSnapshot(q, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    const q = collection(db,"lotes");
+    const unsub = onSnapshot(q, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))));
     return () => unsub();
   }, []);
 
@@ -749,14 +749,14 @@ function ReportesVentas() {
   const [filterPeriodo, setFilterPeriodo] = useState("todo");
 
   useEffect(() => {
-    const q1 = query(collection(db,"ventas"), orderBy("createdAt","desc"));
-    const unsub1 = onSnapshot(q1, snap => setVentas(snap.docs.map(d=>({id:d.id,...d.data()}))));
-    const q2 = query(collection(db,"lotes"), orderBy("createdAt","desc"));
-    const unsub2 = onSnapshot(q2, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()}))));
-    const q3 = query(collection(db,"cosechas_trabajador"), orderBy("createdAt","desc"));
+    const q1 = collection(db,"ventas");
+    const unsub1 = onSnapshot(q1, snap => setVentas(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))));
+    const q2 = collection(db,"lotes");
+    const unsub2 = onSnapshot(q2, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))));
+    const q3 = collection(db,"cosechas_trabajador");
     const unsubS = onSnapshot(query(collection(db,"siniestros")), s=>setSiniestrosData(s.docs.map(d=>({id:d.id,...d.data()}))));
     const unsub3 = onSnapshot(q3, snap => setCosechas(snap.docs.map(d=>({id:d.id,...d.data()}))));
-    const q4 = query(collection(db,"mermas"), orderBy("createdAt","desc"));
+    const q4 = collection(db,"mermas");
     const unsub4 = onSnapshot(q4, snap => setMermasData(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsubS(); };
   }, []);
@@ -1432,7 +1432,7 @@ function CosechasAdmin() {
   const inp = INP;
 
   useEffect(()=>{
-    const q = query(collection(db,"cosechas_trabajador"), orderBy("createdAt","desc"));
+    const q = collection(db,"cosechas_trabajador");
     const unsub = onSnapshot(q, snap=>setCosechas(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return()=>unsub();
   },[]);
@@ -1533,7 +1533,7 @@ function ValidacionesAdmin() {
   const [filterCrop, setFilterCrop] = useState("all");
 
   useEffect(()=>{
-    const q = query(collection(db,"validaciones_tratamiento"), orderBy("createdAt","desc"));
+    const q = collection(db,"validaciones_tratamiento");
     const unsub = onSnapshot(q, snap=>setValidaciones(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return()=>unsub();
   },[]);
@@ -1663,7 +1663,7 @@ function MermasAdmin() {
   };
 
   useEffect(()=>{
-    const q = query(collection(db,"mermas"), orderBy("createdAt","desc"));
+    const q = collection(db,"mermas");
     const unsub = onSnapshot(q, snap=>setMermas(snap.docs.map(d=>({id:d.id,...d.data()}))));
     return()=>unsub();
   },[]);
