@@ -1847,11 +1847,17 @@ export default function App(){
   },[]);
 
   useEffect(()=>{
+    // Esperar a que el contexto de CDT esté listo antes de cargar,
+    // para que el filtro por cdtId se aplique correctamente.
+    if(!cdtReady) return;
+    setReadings([]); // limpiar datos del CDT anterior al cambiar
+    // Salvaguarda: si en 4s no llegó nada, quitar el "cargando"
+    const safety=setTimeout(()=>setLoading(false),4000);
     const q=collection(db,"readings");
-    const unsub=onSnapshot(q,snap=>{setReadings(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);},()=>setLoading(false));
+    const unsub=onSnapshot(q,snap=>{clearTimeout(safety);setReadings(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);},()=>{clearTimeout(safety);setLoading(false);});
     const rangosUnsub=onSnapshot(doc(db,"config","rangos_semanales"),snap=>{if(snap.exists())setWeeklyRangos(snap.data());});
-    return()=>{unsub();rangosUnsub();};
-  },[]);
+    return()=>{clearTimeout(safety);unsub();rangosUnsub();};
+  },[cdtReady,cdtId]);
 
   const handleDelete=async id=>{try{await deleteDoc(doc(db,"readings",id));}catch{alert("Error al eliminar.");}};
   const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,{});return getStatus(r.ph,rng.ph)==="danger"||getStatus(r.ce,rng.ce)==="danger";});
