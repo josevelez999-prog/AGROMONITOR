@@ -17,10 +17,13 @@ const CULTIVOS_CATALOGO = [
   { id: "arandano", name: "Arándano", emoji: "🫐" },
   { id: "zarzamora", name: "Zarzamora", emoji: "🫐" },
   { id: "pepino", name: "Pepino", emoji: "🥒" },
+  { id: "cana", name: "Caña de azúcar", emoji: "🎋" },
   { id: "pimiento", name: "Pimiento", emoji: "🫑" },
   { id: "lechuga", name: "Lechuga", emoji: "🥬" },
   { id: "chile", name: "Chile", emoji: "🌶️" },
   { id: "frambuesa", name: "Frambuesa", emoji: "🫐" },
+  { id: "maiz", name: "Maíz", emoji: "🌽" },
+  { id: "aguacate", name: "Aguacate", emoji: "🥑" },
 ];
 
 export default function SuperAdmin() {
