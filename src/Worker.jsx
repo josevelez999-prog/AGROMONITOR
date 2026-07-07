@@ -153,9 +153,9 @@ function MisAlertasActivas({ worker }) {
     const rangosUnsub = onSnapshot(doc(db,"config","rangos_semanales"), snap=>{
       if(snap.exists()) setWeeklyRangos(snap.data());
     });
-    const q = query(collection(db,"readings"), where("worker","==",worker));
+    const q = collection(db,"readings");
     const unsub = onSnapshot(q, snap=>{
-      const all = snap.docs.map(d=>({id:d.id,...d.data()}));
+      const all = snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.worker===worker);
       all.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
       const recent = all.slice(0,10);
       const conAlerta = recent.filter(r=>{
@@ -504,9 +504,9 @@ function MiHistorial({ worker }) {
   const [readings, setReadings] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(()=>{
-    const q = query(collection(db,"readings"),where("worker","==",worker));
+    const q = collection(db,"readings");
     const unsub = onSnapshot(q,snap=>{
-      const all = snap.docs.map(d=>({id:d.id,...d.data()}));
+      const all = snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.worker===worker);
       all.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
       setReadings(all);
       setLoading(false);
@@ -1181,8 +1181,8 @@ function InstruccionesDia() {
   const [data,setData]=useState([]);
   const today=new Date().toISOString().slice(0,10);
   useEffect(()=>{
-    const q=query(collection(db,"instrucciones"),where("date","==",today));
-    const unsub=onSnapshot(q,snap=>setData(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    const q=collection(db,"instrucciones");
+    const unsub=onSnapshot(q,snap=>setData(snap.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.date===today)));
     return()=>unsub();
   },[today]);
   if(!data.length) return <div style={{textAlign:"center",padding:"3rem",color:"#aaa"}}><div style={{fontSize:40,marginBottom:8}}>📋</div><div style={{fontWeight:500,marginBottom:4}}>Sin instrucciones por hoy</div><div style={{fontSize:12}}>El encargado publicará las instrucciones aquí</div></div>;
