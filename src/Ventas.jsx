@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 import { db } from "./firebase";
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, setDoc, getDoc } from "./dbCdt";
+import { getCdtData } from "./cdtContext";
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 
@@ -71,18 +72,18 @@ function PreciosCalidad() {
           <thead>
             <tr style={{background:"#fafafa"}}>
               <th style={{padding:"10px 12px",textAlign:"left",color:"#888",fontWeight:500,fontSize:11,borderBottom:"1px solid #f0f0f0"}}>Cultivo</th>
-              {getCalidadesPrecios(form.crop).map(c=>(
+              {CALIDADES_P.map(c=>(
                 <th key={c.id} style={{padding:"10px 12px",textAlign:"center",color:c.color,fontWeight:600,fontSize:11,borderBottom:"1px solid #f0f0f0",minWidth:100}}>{c.label}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {Object.entries(CROPS).map(([k,crop])=>(
+            {Object.entries(getCropsCdt()).map(([k,crop])=>(
               <tr key={k} style={{borderBottom:"1px solid #f5f5f5"}}>
                 <td style={{padding:"10px 12px",fontWeight:600}}>
                   <span style={{color:crop.color}}>{crop.emoji} {crop.name}</span>
                 </td>
-                {getCalidadesPrecios(form.crop).map(c=>(
+                {CALIDADES_P.map(c=>(
                   <td key={c.id} style={{padding:"8px 10px",textAlign:"center"}}>
                     <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center"}}>
                       <span style={{fontSize:12,color:"#aaa",fontWeight:500}}>$</span>
@@ -127,6 +128,19 @@ const CROPS = {
   arandano:  { name:"Arándano",  emoji:"🫐", color:"#2980b9", unidad:"kg" },
   zarzamora: { name:"Zarzamora", emoji:"🫐", color:"#8e44ad", unidad:"kg" },
 };
+
+// Cultivos del CDT activo (filtrados del catálogo)
+function getCropsCdt() {
+  try {
+    const cdt = getCdtData();
+    if (cdt && cdt.cultivos && Object.keys(cdt.cultivos).length > 0) {
+      const f = {};
+      Object.keys(cdt.cultivos).forEach(id => { if (CROPS[id]) f[id] = CROPS[id]; });
+      return Object.keys(f).length > 0 ? f : CROPS;
+    }
+  } catch {}
+  return CROPS;
+}
 
 const TRATAMIENTOS = [
   { id:"convencional",  label:"Convencional",        color:"#7f8c8d", icon:"🌱" },
@@ -176,7 +190,7 @@ function GestionLotes() {
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
-    nombre:"", crop:"jitomate", zona:"", tratamiento:"convencional",
+    nombre:"", crop:(Object.keys(getCropsCdt())[0]||"jitomate"), zona:"", tratamiento:"convencional",
     fechaCosecha:new Date().toISOString().slice(0,10),
     kgCosechados:0, kgEstimados:0, costoCiclo:0, notas:""
   });
@@ -200,7 +214,7 @@ function GestionLotes() {
     } else {
       await addDoc(collection(db,"lotes"), data);
     }
-    setForm({ nombre:"", crop:"jitomate", zona:"", tratamiento:"convencional", fechaCosecha:new Date().toISOString().slice(0,10), kgCosechados:0, kgEstimados:0, costoCiclo:0, notas:"" });
+    setForm({ nombre:"", crop:(Object.keys(getCropsCdt())[0]||"jitomate"), zona:"", tratamiento:"convencional", fechaCosecha:new Date().toISOString().slice(0,10), kgCosechados:0, kgEstimados:0, costoCiclo:0, notas:"" });
     setShowForm(false);
   };
 
@@ -225,7 +239,7 @@ function GestionLotes() {
             <div>
               <label style={{fontSize:10,color:"#666",display:"block",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Cultivo</label>
               <select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={inp}>
-                {Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}
+                {Object.entries(getCropsCdt()).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}
               </select>
             </div>
             <div>
@@ -320,7 +334,7 @@ function RegistroVentas() {
   const [ventas, setVentas] = useState([]);
   const [lotes, setLotes] = useState([]);
   const [form, setForm] = useState({
-    loteId:"", crop:"jitomate", comprador:"", canal:"Mercado local",
+    loteId:"", crop:(Object.keys(getCropsCdt())[0]||"jitomate"), comprador:"", canal:"Mercado local",
     calidad:"primera", kgVendidos:0, precioKg:0,
     fecha:new Date().toISOString().slice(0,10), notas:"", factura:""
   });
@@ -363,7 +377,7 @@ function RegistroVentas() {
     } else {
       await addDoc(collection(db,"ventas"), {...data, createdAt:new Date().toISOString()});
     }
-    setForm({ loteId:"", crop:"jitomate", comprador:"", canal:"Mercado local", calidad:"primera", kgVendidos:0, precioKg:0, fecha:new Date().toISOString().slice(0,10), notas:"", factura:"" });
+    setForm({ loteId:"", crop:(Object.keys(getCropsCdt())[0]||"jitomate"), comprador:"", canal:"Mercado local", calidad:"primera", kgVendidos:0, precioKg:0, fecha:new Date().toISOString().slice(0,10), notas:"", factura:"" });
     setShowForm(false);
   };
 
@@ -408,7 +422,7 @@ function RegistroVentas() {
               <div>
                 <label style={{fontSize:10,color:"#aaa",display:"block",marginBottom:3}}>CULTIVO</label>
                 <select value={form.crop} onChange={e=>setForm(p=>({...p,crop:e.target.value}))} style={inp}>
-                  {Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}
+                  {Object.entries(getCropsCdt()).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}
                 </select>
               </div>
             )}
@@ -644,7 +658,7 @@ function MonitorPrecios({ precioPromedioPropio = {} }) {
 
         {/* Tarjetas de precios */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10,marginBottom:12}}>
-          {Object.entries(CROPS).map(([k,c]) => {
+          {Object.entries(getCropsCdt()).map(([k,c]) => {
             const p = prices[k] || manualPrices[k] || {};
             const tiene = p.min || p.max || p.prom;
             const propio = precioPromedioPropio[k] || 0;
@@ -1007,7 +1021,7 @@ function ReportesVentas() {
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
         <select value={filterCrop} onChange={e=>setFilterCrop(e.target.value)} style={{...INP,padding:"8px 14px",borderRadius:20,fontSize:12,width:"auto"}}>
           <option value="all">🌱 Todos los cultivos</option>
-          {Object.entries(CROPS).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}
+          {Object.entries(getCropsCdt()).map(([k,c])=><option key={k} value={k}>{c.emoji} {c.name}</option>)}
         </select>
         {invernaderosDisponibles.length>1&&(
           <select value={filterInv} onChange={e=>setFilterInv(e.target.value)} style={{...INP,padding:"8px 14px",borderRadius:20,fontSize:12,width:"auto",cursor:"pointer"}}>

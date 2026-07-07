@@ -7,13 +7,33 @@ import {
   collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
   query, orderBy
 } from "./dbCdt";
+import { getCdtData } from "./cdtContext";
 
-const CROPS_LIST = [
+const CROPS_LIST_DEFAULT = [
   { id: "jitomate", name: "Jitomate", emoji: "🍅", tipoUbicacion: "Invernadero", ubicaciones: ["INV 2", "INV 3", "INV 5", "INV 6"] },
   { id: "fresa",    name: "Fresa",    emoji: "🍓", tipoUbicacion: "Nave", ubicaciones: ["Nave 1", "Nave 2", "Nave 3"] },
   { id: "arandano", name: "Arándano", emoji: "🫐", tipoUbicacion: "Nave", ubicaciones: ["Nave 1", "Nave 2", "Nave 3"] },
   { id: "zarzamora",name: "Zarzamora",emoji: "🫐", tipoUbicacion: "Nave", ubicaciones: ["Nave 1", "Nave 2", "Nave 3"] },
 ];
+
+const EMOJIS_CULTIVO = { jitomate:"🍅", fresa:"🍓", arandano:"🫐", zarzamora:"🫐", pepino:"🥒", cana:"🎋", pimiento:"🫑", lechuga:"🥬", chile:"🌶️", frambuesa:"🫐", maiz:"🌽", aguacate:"🥑" };
+
+// Construye la lista de cultivos del CDT activo (con sus naves/invernaderos)
+function getCropsList() {
+  try {
+    const cdt = getCdtData();
+    if (cdt && cdt.cultivos && Object.keys(cdt.cultivos).length > 0) {
+      return Object.entries(cdt.cultivos).map(([id, c]) => ({
+        id,
+        name: c.name || id,
+        emoji: c.emoji || EMOJIS_CULTIVO[id] || "🌱",
+        tipoUbicacion: c.tipoUbicacion || "Nave",
+        ubicaciones: c.ubicaciones || [],
+      }));
+    }
+  } catch {}
+  return CROPS_LIST_DEFAULT;
+}
 
 const EQUIPOS = ["Mochila", "Parihuela", "Motor", "Manual"];
 
@@ -116,7 +136,7 @@ function RegistradasTab({ aplicaciones, insumos }) {
         <button onClick={() => setFilterCrop("all")} style={{ padding: "6px 12px", border: `1px solid ${filterCrop === "all" ? "#27ae60" : "#ddd"}`, borderRadius: 16, background: filterCrop === "all" ? "#eafaf1" : "#fff", cursor: "pointer", fontSize: 11, color: filterCrop === "all" ? "#27ae60" : "#666", fontWeight: filterCrop === "all" ? 700 : 500 }}>
           Todos ({aplicaciones.length})
         </button>
-        {CROPS_LIST.map(c => (
+        {getCropsList().map(c => (
           <button key={c.id} onClick={() => setFilterCrop(c.id)} style={{ padding: "6px 12px", border: `1px solid ${filterCrop === c.id ? "#27ae60" : "#ddd"}`, borderRadius: 16, background: filterCrop === c.id ? "#eafaf1" : "#fff", cursor: "pointer", fontSize: 11, color: filterCrop === c.id ? "#27ae60" : "#666", fontWeight: filterCrop === c.id ? 700 : 500 }}>
             {c.emoji} {c.name}
           </button>
@@ -142,7 +162,7 @@ function RegistradasTab({ aplicaciones, insumos }) {
             </thead>
             <tbody>
               {filt.map(a => {
-                const crop = CROPS_LIST.find(c => c.id === a.crop);
+                const crop = getCropsList().find(c => c.id === a.crop);
                 return (
                   <tr key={a.id} style={{ borderBottom: "1px solid #fafafa" }}>
                     <td style={{ padding: "8px 6px", fontFamily: "'Courier New',monospace", whiteSpace: "nowrap" }}>{a.fecha}</td>
@@ -177,7 +197,7 @@ function RegistradasTab({ aplicaciones, insumos }) {
 // ────────────────────────────────────────────────────────────────────────────
 function ProgramarTab({ programadas, insumos }) {
   const today = new Date().toISOString().slice(0, 10);
-  const initial = { crop: "jitomate", fechaProgramada: today, nombreComercial: "", ingredienteActivo: "", dosisHa: "", unidadDosis: "L", plaga: "", seccion: "", notas: "", insumoId: "" };
+  const initial = { crop: (getCropsList()[0]?.id || "jitomate"), fechaProgramada: today, nombreComercial: "", ingredienteActivo: "", dosisHa: "", unidadDosis: "L", plaga: "", seccion: "", notas: "", insumoId: "" };
   const [form, setForm] = useState(initial);
   const [editing, setEditing] = useState(null);
 
@@ -245,7 +265,7 @@ function ProgramarTab({ programadas, insumos }) {
           <div>
             <label style={LBL}>Cultivo *</label>
             <select value={form.crop} onChange={e => setForm(p => ({ ...p, crop: e.target.value }))} style={INP}>
-              {CROPS_LIST.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
+              {getCropsList().map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
             </select>
           </div>
           <div>
@@ -282,10 +302,10 @@ function ProgramarTab({ programadas, insumos }) {
             <input value={form.plaga} onChange={e => setForm(p => ({ ...p, plaga: e.target.value }))} placeholder="Ej: Mosca blanca" style={INP} />
           </div>
           <div>
-            <label style={LBL}>{CROPS_LIST.find(x => x.id === form.crop)?.tipoUbicacion || "Sección"}</label>
+            <label style={LBL}>{getCropsList().find(x => x.id === form.crop)?.tipoUbicacion || "Sección"}</label>
             <select value={form.seccion} onChange={e => setForm(p => ({ ...p, seccion: e.target.value }))} style={INP}>
               <option value="">— Selecciona —</option>
-              {(CROPS_LIST.find(x => x.id === form.crop)?.ubicaciones || []).map(u => <option key={u} value={u}>{u}</option>)}
+              {(getCropsList().find(x => x.id === form.crop)?.ubicaciones || []).map(u => <option key={u} value={u}>{u}</option>)}
             </select>
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
@@ -308,7 +328,7 @@ function ProgramarTab({ programadas, insumos }) {
       ) : (
         <div style={{ marginBottom: 20 }}>
           {pendientes.map(p => {
-            const crop = CROPS_LIST.find(c => c.id === p.crop);
+            const crop = getCropsList().find(c => c.id === p.crop);
             const vencida = p.fechaProgramada < today;
             return (
               <div key={p.id} style={{ ...card, borderLeft: `4px solid ${vencida ? "#e74c3c" : "#e67e22"}`, marginBottom: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -339,7 +359,7 @@ function ProgramarTab({ programadas, insumos }) {
         <>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#27ae60", marginBottom: 8 }}>✅ Completadas ({completadas.length})</div>
           {completadas.slice(0, 10).map(p => {
-            const crop = CROPS_LIST.find(c => c.id === p.crop);
+            const crop = getCropsList().find(c => c.id === p.crop);
             return (
               <div key={p.id} style={{ ...card, borderLeft: "4px solid #27ae60", marginBottom: 6, display: "flex", alignItems: "center", gap: 12, opacity: 0.7 }}>
                 <div style={{ fontSize: 20 }}>{crop?.emoji}</div>
@@ -388,7 +408,7 @@ function ReporteTab({ aplicaciones }) {
       rows.push([]);
       rows.push([`Unidad de producción / Nave: ${meta.unidad || "—"}`, "", "", `Mes: ${mes}`]);
       rows.push([`Superficie (Has): ${meta.superficie || "—"}`, "", "", `Fecha de plantación: ${meta.fechaPlantacion || "—"}`]);
-      rows.push([`Cultivo: ${CROPS_LIST.find(c => c.id === filterCrop)?.name || filterCrop}`, "", "", `Fecha estimada de cosecha: ${meta.fechaCosechaEst || "—"}`]);
+      rows.push([`Cultivo: ${getCropsList().find(c => c.id === filterCrop)?.name || filterCrop}`, "", "", `Fecha estimada de cosecha: ${meta.fechaCosechaEst || "—"}`]);
       rows.push([`Variedad: ${meta.variedad || "—"}`, "", "", `Fecha real inicio de cosecha: ${meta.fechaCosechaReal || "—"}`]);
       rows.push([]);
       rows.push([
@@ -436,7 +456,7 @@ function ReporteTab({ aplicaciones }) {
             <label style={LBL}>Cultivo</label>
             <select value={filterCrop} onChange={e => setFilterCrop(e.target.value)} style={INP}>
               <option value="all">Todos</option>
-              {CROPS_LIST.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
+              {getCropsList().map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
             </select>
           </div>
           <div>

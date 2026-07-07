@@ -1517,6 +1517,18 @@ const UBICACIONES_APLIC = {
   zarzamora: { tipo: "Nave", lista: ["Nave 1", "Nave 2", "Nave 3"] },
 };
 
+// Ubicaciones del cultivo según el CDT del trabajador (fallback al fijo)
+function getUbicacionCrop(cropId) {
+  try {
+    const cdt = getCdtData();
+    if (cdt && cdt.cultivos && cdt.cultivos[cropId]) {
+      const c = cdt.cultivos[cropId];
+      return { tipo: c.tipoUbicacion || "Sección", lista: c.ubicaciones || [] };
+    }
+  } catch {}
+  return UBICACIONES_APLIC[cropId] || { tipo: "Sección", lista: [] };
+}
+
 // ─── REGISTRO DE APLICACIÓN DE AGROQUÍMICOS (trabajador) ─────────────────────
 function RegistroAplicacion({ worker }) {
   const today = new Date().toISOString().slice(0,10);
@@ -1712,10 +1724,10 @@ function RegistroAplicacion({ worker }) {
           </select>
         </div>
         <div>
-          <label style={LBL2}>{UBICACIONES_APLIC[form.crop]?.tipo || "Sección"}</label>
+          <label style={LBL2}>{getUbicacionCrop(form.crop).tipo}</label>
           <select value={form.seccion} onChange={e=>setForm(p=>({...p,seccion:e.target.value}))} style={INP2}>
             <option value="">— Selecciona —</option>
-            {(UBICACIONES_APLIC[form.crop]?.lista || []).map(u=><option key={u} value={u}>{u}</option>)}
+            {getUbicacionCrop(form.crop).lista.map(u=><option key={u} value={u}>{u}</option>)}
           </select>
         </div>
         <div>
