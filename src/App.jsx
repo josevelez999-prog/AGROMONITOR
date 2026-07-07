@@ -4,6 +4,7 @@ import MobileDashboard from "./MobileDashboard";
 import AlmacenAdmin from "./AlmacenAdmin";
 import AplicacionesAdmin from "./AplicacionesAdmin";
 import { setCdtContext, loadCdtData } from "./cdtContext";
+import SuperAdmin from "./SuperAdmin";
 import Ventas from "./Ventas";
 import LoginScreen from "./Auth";
 import UsuariosAdmin from "./UsuariosAdmin";
@@ -1742,6 +1743,7 @@ function Trabajadores({readings}){
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 const NAV=[
+  {id:"superadmin",label:"Centros CDT",icon:"🏢",soloSuper:true},
   {id:"resumen",label:"Resumen",icon:"◉"},
   {id:"alertas",label:"Alertas",icon:"⚠"},
   {id:"ia",label:"IA Diagnóstico",icon:"🔬"},
@@ -1757,7 +1759,7 @@ const NAV=[
   {id:"rangos", label:"Rangos", icon:"🎯"},
   {id:"usuarios", label:"Usuarios", icon:"👥"},
 ];
-const TITLES={resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Almacén de insumos",
+const TITLES={superadmin:"Gestión de Centros (CDT)",resumen:"Panel de control",alertas:"Centro de alertas",ia:"Diagnóstico con IA",reportes:"Reportes y análisis",formulador:"Formulador nutritivo",incidencias:"Incidencias",tareas:"Gestión de tareas",instrucciones:"Instrucciones del día",inventario:"Almacén de insumos",
     aplicaciones:"Aplicación de agroquímicos",trabajadores:"Equipo de campo",suelo: "Análisis de suelo",ventas:"Comercialización y ventas",rangos:"Rangos semanales pH/CE",usuarios:"Gestión de usuarios"};
 
 // ─── BLOQUEADO ────────────────────────────────────────────────────────────────
@@ -1888,6 +1890,7 @@ export default function App(){
   if(loading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f4f5f7"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,color:"#27ae60",fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#aaa",marginTop:4}}>Cargando...</div></div></div>;
 
   const SECTION={
+    superadmin:  <SuperAdmin/>,
     suelo:       <AnalisisSuelo/>,
     resumen:     <Resumen readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
     alertas:     <Alertas readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
@@ -1915,7 +1918,7 @@ export default function App(){
           </div>
         </div>
         <nav style={{flex:1,padding:"8px 0"}}>
-          {NAV.map(item=>(
+          {NAV.filter(item=>!item.soloSuper||userRole==="super_admin").map(item=>(
             <button key={item.id} onClick={()=>setPage(item.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 18px",border:"none",background:page===item.id?"#243a52":"transparent",color:page===item.id?"#4ecb8d":"#7a9ab0",cursor:"pointer",textAlign:"left",borderLeft:page===item.id?"3px solid #4ecb8d":"3px solid transparent",transition:"all 0.15s",fontSize:13,fontFamily:"'Georgia',serif"}}>
               <span style={{fontSize:14,width:16,textAlign:"center"}}>{item.icon}</span>
               <span>{item.label}</span>
