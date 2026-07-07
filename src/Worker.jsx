@@ -93,10 +93,17 @@ function getCropsCdt() {
     if (cdt && cdt.cultivos && Object.keys(cdt.cultivos).length > 0) {
       const filtrado = {};
       Object.keys(cdt.cultivos).forEach(cropId => { if (CROPS[cropId]) filtrado[cropId] = CROPS[cropId]; });
-      return Object.keys(filtrado).length > 0 ? filtrado : CROPS;
+      return Object.keys(filtrado).length > 0 ? filtrado : basicCrops();
     }
   } catch {}
-  return CROPS;
+  return basicCrops();
+}
+
+// Cultivos básicos por defecto (si un CDT no definió los suyos)
+function basicCrops() {
+  const basicos = {};
+  ["jitomate","fresa","arandano","zarzamora"].forEach(id => { if (CROPS[id]) basicos[id] = CROPS[id]; });
+  return Object.keys(basicos).length > 0 ? basicos : CROPS;
 }
 const SYMPTOMS = {
   jitomate: [

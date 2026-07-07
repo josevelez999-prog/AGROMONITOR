@@ -113,10 +113,17 @@ function getCropsCdt() {
         if (CROPS[cropId]) filtrado[cropId] = CROPS[cropId];
       });
       // Si ninguno coincide con el catálogo, devolver todos para no romper
-      return Object.keys(filtrado).length > 0 ? filtrado : CROPS;
+      return Object.keys(filtrado).length > 0 ? filtrado : basicCrops();
     }
   } catch {}
-  return CROPS;
+  return basicCrops();
+}
+
+// Cultivos básicos por defecto (si un CDT no definió los suyos)
+function basicCrops() {
+  const basicos = {};
+  ["jitomate","fresa","arandano","zarzamora"].forEach(id => { if (CROPS[id]) basicos[id] = CROPS[id]; });
+  return Object.keys(basicos).length > 0 ? basicos : CROPS;
 }
 const CROP_NUT = {
   jitomate: {NO3:11,H2PO4:1.5,SO4:8,HCO3:0,Cl:0,NH4:1,K:8.5,Ca:9,Mg:5,Na:0},

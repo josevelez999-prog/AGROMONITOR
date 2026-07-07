@@ -159,7 +159,10 @@ function getCropsCdt() {
       return f;
     }
   } catch {}
-  return CROPS;
+  // Fallback: solo 4 básicos
+  const basicos = {};
+  ["jitomate","fresa","arandano","zarzamora"].forEach(id => { if (CROPS[id]) basicos[id] = CROPS[id]; });
+  return Object.keys(basicos).length > 0 ? basicos : CROPS;
 }
 
 const TRATAMIENTOS = [
