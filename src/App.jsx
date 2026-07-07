@@ -3,6 +3,7 @@ import Worker from "./Worker";
 import MobileDashboard from "./MobileDashboard";
 import AlmacenAdmin from "./AlmacenAdmin";
 import AplicacionesAdmin from "./AplicacionesAdmin";
+import { setCdtContext, loadCdtData } from "./cdtContext";
 import Ventas from "./Ventas";
 import LoginScreen from "./Auth";
 import UsuariosAdmin from "./UsuariosAdmin";
@@ -1779,6 +1780,8 @@ export default function App(){
   const [authLoading,setAuthLoading]=useState(true);
   const [currentUser,setCurrentUser]=useState(null);
   const [userRole,setUserRole]=useState(null);
+  const [cdtId,setCdtId]=useState(null);
+  const [cdtReady,setCdtReady]=useState(false);
   const esObservador = userRole==="observador";
   
   // Detectar móvil automáticamente
@@ -1799,20 +1802,37 @@ export default function App(){
       if(user){
         setCurrentUser(user);
         try {
+          let userData = null;
           const snap = await getDoc(doc(db,"usuarios",user.uid));
           if(snap.exists()){
-            setUserRole(snap.data().rol);
+            userData = snap.data();
           } else {
             // Buscar por email en usuarios
             const { query:q, collection:col, where, getDocs } = await import("firebase/firestore");
             const qs = await getDocs(q(col(db,"usuarios"),where("email","==",user.email)));
-            if(!qs.empty) setUserRole(qs.docs[0].data().rol);
-            else setUserRole("trabajador");
+            if(!qs.empty) userData = qs.docs[0].data();
           }
-        } catch { setUserRole("trabajador"); }
+          const rol = userData?.rol || "trabajador";
+          const esSuper = rol === "super_admin";
+          // El CDT del usuario (si es super_admin sin CDT, arranca en su primer CDT o null)
+          const userCdt = userData?.cdtId || "morelia"; // fallback al CDT original
+          setUserRole(rol);
+          setCdtId(userCdt);
+          setCdtContext({ cdtId: userCdt, role: rol, isSuperAdmin: esSuper });
+          // Cargar datos del CDT (cultivos, naves...)
+          await loadCdtData(userCdt);
+          setCdtReady(true);
+        } catch {
+          setUserRole("trabajador");
+          setCdtId("morelia");
+          setCdtContext({ cdtId: "morelia", role: "trabajador", isSuperAdmin: false });
+          setCdtReady(true);
+        }
       } else {
         setCurrentUser(null);
         setUserRole(null);
+        setCdtId(null);
+        setCdtReady(false);
       }
       setAuthLoading(false);
     });
