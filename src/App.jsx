@@ -2084,7 +2084,7 @@ export default function App(){
               <div style={{width:34,height:34,borderRadius:"50%",background:"#1a2533",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12,color:"#4ecb8d",border:"2px solid #4ecb8d"}}>
                 {currentUser?.email?.slice(0,2).toUpperCase()||"JL"}
               </div>
-              {isMobile && forceDesktop && (userRole==="admin"||userRole==="observador") && (
+              {isMobile && forceDesktop && (userRole==="admin"||userRole==="observador"||userRole==="super_admin"||userRole==="observador_global") && (
                 <button onClick={()=>{ try{ localStorage.removeItem("forceDesktop"); }catch{} setForceDesktop(false); }}
                   style={{padding:"5px 10px",border:"1px solid #4ecb8d",borderRadius:8,background:"#1a2533",color:"#4ecb8d",cursor:"pointer",fontSize:11,fontWeight:600}}>
                   📱 Vista móvil
