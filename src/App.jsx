@@ -184,7 +184,7 @@ function Sparkline({data,color}){if(!data||data.length<2)return null;const min=M
 function exportCSV(readings){const h=["Fecha","Hora","Cultivo","Zona","pH","CE","Estado pH","Estado CE","Trabajador","Notas","Foto"];const rows=readings.map(r=>{const c=CROPS[r.crop];if(!c)return null;const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return[r.date,r.time||"",c.name,r.zone,r.ph,r.ce,SL[ps],SL[cs],r.worker,r.notes||"",r.photoURL||""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");}).filter(Boolean);const blob=new Blob(["\uFEFF",[h.join(","),...rows].join("\n")],{type:"text/csv;charset=utf-8;"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`greenlog_${new Date().toISOString().slice(0,10)}.csv`;a.click();}
 
 // ─── RESUMEN ──────────────────────────────────────────────────────────────────
-function Resumen({readings,onDelete,weeklyRangos={}}){
+function Resumen({readings,onDelete,weeklyRangos={},verHistorialCompleto,setVerHistorialCompleto}){
   const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,{});return getStatus(r.ph,rng.ph)==="danger"||getStatus(r.ce,rng.ce)==="danger";});
   const warn=readings.filter(r=>{const c=CROPS[r.crop];if(!c)return false;const p=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return(p==="warning"||cs==="warning")&&p!=="danger"&&cs!=="danger";});
   const latest=Object.keys(getCropsCdt()).map(k=>{const recs=readings.filter(r=>r.crop===k).sort((a,b)=>b.date.localeCompare(a.date));return{key:k,...recs[0]};}).filter(r=>r.ph);
@@ -196,8 +196,16 @@ function Resumen({readings,onDelete,weeklyRangos={}}){
         <span style={{fontSize:14}}>🎯</span>
         <span><strong>Rangos semanales activos</strong> — {rangosSnap} combinaciones configuradas. Los semáforos usan estos rangos.</span>
       </div>}
+      {typeof verHistorialCompleto!=="undefined" && (
+        <div style={{background:verHistorialCompleto?"#eafaf1":"#eef6fb",border:`1px solid ${verHistorialCompleto?"#a9dfbf":"#aed6f1"}`,borderRadius:8,padding:"8px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,fontSize:12}}>
+          <span style={{color:"#556"}}>{verHistorialCompleto?"📊 Historial completo":"⚡ Últimos 10 días (más rápido)"}</span>
+          <button onClick={()=>setVerHistorialCompleto(v=>!v)} style={{padding:"5px 12px",border:"none",borderRadius:6,background:verHistorialCompleto?"#e67e22":"#2980b9",color:"#fff",cursor:"pointer",fontSize:11,fontWeight:600}}>
+            {verHistorialCompleto?"Ver solo 10 días":"Ver todo el historial"}
+          </button>
+        </div>
+      )}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:20}}>
-        {[{l:"Mediciones",v:readings.length,c:"#27ae60",i:"📊"},{l:"Alertas críticas",v:alerts.length,c:"#e74c3c",i:"🚨"},{l:"Advertencias",v:warn.length,c:"#f39c12",i:"⚠️"},{l:"Trabajadores",v:Object.keys(byW).length,c:"#2980b9",i:"👤"}].map(k=>(
+        {[{l:(verHistorialCompleto?"Mediciones (total)":"Mediciones (10 días)"),v:readings.length,c:"#27ae60",i:"📊"},{l:"Alertas críticas",v:alerts.length,c:"#e74c3c",i:"🚨"},{l:"Advertencias",v:warn.length,c:"#f39c12",i:"⚠️"},{l:"Trabajadores",v:Object.keys(byW).length,c:"#2980b9",i:"👤"}].map(k=>(
           <div key={k.l} style={{background:"#fff",border:"0.5px solid #e0e0e0",borderRadius:12,padding:"16px 18px"}}>
             <div style={{fontSize:22}}>{k.i}</div>
             <div style={{fontSize:28,fontWeight:700,color:k.c,fontFamily:"'Courier New',monospace",lineHeight:1.1,marginTop:4}}>{k.v}</div>
@@ -587,7 +595,7 @@ function RangosSemanales() {
 }
 
 
-function Reportes({readings,onDelete,weeklyRangos={}}){
+function Reportes({readings,onDelete,weeklyRangos={},verHistorialCompleto,setVerHistorialCompleto}){
   const [showReset,setShowReset]=useState(false);
   const [resetting,setResetting]=useState(false);
   const resetReadings=async()=>{
@@ -620,6 +628,14 @@ function Reportes({readings,onDelete,weeklyRangos={}}){
   const yD=metric==="ph"?[3.5,8.5]:[0,6];
   return(
     <div>
+      {typeof verHistorialCompleto!=="undefined" && (
+        <div style={{background:verHistorialCompleto?"#eafaf1":"#eef6fb",border:`1px solid ${verHistorialCompleto?"#a9dfbf":"#aed6f1"}`,borderRadius:8,padding:"8px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,fontSize:12}}>
+          <span style={{color:"#556"}}>{verHistorialCompleto?"📊 Mostrando historial completo":"⚡ Mostrando últimos 10 días (ahorra datos)"}</span>
+          <button onClick={()=>setVerHistorialCompleto(v=>!v)} style={{padding:"5px 12px",border:"none",borderRadius:6,background:verHistorialCompleto?"#e67e22":"#2980b9",color:"#fff",cursor:"pointer",fontSize:11,fontWeight:600}}>
+            {verHistorialCompleto?"Ver solo 10 días":"Ver historial completo"}
+          </button>
+        </div>
+      )}
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{Object.entries(getCropsCdt()).map(([k,c])=>(<button key={k} onClick={()=>setCropFilter(k)} style={{padding:"7px 14px",border:`1px solid ${cropFilter===k?c.color:"#e0e0e0"}`,borderRadius:20,background:cropFilter===k?c.color+"18":"transparent",color:cropFilter===k?c.color:"#666",cursor:"pointer",fontSize:12,fontWeight:500}}>{c.emoji} {c.name}</button>))}</div>
         <button onClick={()=>exportCSV(cr)} style={{marginLeft:"auto",padding:"7px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
@@ -1855,6 +1871,7 @@ function Bloqueado({nombre="esta sección"}) {
 export default function App(){
   const [page,setPage]=useState("resumen");
   const [readings,setReadings]=useState([]);
+  const [verHistorialCompleto,setVerHistorialCompleto]=useState(false);
   const [weeklyRangos,setWeeklyRangos]=useState({});
   const [loading,setLoading]=useState(true);
   const [authLoading,setAuthLoading]=useState(true);
@@ -1862,7 +1879,9 @@ export default function App(){
   const [userRole,setUserRole]=useState(null);
   const [cdtId,setCdtId]=useState(null);
   const [cdtReady,setCdtReady]=useState(false);
-  const esObservador = userRole==="observador";
+  const esObservador = userRole==="observador" || userRole==="observador_global";
+  const esObservadorGlobal = userRole==="observador_global";
+  const puedeVerCentros = userRole==="super_admin" || userRole==="observador_global";
   
   // Detectar móvil automáticamente
   const [isMobile, setIsMobile] = useState(()=>{
@@ -1894,10 +1913,10 @@ export default function App(){
           }
           const rol = userData?.rol || "trabajador";
           const esSuper = rol === "super_admin";
-          // El CDT del usuario. Si es super_admin y eligió "entrar" a otro CDT,
-          // usamos ese override (persistido en localStorage).
+          const esObsGlobal = rol === "observador_global";
+          // super_admin y observador_global pueden "entrar" a cualquier CDT.
           let userCdt = userData?.cdtId || null;
-          if (esSuper) {
+          if (esSuper || esObsGlobal) {
             const override = getSuperOverride();
             if (override) userCdt = override;
           }
@@ -1929,13 +1948,20 @@ export default function App(){
     // para que el filtro por cdtId se aplique correctamente.
     if(!cdtReady) return;
     setReadings([]); // limpiar datos del CDT anterior al cambiar
-    // Salvaguarda: si en 4s no llegó nada, quitar el "cargando"
     const safety=setTimeout(()=>setLoading(false),4000);
-    const q=collection(db,"readings");
-    const unsub=onSnapshot(q,snap=>{clearTimeout(safety);setReadings(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);},()=>{clearTimeout(safety);setLoading(false);});
+    // OPTIMIZACIÓN: por defecto solo los últimos 90 días (reduce lecturas ~75%).
+    // Si el usuario pide historial completo, se traen todos.
+    let q;
+    if(verHistorialCompleto){
+      q=collection(db,"readings");
+    } else {
+      const hace10=new Date(Date.now()-10*24*60*60*1000).toISOString();
+      q=query(collection(db,"readings"),where("createdAt",">=",hace10));
+    }
+    const unsub=onSnapshot(q,snap=>{clearTimeout(safety);setReadings(snap.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);},(err)=>{clearTimeout(safety);console.error("readings:",err);setLoading(false);});
     const rangosUnsub=onSnapshot(doc(db,"config","rangos_semanales"),snap=>{if(snap.exists())setWeeklyRangos(snap.data());});
     return()=>{clearTimeout(safety);unsub();rangosUnsub();};
-  },[cdtReady,cdtId]);
+  },[cdtReady,cdtId,verHistorialCompleto]);
 
   const handleDelete=async id=>{try{await deleteDoc(doc(db,"readings",id));}catch{alert("Error al eliminar.");}};
   const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,{});return getStatus(r.ph,rng.ph)==="danger"||getStatus(r.ce,rng.ce)==="danger";});
@@ -1984,10 +2010,10 @@ export default function App(){
   const SECTION={
     superadmin:  <SuperAdmin/>,
     suelo:       <AnalisisSuelo/>,
-    resumen:     <Resumen readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
+    resumen:     <Resumen readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos} verHistorialCompleto={verHistorialCompleto} setVerHistorialCompleto={setVerHistorialCompleto}/>,
     alertas:     <Alertas readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
     ia:          <DiagnosticoIA/>,
-    reportes:    <Reportes readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
+    reportes:    <Reportes readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos} verHistorialCompleto={verHistorialCompleto} setVerHistorialCompleto={setVerHistorialCompleto}/>,
     formulador:  <Formulador/>,
     incidencias: <IncidenciasAdmin/>,
     tareas:      <TareasAdmin/>,
@@ -2010,7 +2036,7 @@ export default function App(){
           </div>
         </div>
         <nav style={{flex:1,padding:"8px 0"}}>
-          {NAV.filter(item=>!item.soloSuper||userRole==="super_admin").map(item=>(
+          {NAV.filter(item=>!item.soloSuper||puedeVerCentros).map(item=>(
             <button key={item.id} onClick={()=>setPage(item.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 18px",border:"none",background:page===item.id?"#243a52":"transparent",color:page===item.id?"#4ecb8d":"#7a9ab0",cursor:"pointer",textAlign:"left",borderLeft:page===item.id?"3px solid #4ecb8d":"3px solid transparent",transition:"all 0.15s",fontSize:13,fontFamily:"'Georgia',serif"}}>
               <span style={{fontSize:14,width:16,textAlign:"center"}}>{item.icon}</span>
               <span>{item.label}</span>

@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 import { db } from "./firebase";
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, setDoc, getDoc } from "./dbCdt";
+import { collection, addDoc, onSnapshot, query, orderBy, where, deleteDoc, doc, updateDoc, setDoc, getDoc } from "./dbCdt";
 import { getCdtData } from "./cdtContext";
+import { acumular, suscribirEstadisticas } from "./estadisticas";
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 
@@ -236,6 +237,8 @@ function GestionLotes() {
       setEditing(null);
     } else {
       await addDoc(collection(db,"lotes"), data);
+      // Acumular kg cosechados al histórico del CDT
+      acumular({ totalKgCosechados: data.kgCosechados });
     }
     setForm({ nombre:"", crop:(Object.keys(getCropsCdt())[0]||"jitomate"), zona:"", tratamiento:"convencional", fechaCosecha:new Date().toISOString().slice(0,10), kgCosechados:0, kgEstimados:0, costoCiclo:0, notas:"" });
     setShowForm(false);
@@ -363,23 +366,14 @@ function RegistroVentas() {
   });
   const [showForm, setShowForm] = useState(false);
 
+  // OPTIMIZACIÓN: una sola carga por colección + límite de 90 días en las grandes
   useEffect(() => {
-    const q = collection(db,"ventas");
-    const unsub = onSnapshot(q, snap => setVentas(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))));
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    const q = collection(db,"lotes");
-    const unsub = onSnapshot(q, snap => setLotes(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))));
-    return () => unsub();
-  }, []);
-
-  useEffect(()=>{
-    const u1 = onSnapshot(query(collection(db,"ventas")), s=>setVentas(s.docs.map(d=>({id:d.id,...d.data()}))));
-    const u2 = onSnapshot(query(collection(db,"cosechas_trabajador")), s=>setCosechas(s.docs.map(d=>({id:d.id,...d.data()}))));
-    const u3 = onSnapshot(query(collection(db,"mermas")), s=>setMermas(s.docs.map(d=>({id:d.id,...d.data()}))));
-    return()=>{u1();u2();u3();};
+    const hace10 = new Date(Date.now()-10*24*60*60*1000).toISOString();
+    const u1 = onSnapshot(query(collection(db,"ventas"), where("createdAt",">=",hace10)), s=>setVentas(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))), e=>console.error("ventas:",e));
+    const uL = onSnapshot(collection(db,"lotes"), s=>setLotes(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))));
+    const u2 = onSnapshot(query(collection(db,"cosechas_trabajador"), where("createdAt",">=",hace10)), s=>setCosechas(s.docs.map(d=>({id:d.id,...d.data()}))), e=>console.error("cosechas:",e));
+    const u3 = onSnapshot(collection(db,"mermas"), s=>setMermas(s.docs.map(d=>({id:d.id,...d.data()}))));
+    return()=>{u1();uL();u2();u3();};
   },[]);
 
   const save = async () => {
@@ -399,6 +393,10 @@ function RegistroVentas() {
       setEditing(null);
     } else {
       await addDoc(collection(db,"ventas"), {...data, createdAt:new Date().toISOString()});
+      // Acumular ventas e ingresos al histórico del CDT
+      const kgV = parseFloat(data.kgVendidos)||0;
+      const ingreso = kgV * (parseFloat(data.precioKg)||0);
+      acumular({ totalKgVendidos: kgV, totalIngresos: ingreso });
     }
     setForm({ loteId:"", crop:(Object.keys(getCropsCdt())[0]||"jitomate"), comprador:"", canal:"Mercado local", calidad:"primera", kgVendidos:0, precioKg:0, fecha:new Date().toISOString().slice(0,10), notas:"", factura:"" });
     setShowForm(false);
@@ -781,9 +779,13 @@ function ReportesVentas() {
   const [lotes, setLotes] = useState([]);
   const [mermasData, setMermasData] = useState([]);
   const [siniestrosData, setSiniestrosData] = useState([]);
+  const [statsHist, setStatsHist] = useState(null);
   const [filterCrop, setFilterCrop] = useState("all");
   const [filterInv, setFilterInv] = useState("all");
   const [filterPeriodo, setFilterPeriodo] = useState("todo");
+
+  // KPIs históricos acumulados (1 sola lectura, todo el histórico)
+  useEffect(() => suscribirEstadisticas(setStatsHist), []);
 
   useEffect(() => {
     const q1 = collection(db,"ventas");
@@ -1037,8 +1039,35 @@ function ReportesVentas() {
     return res;
   }, [porCultivoV]);
 
+  const fmtN = (n) => Number(n||0).toLocaleString("es-MX",{maximumFractionDigits:0});
+  const fmt$ = (n) => "$"+Number(n||0).toLocaleString("es-MX",{maximumFractionDigits:0});
+
   return (
     <div>
+      {/* ── KPIs HISTÓRICOS (acumulados, todo el histórico, 1 lectura) ── */}
+      {statsHist && (
+        <div style={{background:"linear-gradient(135deg,#1a2533,#2c3e50)",borderRadius:14,padding:"16px 20px",marginBottom:16}}>
+          <div style={{fontSize:11,color:"#8fa3b8",fontWeight:600,marginBottom:12,letterSpacing:0.5}}>📊 ACUMULADO HISTÓRICO TOTAL DE ESTE CDT</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:14}}>
+            <div>
+              <div style={{fontSize:24,fontWeight:700,color:"#4ecb8d",fontFamily:"monospace"}}>{fmtN(statsHist.totalKgCosechados)}</div>
+              <div style={{fontSize:10.5,color:"#8fa3b8"}}>Kg cosechados</div>
+            </div>
+            <div>
+              <div style={{fontSize:24,fontWeight:700,color:"#5dade2",fontFamily:"monospace"}}>{fmtN(statsHist.totalKgVendidos)}</div>
+              <div style={{fontSize:10.5,color:"#8fa3b8"}}>Kg vendidos</div>
+            </div>
+            <div>
+              <div style={{fontSize:24,fontWeight:700,color:"#f7dc6f",fontFamily:"monospace"}}>{fmt$(statsHist.totalIngresos)}</div>
+              <div style={{fontSize:10.5,color:"#8fa3b8"}}>Ingresos totales</div>
+            </div>
+            <div>
+              <div style={{fontSize:24,fontWeight:700,color:"#ec7063",fontFamily:"monospace"}}>{fmtN(statsHist.totalKgMerma)}</div>
+              <div style={{fontSize:10.5,color:"#8fa3b8"}}>Kg merma</div>
+            </div>
+          </div>
+        </div>
+      )}
       <MonitorPrecios precioPromedioPropio={precioPromedioPorCultivo}/>
       {/* ── FILTROS ── */}
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
