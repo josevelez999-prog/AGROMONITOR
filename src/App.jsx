@@ -4,6 +4,7 @@ import MobileDashboard from "./MobileDashboard";
 import AlmacenAdmin from "./AlmacenAdmin";
 import AplicacionesAdmin from "./AplicacionesAdmin";
 import { setCdtContext, loadCdtData, getSuperOverride, getCdtData } from "./cdtContext";
+import { ROLE_INFO, getRoleInfo, isObserverRole, isGlobalViewerRole, canManageCdts } from "./permissions";
 import SuperAdmin from "./SuperAdmin";
 import Ventas from "./Ventas";
 import LoginScreen from "./Auth";
@@ -184,8 +185,12 @@ function Sparkline({data,color}){if(!data||data.length<2)return null;const min=M
 function exportCSV(readings){const h=["Fecha","Hora","Cultivo","Zona","pH","CE","Estado pH","Estado CE","Trabajador","Notas","Foto"];const rows=readings.map(r=>{const c=CROPS[r.crop];if(!c)return null;const ps=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return[r.date,r.time||"",c.name,r.zone,r.ph,r.ce,SL[ps],SL[cs],r.worker,r.notes||"",r.photoURL||""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");}).filter(Boolean);const blob=new Blob(["\uFEFF",[h.join(","),...rows].join("\n")],{type:"text/csv;charset=utf-8;"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`greenlog_${new Date().toISOString().slice(0,10)}.csv`;a.click();}
 
 // ─── RESUMEN ──────────────────────────────────────────────────────────────────
-function Resumen({readings,onDelete,weeklyRangos={},verHistorialCompleto,setVerHistorialCompleto}){
+function Resumen({readings,onDelete,weeklyRangos={},verHistorialCompleto,setVerHistorialCompleto,readOnly=false}){
   const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,{});return getStatus(r.ph,rng.ph)==="danger"||getStatus(r.ce,rng.ce)==="danger";});
+  const roleInfo = getRoleInfo(userRole);
+  const cdtLabel = cdtId
+    ? `CDT ${(cdtInfo?.clave || cdtId || "").toUpperCase()}${cdtInfo?.nombre ? ` — ${cdtInfo.nombre}` : ""}`
+    : (isGlobalViewerRole(userRole) ? "Vista global · todos los CDT" : "CDT no asignado");
   const warn=readings.filter(r=>{const c=CROPS[r.crop];if(!c)return false;const p=getStatus(r.ph,c.ph),cs=getStatus(r.ce,c.ce);return(p==="warning"||cs==="warning")&&p!=="danger"&&cs!=="danger";});
   const latest=Object.keys(getCropsCdt()).map(k=>{const recs=readings.filter(r=>r.crop===k).sort((a,b)=>b.date.localeCompare(a.date));return{key:k,...recs[0]};}).filter(r=>r.ph);
   const byW={};readings.forEach(r=>{byW[r.worker]=(byW[r.worker]||0)+1;});
@@ -223,7 +228,7 @@ function Resumen({readings,onDelete,weeklyRangos={},verHistorialCompleto,setVerH
               <div style={{flex:1}}><span style={{fontWeight:600,color:c.color}}>{c.name}</span><span style={{color:"#888",fontSize:12,marginLeft:6}}>{r.zone} · {r.worker} · {r.date}</span></div>
               <span style={{fontFamily:"'Courier New',monospace",fontSize:12,color:"#e74c3c"}}>pH {r.ph} · CE {r.ce}</span>
               <Badge status="danger" small/>
-              <button onClick={()=>onDelete(r.id)} style={{background:"#fdedec",border:"1px solid #f5c6c6",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b",fontWeight:600}}>✕ Resolver</button>
+              {!readOnly&&<button onClick={()=>onDelete(r.id)} style={{background:"#fdedec",border:"1px solid #f5c6c6",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b",fontWeight:600}}>✕ Resolver</button>}
             </div>
           );})}
         </div>
@@ -268,7 +273,7 @@ function Resumen({readings,onDelete,weeklyRangos={},verHistorialCompleto,setVerH
 }
 
 // ─── ALERTAS ──────────────────────────────────────────────────────────────────
-function Alertas({readings, onDelete, weeklyRangos={}}) {
+function Alertas({readings, onDelete, weeklyRangos={}, readOnly=false}) {
   const [filter, setFilter] = useState("all");
   const [working, setWorking] = useState(false);
 
@@ -298,6 +303,7 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
 
   return(
     <div>
+      {readOnly&&<div style={{background:"#fff8e1",border:"1px solid #f5d76e",borderRadius:10,padding:"9px 14px",marginBottom:12,fontSize:12,color:"#8a6d1d"}}>👁️ Modo observador: puedes ver y descargar CSV, pero no resolver, descartar ni eliminar alertas.</div>}
       <div style={{background:"#eaf4fb",border:"1px solid #b5d4f4",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#1a5276"}}>
         💡 <strong>Resolver</strong> oculta la alerta pero conserva el dato en Reportes y gráficas. Solo las mediciones de <strong>Entrada</strong> generan alertas.
       </div>
@@ -311,7 +317,7 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
         </div>
         <button onClick={()=>exportCSV(readings)} style={{padding:"7px 14px",border:"1px solid #27ae60",borderRadius:20,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>⬇ CSV</button>
       </div>
-      {filtered.length>0&&(
+      {!readOnly&&filtered.length>0&&(
         <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
           <button onClick={resolverTodas} disabled={working} style={{padding:"7px 16px",border:"1px solid #27ae60",borderRadius:8,background:"#eafaf1",color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>✓ Resolver mostradas ({filtered.length})</button>
           <button onClick={descartarTodas} disabled={working} style={{padding:"7px 16px",border:"1px solid #f39c1244",borderRadius:8,background:"#fef9e7",color:"#f39c12",cursor:"pointer",fontSize:12,fontWeight:600}}>⊘ Descartar todas ({all.length})</button>
@@ -352,10 +358,10 @@ function Alertas({readings, onDelete, weeklyRangos={}}) {
                 </div>
                 {r.notes&&<div style={{fontSize:12,color:"#e67e22",marginTop:6}}>📝 {r.notes}</div>}
               </div>
-              <div style={{display:"flex",gap:6,flexShrink:0}}>
+              {!readOnly&&<div style={{display:"flex",gap:6,flexShrink:0}}>
                 <button onClick={()=>resolverOne(r.id)} style={{padding:"6px 12px",background:"#eafaf1",border:"1px solid #a9dfbf",borderRadius:8,color:"#27ae60",cursor:"pointer",fontSize:12,fontWeight:600}}>✓ Resolver</button>
                 <button onClick={()=>dismissOne(r.id)} style={{padding:"6px 10px",background:"#f5f5f5",border:"none",borderRadius:8,color:"#aaa",cursor:"pointer",fontSize:12}}>✕</button>
-              </div>
+              </div>}
             </div>
           </div>
         );
@@ -440,11 +446,11 @@ function DrenajeDashboard({readings, cropFilter, crop}) {
 }
 
 // ─── HISTORIAL TABLE ─────────────────────────────────────────────────────────
-function HistorialTable({cr, onDelete, weeklyRangos={}}) {
+function HistorialTable({cr, onDelete, weeklyRangos={}, readOnly=false}) {
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
-  const startEdit = r => { setEditId(r.id); setEditForm({ph:r.ph,ce:r.ce,volumenEntrada:r.volumenEntrada||"",drenaje:r.drenaje||"",notes:r.notes||"",zone:r.zone||"",bandeja:r.bandeja||"",ca:r.ca||"",no3:r.no3||"",k:r.k||"",fe:r.fe||""}); };
+  const startEdit = r => { if(readOnly) return; setEditId(r.id); setEditForm({ph:r.ph,ce:r.ce,volumenEntrada:r.volumenEntrada||"",drenaje:r.drenaje||"",notes:r.notes||"",zone:r.zone||"",bandeja:r.bandeja||"",ca:r.ca||"",no3:r.no3||"",k:r.k||"",fe:r.fe||""}); };
   const saveEdit = async()=>{
     setSaving(true);
     try{
@@ -494,7 +500,7 @@ function HistorialTable({cr, onDelete, weeklyRangos={}}) {
                   <td style={{padding:"6px 8px",color:"#888",whiteSpace:"nowrap"}}>{r.worker}</td>
                   <td style={{padding:"6px 8px"}}>
                     {isE?<div style={{display:"flex",gap:4}}><button onClick={saveEdit} disabled={saving} style={{background:"#27ae60",color:"#fff",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:700}}>{saving?"...":"✓ Guardar"}</button><button onClick={()=>setEditId(null)} style={{background:"#f0f0f0",color:"#666",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕</button></div>
-                    :<div style={{display:"flex",gap:4}}><button onClick={()=>startEdit(r)} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button><button onClick={()=>{if(window.confirm("¿Eliminar?"))onDelete(r.id);}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button></div>}
+                    : readOnly ? <span style={{fontSize:11,color:"#bbb"}}>Solo lectura</span> : <div style={{display:"flex",gap:4}}><button onClick={()=>startEdit(r)} style={{background:"#eaf4fb",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#2980b9",fontWeight:600}}>✎</button><button onClick={()=>{if(window.confirm("¿Eliminar?"))onDelete(r.id);}} style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button></div>}
                   </td>
                 </tr>
               );
@@ -595,7 +601,7 @@ function RangosSemanales() {
 }
 
 
-function Reportes({readings,onDelete,weeklyRangos={},verHistorialCompleto,setVerHistorialCompleto}){
+function Reportes({readings,onDelete,weeklyRangos={},verHistorialCompleto,setVerHistorialCompleto,readOnly=false}){
   const [showReset,setShowReset]=useState(false);
   const [resetting,setResetting]=useState(false);
   const resetReadings=async()=>{
@@ -852,7 +858,7 @@ function Reportes({readings,onDelete,weeklyRangos={},verHistorialCompleto,setVer
         </div>
       )}
 
-      {sub==="historial"&&<HistorialTable cr={cr} onDelete={onDelete} weeklyRangos={weeklyRangos}/>}
+      {sub==="historial"&&<HistorialTable cr={cr} onDelete={onDelete} weeklyRangos={weeklyRangos} readOnly={readOnly}/>}
     </div>
   );
 }
@@ -1876,12 +1882,14 @@ export default function App(){
   const [loading,setLoading]=useState(true);
   const [authLoading,setAuthLoading]=useState(true);
   const [currentUser,setCurrentUser]=useState(null);
+  const [currentUserData,setCurrentUserData]=useState(null);
+  const [cdtInfo,setCdtInfo]=useState(null);
   const [userRole,setUserRole]=useState(null);
   const [cdtId,setCdtId]=useState(null);
   const [cdtReady,setCdtReady]=useState(false);
-  const esObservador = userRole==="observador" || userRole==="observador_global";
-  const esObservadorGlobal = userRole==="observador_global";
-  const puedeVerCentros = userRole==="super_admin" || userRole==="observador_global";
+  const esObservador = isObserverRole(userRole);
+  const esObservadorGlobal = isGlobalViewerRole(userRole) && userRole !== "super_admin";
+  const puedeVerCentros = isGlobalViewerRole(userRole);
   
   // Detectar móvil automáticamente
   const [isMobile, setIsMobile] = useState(()=>{
@@ -1913,7 +1921,8 @@ export default function App(){
           }
           const rol = userData?.rol || "trabajador";
           const esSuper = rol === "super_admin";
-          const esObsGlobal = rol === "observador_global";
+          const esObsGlobal = rol === "observador_global" || rol === "observador_superadmin";
+          setCurrentUserData(userData || { email: user.email, rol });
           // super_admin y observador_global pueden "entrar" a cualquier CDT.
           let userCdt = userData?.cdtId || null;
           if (esSuper || esObsGlobal) {
@@ -1922,18 +1931,23 @@ export default function App(){
           }
           setUserRole(rol);
           setCdtId(userCdt);
-          setCdtContext({ cdtId: userCdt, role: rol, isSuperAdmin: esSuper });
+          setCdtContext({ cdtId: userCdt, role: rol, isSuperAdmin: esSuper || esObsGlobal });
           // Cargar datos del CDT (cultivos, naves...)
-          await loadCdtData(userCdt);
+          const loadedCdt = await loadCdtData(userCdt);
+          setCdtInfo(loadedCdt);
           setCdtReady(true);
         } catch {
           setUserRole("trabajador");
+          setCurrentUserData(null);
+          setCdtInfo(null);
           setCdtId(null);
           setCdtContext({ cdtId: null, role: "trabajador", isSuperAdmin: false });
           setCdtReady(true);
         }
       } else {
         setCurrentUser(null);
+        setCurrentUserData(null);
+        setCdtInfo(null);
         setUserRole(null);
         setCdtId(null);
         setCdtReady(false);
@@ -1963,8 +1977,12 @@ export default function App(){
     return()=>{clearTimeout(safety);unsub();rangosUnsub();};
   },[cdtReady,cdtId,verHistorialCompleto]);
 
-  const handleDelete=async id=>{try{await deleteDoc(doc(db,"readings",id));}catch{alert("Error al eliminar.");}};
+  const handleDelete=async id=>{if(esObservador){alert("Modo observador: no puedes eliminar ni modificar registros.");return;}try{await deleteDoc(doc(db,"readings",id));}catch{alert("Error al eliminar.");}};
   const alerts=readings.filter(r=>{if(r.resolved||r.dismissed||(r.tipo||"entrada")!=="entrada")return false;const c=CROPS[r.crop];if(!c)return false;const rng=getRangos(r.crop,"entrada",r.invernadero,{});return getStatus(r.ph,rng.ph)==="danger"||getStatus(r.ce,rng.ce)==="danger";});
+  const roleInfo = getRoleInfo(userRole);
+  const cdtLabel = cdtId
+    ? `CDT ${(cdtInfo?.clave || cdtId || "").toUpperCase()}${cdtInfo?.nombre ? ` — ${cdtInfo.nombre}` : ""}`
+    : (isGlobalViewerRole(userRole) ? "Vista global · todos los CDT" : "CDT no asignado");
 
   // Auth loading
   if(authLoading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(160deg,#0f1e2e,#1a3a2a)"}}><div style={{textAlign:"center",color:"#fff"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#4ecb8d",marginTop:4}}>Cargando...</div></div></div>;
@@ -2008,18 +2026,18 @@ export default function App(){
   if(loading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f4f5f7"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,color:"#27ae60",fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#aaa",marginTop:4}}>Cargando...</div></div></div>;
 
   const SECTION={
-    superadmin:  <SuperAdmin/>,
-    suelo:       <AnalisisSuelo/>,
-    resumen:     <Resumen readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos} verHistorialCompleto={verHistorialCompleto} setVerHistorialCompleto={setVerHistorialCompleto}/>,
-    alertas:     <Alertas readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
+    superadmin:  <SuperAdmin readOnly={esObservador}/>,
+    suelo:       <AnalisisSuelo readOnly={esObservador} allowAI={true}/>,
+    resumen:     <Resumen readings={readings} onDelete={handleDelete} weeklyRangos={weeklyRangos} verHistorialCompleto={verHistorialCompleto} setVerHistorialCompleto={setVerHistorialCompleto} readOnly={esObservador}/>,
+    alertas:     <Alertas readings={readings} onDelete={handleDelete} weeklyRangos={weeklyRangos} readOnly={esObservador}/>,
     ia:          <DiagnosticoIA/>,
-    reportes:    <Reportes readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos} verHistorialCompleto={verHistorialCompleto} setVerHistorialCompleto={setVerHistorialCompleto}/>,
-    formulador:  <Formulador/>,
-    incidencias: <IncidenciasAdmin/>,
-    tareas:      <TareasAdmin/>,
+    reportes:    <Reportes readings={readings} onDelete={handleDelete} weeklyRangos={weeklyRangos} verHistorialCompleto={verHistorialCompleto} setVerHistorialCompleto={setVerHistorialCompleto} readOnly={esObservador}/>,
+    formulador:  esObservador?<Bloqueado nombre="el formulador nutritivo"/>:<Formulador/>,
+    incidencias: esObservador?<Bloqueado nombre="la gestión de incidencias"/>:<IncidenciasAdmin/>,
+    tareas:      esObservador?<Bloqueado nombre="la gestión de tareas"/>:<TareasAdmin/>,
     
-    inventario:  <AlmacenAdmin/>,
-    aplicaciones: <AplicacionesAdmin/>,
+    inventario:  esObservador?<Bloqueado nombre="el almacén editable"/>:<AlmacenAdmin/>,
+    aplicaciones: esObservador?<Bloqueado nombre="la gestión de aplicaciones"/>:<AplicacionesAdmin/>,
     trabajadores:<Trabajadores readings={readings}/>,
     ventas:      <Ventas readOnly={esObservador}/>,
     rangos:      esObservador?<Bloqueado nombre="los rangos"/>:<RangosSemanales/>,
@@ -2032,11 +2050,19 @@ export default function App(){
         <div style={{padding:"20px 18px 14px",borderBottom:"1px solid #243040"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:22}}>🌿</span>
-            <div><div style={{color:"#4ecb8d",fontWeight:700,fontSize:16,letterSpacing:-0.3}}>GreenLog</div><div style={{color:"#3a5060",fontSize:10,fontFamily:"'Courier New',monospace",marginTop:1}}>ADMINISTRADOR</div></div>
+            <div><div style={{color:"#4ecb8d",fontWeight:700,fontSize:16,letterSpacing:-0.3}}>GreenLog</div><div style={{color:"#3a5060",fontSize:10,fontFamily:"'Courier New',monospace",marginTop:1}}>{roleInfo.short?.toUpperCase() || "ADMIN"}</div></div>
+          </div>
+          <div style={{marginTop:10,background:"#243040",border:"1px solid #30455e",borderRadius:10,padding:"8px 10px",color:"#c5d6e4",fontSize:10,lineHeight:1.45}}>
+            <div style={{color:roleInfo.color,fontWeight:700,marginBottom:2}}>{roleInfo.icon} {roleInfo.label}</div>
+            <div>{cdtLabel}</div>
           </div>
         </div>
         <nav style={{flex:1,padding:"8px 0"}}>
-          {NAV.filter(item=>!item.soloSuper||puedeVerCentros).map(item=>(
+          {NAV.filter(item=>{
+            if(item.soloSuper && !puedeVerCentros) return false;
+            if(esObservador) return ["superadmin","resumen","alertas","ia","reportes","suelo","ventas","trabajadores"].includes(item.id);
+            return true;
+          }).map(item=>(
             <button key={item.id} onClick={()=>setPage(item.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 18px",border:"none",background:page===item.id?"#243a52":"transparent",color:page===item.id?"#4ecb8d":"#7a9ab0",cursor:"pointer",textAlign:"left",borderLeft:page===item.id?"3px solid #4ecb8d":"3px solid transparent",transition:"all 0.15s",fontSize:13,fontFamily:"'Georgia',serif"}}>
               <span style={{fontSize:14,width:16,textAlign:"center"}}>{item.icon}</span>
               <span>{item.label}</span>
@@ -2051,7 +2077,10 @@ export default function App(){
       </div>
       <div style={{flex:1,overflow:"auto"}}>
         <div style={{background:"#fff",borderBottom:"0.5px solid #e0e0e0",padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
-          <h1 style={{margin:0,fontSize:18,fontWeight:700,color:"#1a2533"}}>{TITLES[page]}</h1>
+          <div>
+            <h1 style={{margin:0,fontSize:18,fontWeight:700,color:"#1a2533"}}>{TITLES[page]}</h1>
+            <div style={{fontSize:11,color:"#8a94a0",marginTop:2,fontFamily:"'Courier New',monospace"}}>{cdtLabel}</div>
+          </div>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             {alerts.length>0&&<div style={{background:"#fdedec",border:"1px solid #f5c6c6",borderRadius:20,padding:"5px 12px",fontSize:12,color:"#c0392b",fontWeight:600,cursor:"pointer"}} onClick={()=>setPage("alertas")}>🚨 {alerts.length} alerta{alerts.length>1?"s":""}</div>}
             <div style={{display:"flex",alignItems:"center",gap:8}}>

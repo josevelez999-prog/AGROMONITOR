@@ -10,7 +10,7 @@ import {
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyCxoMQYwhTtGS9mQxIlRSKdq6tS9abXhXo",
   authDomain: "agromonitor-d389e.firebaseapp.com",
   projectId: "agromonitor-d389e",
