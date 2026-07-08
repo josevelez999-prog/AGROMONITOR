@@ -5,6 +5,7 @@ import AlmacenAdmin from "./AlmacenAdmin";
 import AplicacionesAdmin from "./AplicacionesAdmin";
 import { setCdtContext, loadCdtData, getSuperOverride, getCdtData } from "./cdtContext";
 import SuperAdmin from "./SuperAdmin";
+import SuperAdminMobile from "./SuperAdminMobile";
 import Ventas from "./Ventas";
 import LoginScreen from "./Auth";
 import UsuariosAdmin from "./UsuariosAdmin";
@@ -1978,6 +1979,22 @@ export default function App(){
   // Logged in as worker
   if(userRole==="trabajador") return <Worker user={currentUser}/>;
 
+  // Super-admin / observador global en MÓVIL: panel de centros móvil directo
+  if((userRole==="super_admin"||userRole==="observador_global") && isMobile && !forceDesktop && !getSuperOverride()) {
+    return (
+      <div style={{minHeight:"100vh",background:"#f4f5f7"}}>
+        <div style={{background:"#1a2533",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
+          <div style={{color:"#4ecb8d",fontWeight:700,fontSize:16}}>🌿 GreenLog</div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>{ try{ localStorage.setItem("forceDesktop","1"); }catch{} setForceDesktop(true); }} style={{padding:"5px 10px",border:"1px solid #3a5060",borderRadius:8,background:"transparent",color:"#7a9ab0",cursor:"pointer",fontSize:11}}>💻 Escritorio</button>
+            <button onClick={()=>signOut(auth)} style={{padding:"5px 10px",border:"1px solid #3a5060",borderRadius:8,background:"transparent",color:"#7a9ab0",cursor:"pointer",fontSize:11}}>Salir</button>
+          </div>
+        </div>
+        <div style={{padding:"12px"}}><SuperAdminMobile/></div>
+      </div>
+    );
+  }
+
   // Admin/observador en MÓVIL: vista compacta dashboard
   if((userRole==="admin"||userRole==="observador") && isMobile && !forceDesktop) {
     try {
@@ -2008,7 +2025,7 @@ export default function App(){
   if(loading) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f4f5f7"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>🌿</div><div style={{fontWeight:700,color:"#27ae60",fontSize:18}}>GreenLog</div><div style={{fontSize:12,color:"#aaa",marginTop:4}}>Cargando...</div></div></div>;
 
   const SECTION={
-    superadmin:  <SuperAdmin/>,
+    superadmin:  (isMobile && !forceDesktop) ? <SuperAdminMobile/> : <SuperAdmin/>,
     suelo:       <AnalisisSuelo/>,
     resumen:     <Resumen readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos} verHistorialCompleto={verHistorialCompleto} setVerHistorialCompleto={setVerHistorialCompleto}/>,
     alertas:     <Alertas readings={readings} onDelete={esObservador?()=>{}:handleDelete} weeklyRangos={weeklyRangos}/>,
