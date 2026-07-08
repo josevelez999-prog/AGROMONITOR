@@ -367,15 +367,6 @@ function RegistroVentas() {
   const [showForm, setShowForm] = useState(false);
 
   // OPTIMIZACIÓN: una sola carga por colección + límite de 90 días en las grandes
-  useEffect(() => {
-    const hace10 = new Date(Date.now()-10*24*60*60*1000).toISOString();
-    const u1 = onSnapshot(query(collection(db,"ventas"), where("createdAt",">=",hace10)), s=>setVentas(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))), e=>console.error("ventas:",e));
-    const uL = onSnapshot(collection(db,"lotes"), s=>setLotes(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))));
-    const u2 = onSnapshot(query(collection(db,"cosechas_trabajador"), where("createdAt",">=",hace10)), s=>setCosechas(s.docs.map(d=>({id:d.id,...d.data()}))), e=>console.error("cosechas:",e));
-    const u3 = onSnapshot(collection(db,"mermas"), s=>setMermas(s.docs.map(d=>({id:d.id,...d.data()}))));
-    return()=>{u1();uL();u2();u3();};
-  },[]);
-
   const save = async () => {
     if (!form.comprador || !form.kgVendidos || !form.precioKg) { alert("Llena comprador, kg y precio"); return; }
     const kg = parseFloat(form.kgVendidos)||0;
