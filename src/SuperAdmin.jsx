@@ -26,7 +26,7 @@ const CULTIVOS_CATALOGO = [
   { id: "aguacate", name: "Aguacate", emoji: "🥑" },
 ];
 
-export default function SuperAdmin({ readOnly=false }) {
+export default function SuperAdmin() {
   const [cdts, setCdts] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
@@ -79,12 +79,12 @@ export default function SuperAdmin({ readOnly=false }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: "#1a2533" }}>🏢 Centros de Desarrollo (CDT)</div>
-          <div style={{ fontSize: 12, color: "#8a94a0", marginTop: 2 }}>{cdts.length} centros registrados · {readOnly ? "Vista global de observador" : "Vista global de super-administrador"}</div>
+          <div style={{ fontSize: 12, color: "#8a94a0", marginTop: 2 }}>{cdts.length} centros registrados · Vista global de super-administrador</div>
         </div>
-        {!readOnly&&<button onClick={() => { setShowNew(true); setEditingCdt(null); }}
+        <button onClick={() => { setShowNew(true); setEditingCdt(null); }}
           style={{ padding: "10px 18px", background: "#27ae60", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
           + Nuevo CDT
-        </button>}
+        </button>
       </div>
 
       {overrideActivo && (
@@ -98,7 +98,7 @@ export default function SuperAdmin({ readOnly=false }) {
         </div>
       )}
 
-      {!readOnly && (showNew || editingCdt) && (
+      {(showNew || editingCdt) && (
         <CdtForm
           cdt={editingCdt}
           onClose={() => { setShowNew(false); setEditingCdt(null); }}
@@ -140,10 +140,10 @@ export default function SuperAdmin({ readOnly=false }) {
                     → Entrar a este CDT
                   </button>
                 )}
-                {!readOnly&&<button onClick={() => { setEditingCdt(cdt); setShowNew(false); window.scrollTo(0, 0); }}
+                <button onClick={() => { setEditingCdt(cdt); setShowNew(false); window.scrollTo(0, 0); }}
                   style={{ padding: "7px 16px", background: "#eef2f5", color: "#556", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
                   ✎ Editar
-                </button>}
+                </button>
               </div>
             </div>
           </div>

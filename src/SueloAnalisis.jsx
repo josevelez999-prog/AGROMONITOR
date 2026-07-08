@@ -88,7 +88,6 @@ function FormuladorSuelo({ analisis, recomendacion }) {
 
   return (
     <div>
-      {readOnly&&<div style={{background:"#fff8e1",border:"1px solid #f5d76e",borderRadius:10,padding:"9px 14px",marginBottom:12,fontSize:12,color:"#8a6d1d"}}>👁️ Modo observador: puedes consultar historial y usar IA de suelo, pero no eliminar registros.</div>}
       {/* Cabecera */}
       <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:16,alignItems:"flex-end"}}>
         <div>
@@ -207,7 +206,7 @@ function FormuladorSuelo({ analisis, recomendacion }) {
 }
 
 // ─── MÓDULO PRINCIPAL ─────────────────────────────────────────────────────────
-export default function AnalisisSuelo({ readOnly=false, allowAI=true }) {
+export default function AnalisisSuelo() {
   const [tab, setTab] = useState("historial");
   const [analisis, setAnalisis] = useState([]);
   const [form, setForm] = useState({
@@ -250,7 +249,6 @@ export default function AnalisisSuelo({ readOnly=false, allowAI=true }) {
   };
 
   const analyzeWithAI = async () => {
-    if (readOnly && !allowAI) { alert("Modo observador: no puedes crear análisis."); return; }
     if (!fileBase64s.length && !Object.values(parametros).some(v => v)) {
       alert("Sube el análisis de suelo (PDF o foto) o ingresa al menos algunos parámetros.");
       return;
@@ -333,9 +331,9 @@ export default function AnalisisSuelo({ readOnly=false, allowAI=true }) {
           <div style={{fontSize:48,marginBottom:8}}>🌍</div>
           <div style={{fontWeight:500,fontSize:15,marginBottom:6}}>Sin análisis de suelo registrados</div>
           <div style={{fontSize:12,marginBottom:16}}>Sube tu primer análisis de laboratorio para obtener recomendaciones personalizadas</div>
-          {allowAI&&<button onClick={()=>setTab("nuevo")} style={{padding:"10px 24px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>
-            + Nuevo análisis IA
-          </button>}
+          <button onClick={()=>setTab("nuevo")} style={{padding:"10px 24px",background:"#27ae60",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>
+            + Nuevo análisis
+          </button>
         </div>
       )}
       {analisis.map(a => {
@@ -365,8 +363,8 @@ export default function AnalisisSuelo({ readOnly=false, allowAI=true }) {
                 </div>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
                   <span style={{fontSize:12,color:"#ccc"}}>{open?"▲":"▼"}</span>
-                  {!readOnly&&<button onClick={e=>{e.stopPropagation();if(window.confirm("¿Eliminar este análisis?"))deleteDoc(doc(db,"analisis_suelo",a.id));}}
-                    style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>}
+                  <button onClick={e=>{e.stopPropagation();if(window.confirm("¿Eliminar este análisis?"))deleteDoc(doc(db,"analisis_suelo",a.id));}}
+                    style={{background:"#fdedec",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#c0392b"}}>✕</button>
                 </div>
               </div>
             </div>
