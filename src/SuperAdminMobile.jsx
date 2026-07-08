@@ -81,12 +81,27 @@ function CdtCard({ cdt, abierto, onToggle, onEntrar, soloLectura }) {
         const porCultivo = {};
         const asegura = (c) => { if (!porCultivo[c]) porCultivo[c] = { kgCos:0, kgVen:0, ingresos:0, costo:0, merma:0, rbc:0 }; return porCultivo[c]; };
 
+        // COSECHAS: misma lógica que Ventas (evita doble conteo).
+        // 1) Sumar cosechas de trabajador (todas), agrupadas por cultivo
+        const lotesConCosechaTrab = new Set();
+        cosechas.forEach(c => {
+          if (!c.crop) {
+            // si la cosecha no trae crop, buscar el cultivo por su lote
+            const lote = lotes.find(l => l.id === c.loteId);
+            if (!lote || !lote.crop) return;
+            asegura(lote.crop).kgCos += parseFloat(c.kgCosechados)||0;
+          } else {
+            asegura(c.crop).kgCos += parseFloat(c.kgCosechados)||0;
+          }
+          if (c.loteId) lotesConCosechaTrab.add(c.loteId);
+        });
+        // 2) Para lotes SIN cosecha de trabajador, usar su kg manual
         lotes.forEach(l => {
           if (!l.crop) return;
-          const p = asegura(l.crop);
-          const cosTrab = cosechas.filter(c => c.loteId === l.id).reduce((s,c) => s+(parseFloat(c.kgCosechados)||0), 0);
-          p.kgCos += cosTrab > 0 ? cosTrab : (parseFloat(l.kgCosechados)||0);
-          p.costo += parseFloat(l.costoCiclo)||0;
+          asegura(l.crop).costo += parseFloat(l.costoCiclo)||0;
+          if (!lotesConCosechaTrab.has(l.id)) {
+            asegura(l.crop).kgCos += parseFloat(l.kgCosechados)||0;
+          }
         });
         ventas.forEach(v => {
           if (!v.crop) return;
