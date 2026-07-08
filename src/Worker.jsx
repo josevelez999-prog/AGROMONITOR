@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { db, auth } from "./firebase";
 import { collection, addDoc, onSnapshot, query, where, orderBy, doc, updateDoc } from "./dbCdt";
 import { getCdtData } from "./cdtContext";
+import { acumular } from "./estadisticas";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { signOut } from "firebase/auth";
 
@@ -665,6 +666,8 @@ function RegistroCosecha({ worker }) {
         zona:lote?.zona||"", invernadero:lote?.zona||"",
         tratamiento:lote?.tratamiento||"",
       })));
+      // Acumular kg cosechados al histórico del CDT
+      acumular({ totalKgCosechados: parseFloat(formC.kgCosechados)||0 });
       setSaved("cosecha"); setFormC({loteId:"",kgCosechados:"",calidad:"primera",notas:"",fecha:new Date().toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
     } catch(e) {
@@ -738,6 +741,8 @@ function RegistroCosecha({ worker }) {
         createdAt:now.toISOString(),loteName:lote?.nombre||"",
         crop:lote?.crop||"",zona:lote?.zona||"",
       })));
+      // Acumular merma al histórico del CDT
+      acumular({ totalKgMerma: parseFloat(formMerma.kgMerma)||0 });
       setSaved("merma");
       setFormMerma({loteId:"",kgMerma:"",causa:"",notas:"",fecha:now.toISOString().slice(0,10)});
       setTimeout(()=>setSaved(""),4000);
