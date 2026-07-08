@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { db } from "./firebase";
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from "./dbCdt";
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, setDoc } from "./dbCdt";
+import { getCurrentCdtId } from "./cdtContext";
 import { getAuth, createUserWithEmailAndPassword, updatePassword, signInWithEmailAndPassword } from "firebase/auth";
 
 const INP = {
@@ -44,19 +45,23 @@ export default function UsuariosAdmin() {
     try {
       const auth = getAuth();
       const email = getEmail(form.usuario);
-      // Crear en Firebase Auth
-      await createUserWithEmailAndPassword(auth, email, form.password);
-      // Guardar en Firestore
-      await addDoc(collection(db,"usuarios"), {
+      // Crear en Firebase Auth y obtener el UID
+      const cred = await createUserWithEmailAndPassword(auth, email, form.password);
+      const uid = cred.user.uid;
+      // Guardar en Firestore usando el UID como ID del documento (CRÍTICO:
+      // las reglas buscan usuarios/{uid}, si el ID no es el UID no funciona)
+      await setDoc(doc(db,"usuarios",uid), {
         nombre: form.nombre.trim(),
         usuario: form.usuario.trim().toLowerCase().replace(/\s+/g,"."),
         email,
         rol: form.rol,
+        cdtId: getCurrentCdtId() || "sll",
         activo: true,
         createdAt: new Date().toISOString(),
       });
       setForm({ nombre:"", usuario:"", password:"", rol:"trabajador" });
       setShowForm(false);
+      alert("✅ Usuario creado correctamente.\n\nNota: por seguridad de Firebase, tu sesión se cerró. Vuelve a iniciar sesión como administrador.");
     } catch(e) {
       const msgs = {
         "auth/email-already-in-use": "Ese nombre de usuario ya tiene una cuenta",
