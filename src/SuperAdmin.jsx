@@ -210,6 +210,21 @@ function CdtForm({ cdt, onClose }) {
     setCultivos(prev => ({ ...prev, [cropId]: { ...prev[cropId], ubicaciones: lista } }));
   };
 
+  const setZonas = (cropId, texto) => {
+    const lista = texto.split(",").map(s => s.trim()).filter(Boolean);
+    setCultivos(prev => ({ ...prev, [cropId]: { ...prev[cropId], zonas: lista } }));
+  };
+
+  const setNumBandejas = (cropId, val) => {
+    const n = parseInt(val) || 0;
+    setCultivos(prev => ({ ...prev, [cropId]: { ...prev[cropId], numBandejas: n } }));
+  };
+
+  const setNumTinacos = (cropId, val) => {
+    const n = parseInt(val) || 0;
+    setCultivos(prev => ({ ...prev, [cropId]: { ...prev[cropId], numTinacos: n } }));
+  };
+
   const guardar = async () => {
     const cdtId = (id || "").trim().toLowerCase().replace(/\s+/g, "");
     if (!cdtId) { alert("Falta el ID del CDT"); return; }
@@ -267,22 +282,47 @@ function CdtForm({ cdt, onClose }) {
         ))}
       </div>
 
-      {/* Configuración de ubicaciones por cultivo seleccionado */}
+      {/* Configuración completa por cultivo */}
       {Object.keys(cultivos).length > 0 && (
-        <div style={{ background: "#f8f9fa", borderRadius: 8, padding: 12, marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: "#8a94a0", marginBottom: 10, fontWeight: 600 }}>Define las naves/invernaderos de cada cultivo (separados por coma):</div>
+        <div style={{ background: "#f8f9fa", borderRadius: 8, padding: 14, marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: "#556", marginBottom: 12, fontWeight: 700 }}>⚙️ Configuración de cada cultivo</div>
           {Object.entries(cultivos).map(([cropId, cropData]) => (
-            <div key={cropId} style={{ display: "grid", gridTemplateColumns: "120px 130px 1fr", gap: 8, marginBottom: 8, alignItems: "center" }}>
-              <div style={{ fontSize: 12, fontWeight: 600 }}>{cropData.emoji} {cropData.name}</div>
-              <select value={cropData.tipoUbicacion || "Nave"} onChange={e => setTipoUbicacion(cropId, e.target.value)} style={{ ...INP, padding: "6px 8px" }}>
-                <option value="Nave">Nave</option>
-                <option value="Invernadero">Invernadero</option>
-                <option value="Túnel">Túnel</option>
-                <option value="Macrotúnel">Macrotúnel</option>
-                <option value="Lote">Lote</option>
-              </select>
-              <input defaultValue={(cropData.ubicaciones || []).join(", ")} onBlur={e => setUbicaciones(cropId, e.target.value)}
-                placeholder="ej: Nave 1, Nave 2, Nave 3" style={{ ...INP, padding: "6px 8px" }} />
+            <div key={cropId} style={{ background: "#fff", borderRadius: 8, padding: 12, marginBottom: 10, border: "1px solid #e6e9ed" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#1a2533", marginBottom: 10 }}>{cropData.emoji} {cropData.name}</div>
+
+              {/* Tipo de ubicación + nombres */}
+              <div style={{ display: "grid", gridTemplateColumns: "130px 1fr", gap: 8, marginBottom: 8, alignItems: "center" }}>
+                <select value={cropData.tipoUbicacion || "Nave"} onChange={e => setTipoUbicacion(cropId, e.target.value)} style={{ ...INP, padding: "6px 8px" }}>
+                  <option value="Nave">Nave</option>
+                  <option value="Invernadero">Invernadero</option>
+                  <option value="Túnel">Túnel</option>
+                  <option value="Macrotúnel">Macrotúnel</option>
+                  <option value="Lote">Lote</option>
+                </select>
+                <input defaultValue={(cropData.ubicaciones || []).join(", ")} onBlur={e => setUbicaciones(cropId, e.target.value)}
+                  placeholder="Nombres: ej INV 2, INV 3, INV 5" style={{ ...INP, padding: "6px 8px" }} />
+              </div>
+
+              {/* Zonas */}
+              <div style={{ marginBottom: 8 }}>
+                <label style={{ fontSize: 10, color: "#8a94a0", fontWeight: 600 }}>Zonas (separadas por coma)</label>
+                <input defaultValue={(cropData.zonas || []).join(", ")} onBlur={e => setZonas(cropId, e.target.value)}
+                  placeholder="ej: Zona 1, Zona 2, Zona 3, Zona 4" style={{ ...INP, padding: "6px 8px", marginTop: 3 }} />
+              </div>
+
+              {/* Bandejas y tinacos */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div>
+                  <label style={{ fontSize: 10, color: "#8a94a0", fontWeight: 600 }}>N° de bandejas</label>
+                  <input type="number" min="0" defaultValue={cropData.numBandejas ?? 14} onBlur={e => setNumBandejas(cropId, e.target.value)}
+                    placeholder="14" style={{ ...INP, padding: "6px 8px", marginTop: 3 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: "#8a94a0", fontWeight: 600 }}>N° de tinacos</label>
+                  <input type="number" min="0" defaultValue={cropData.numTinacos ?? 4} onBlur={e => setNumTinacos(cropId, e.target.value)}
+                    placeholder="4" style={{ ...INP, padding: "6px 8px", marginTop: 3 }} />
+                </div>
+              </div>
             </div>
           ))}
         </div>

@@ -374,7 +374,7 @@ function Registro({ worker }) {
         <label style={LBL}>Cultivo</label>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {Object.entries(getCropsCdt()).map(([k,c])=>(
-            <button key={k} onClick={()=>setForm(p=>({...p,crop:k,invernadero:c.invernaderos?c.invernaderos[0]:""}))}
+            <button key={k} onClick={()=>{const cfg=getConfigCrop(k);setForm(p=>({...p,crop:k,invernadero:c.invernaderos?c.invernaderos[0]:"",zone:cfg.zonas[0]||"Zona 1",bandeja:"Bandeja 1",tinaco:"Tinaco 1"}));}}
               style={{padding:"8px 14px",border:`1.5px solid ${form.crop===k?c.color:"#e0e0e0"}`,borderRadius:20,background:form.crop===k?c.color+"18":"transparent",color:form.crop===k?c.color:"#777",cursor:"pointer",fontSize:13,fontWeight:form.crop===k?700:400}}>
               {c.emoji} {c.name}
             </button>
@@ -433,13 +433,13 @@ function Registro({ worker }) {
         <div>
           <label style={LBL}>Zona *</label>
           <select value={form.zone} onChange={e=>setForm(p=>({...p,zone:e.target.value}))} style={INP}>
-            {["Zona 1","Zona 2","Zona 3","Zona 4"].map(z=><option key={z} value={z}>{z}</option>)}
+            {getConfigCrop(form.crop).zonas.map(z=><option key={z} value={z}>{z}</option>)}
           </select>
         </div>
         <div>
           <label style={LBL}>Bandeja *</label>
           <select value={form.bandeja} onChange={e=>setForm(p=>({...p,bandeja:e.target.value}))} style={INP}>
-            {Array.from({length:14},(_,i)=>`Bandeja ${i+1}`).map(b=><option key={b} value={b}>{b}</option>)}
+            {Array.from({length:getConfigCrop(form.crop).numBandejas},(_,i)=>`Bandeja ${i+1}`).map(b=><option key={b} value={b}>{b}</option>)}
           </select>
         </div>
         </>}
@@ -447,7 +447,7 @@ function Registro({ worker }) {
         <div style={{gridColumn:"1 / span 2"}}>
           <label style={LBL}>Tinaco *</label>
           <select value={form.tinaco||"Tinaco 1"} onChange={e=>setForm(p=>({...p,tinaco:e.target.value}))} style={INP}>
-            {["Tinaco 1","Tinaco 2","Tinaco 3","Tinaco 4"].map(t=><option key={t} value={t}>{t}</option>)}
+            {Array.from({length:getConfigCrop(form.crop).numTinacos},(_,i)=>`Tinaco ${i+1}`).map(t=><option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         )}
@@ -1539,6 +1539,23 @@ function getUbicacionCrop(cropId) {
     }
   } catch {}
   return UBICACIONES_APLIC[cropId] || { tipo: "Sección", lista: [] };
+}
+
+// Config de zonas/bandejas/tinacos del cultivo según el CDT (con defaults tipo SLL)
+function getConfigCrop(cropId) {
+  try {
+    const cdt = getCdtData();
+    const c = cdt?.cultivos?.[cropId];
+    if (c) {
+      return {
+        zonas: (c.zonas && c.zonas.length) ? c.zonas : ["Zona 1","Zona 2","Zona 3","Zona 4"],
+        numBandejas: (typeof c.numBandejas === "number" && c.numBandejas > 0) ? c.numBandejas : 14,
+        numTinacos: (typeof c.numTinacos === "number" && c.numTinacos > 0) ? c.numTinacos : 4,
+      };
+    }
+  } catch {}
+  // Default (compatibilidad con SLL)
+  return { zonas: ["Zona 1","Zona 2","Zona 3","Zona 4"], numBandejas: 14, numTinacos: 4 };
 }
 
 // ─── REGISTRO DE APLICACIÓN DE AGROQUÍMICOS (trabajador) ─────────────────────
