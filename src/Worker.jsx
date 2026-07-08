@@ -1807,7 +1807,10 @@ export default function Worker({ user, onLogout }) {
       <div style={{background:"#fff",borderBottom:"1px solid #e0e0e0",padding:"12px 16px",position:"sticky",top:0,zIndex:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <div>
           <div style={{fontSize:18,fontWeight:700,color:"#27ae60"}}>🌿 GreenLog</div>
-          <div style={{fontSize:11,color:"#888"}}>👤 {workerName}</div>
+          <div style={{fontSize:11,color:"#888",display:"flex",alignItems:"center",gap:8}}>
+            <span>👤 {workerName}</span>
+            {getCdtData&&getCdtData()?.nombre&&<span style={{background:"#eafaf1",color:"#27ae60",padding:"1px 7px",borderRadius:8,fontWeight:700,fontSize:10}}>🏢 {getCdtData().nombre}</span>}
+          </div>
         </div>
         <button onClick={async()=>{ try{ await signOut(auth); onLogout?.(); }catch(e){ console.error(e); } }}
           style={{background:"transparent",border:"1px solid #ddd",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"#888"}}>

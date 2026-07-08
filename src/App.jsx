@@ -2032,8 +2032,17 @@ export default function App(){
         <div style={{padding:"20px 18px 14px",borderBottom:"1px solid #243040"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:22}}>🌿</span>
-            <div><div style={{color:"#4ecb8d",fontWeight:700,fontSize:16,letterSpacing:-0.3}}>GreenLog</div><div style={{color:"#3a5060",fontSize:10,fontFamily:"'Courier New',monospace",marginTop:1}}>ADMINISTRADOR</div></div>
+            <div><div style={{color:"#4ecb8d",fontWeight:700,fontSize:16,letterSpacing:-0.3}}>GreenLog</div><div style={{color:"#3a5060",fontSize:10,fontFamily:"'Courier New',monospace",marginTop:1}}>{(userRole||"").toUpperCase().replace("_"," ")}</div></div>
           </div>
+          {cdtId && (
+            <div style={{marginTop:12,background:"#243a52",borderRadius:8,padding:"7px 10px",display:"flex",alignItems:"center",gap:7}}>
+              <span style={{fontSize:13}}>🏢</span>
+              <div style={{lineHeight:1.1}}>
+                <div style={{color:"#4ecb8d",fontSize:13,fontWeight:700,fontFamily:"'Courier New',monospace",textTransform:"uppercase"}}>{cdtId}</div>
+                <div style={{color:"#5a7a90",fontSize:9}}>{(getCdtData&&getCdtData()?.nombre)||"Centro actual"}</div>
+              </div>
+            </div>
+          )}
         </div>
         <nav style={{flex:1,padding:"8px 0"}}>
           {NAV.filter(item=>!item.soloSuper||puedeVerCentros).map(item=>(
