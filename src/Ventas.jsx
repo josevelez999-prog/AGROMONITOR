@@ -359,6 +359,7 @@ function GestionLotes() {
 function RegistroVentas() {
   const [ventas, setVentas] = useState([]);
   const [lotes, setLotes] = useState([]);
+  const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({
     loteId:"", crop:(Object.keys(getCropsCdt())[0]||"jitomate"), comprador:"", canal:"Mercado local",
     calidad:"primera", kgVendidos:0, precioKg:0,
@@ -366,7 +367,13 @@ function RegistroVentas() {
   });
   const [showForm, setShowForm] = useState(false);
 
-  // OPTIMIZACIÓN: una sola carga por colección + límite de 90 días en las grandes
+  // Cargar ventas y lotes
+  useEffect(() => {
+    const u1 = onSnapshot(collection(db,"ventas"), s=>setVentas(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))));
+    const u2 = onSnapshot(collection(db,"lotes"), s=>setLotes(s.docs.map(d=>({id:d.id,...d.data()}))));
+    return()=>{u1();u2();};
+  }, []);
+
   const save = async () => {
     if (!form.comprador || !form.kgVendidos || !form.precioKg) { alert("Llena comprador, kg y precio"); return; }
     const kg = parseFloat(form.kgVendidos)||0;
